@@ -1,0 +1,9 @@
+# Compiled python files
+__pycache__/
+*.pyc
+
+# Cached templates (iron/balmer/host)
+.cache/
+
+# Files under development
+pl_wiggle.py
