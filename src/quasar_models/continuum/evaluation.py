@@ -7,7 +7,7 @@ def evaluate(
     alpha: float,
     x0: float = 1.0,
 ) -> float | NDArray[float64]:
-    return flux * (x / x0)**(-alpha)
+    return flux * (x / x0)**alpha
 
 def evaluate_sparse(
     x: float | NDArray[float64],
@@ -31,7 +31,7 @@ def fit_deriv(
     df_dalpha = zeros_like(x, dtype=float64)
 
     if not (fixed is None) and not all(fixed.values()):
-        _f = (x / x0)**(-alpha)
+        _f = (x / x0)**alpha
         if not fixed['flux']: 
             df_dflux[:] = _f
         if not fixed['alpha']: 

@@ -4,81 +4,106 @@ from astropy.io.fits import PrimaryHDU, HDUList, Column, BinTableHDU
 from quasar_utils.setup import Info
 from ..utils.template import BaseTemplate, drop_nonpos
 
-def _save(temp: BaseTemplate, path: Path) -> None:
+def _save(template: BaseTemplate, path: Path) -> HDUList:
     """
-    Saves the IronTemplate to a FITS file.
-    """
-    v_unit: str = temp.info.units['velocity_unit'].to_string()
-    x_unit: str = temp.info.units['wavelength_unit'].to_string()
-    f_unit: str = temp.info.units.getFluxUnit().to_string()
+    Saves the given IronTemplate instance to a FITS file at the specified path.
 
-    def _velocity(val):
-        return temp.info.units.getC(val).to(v_unit).value
+    The FITS file will consists of the following HDUs:
+    - [0]: Primary HDU containing the template data and metadata in the header.
+    - [1]: Binary table HDU containing the fwhm and x arrays.
+    - [2]: (Optional) Binary table HDU containing the sparse matrices if they 
+           exist in the template.
+
+    Parameters
+    ----------
+    template : BaseTemplate
+        The IronTemplate instance to be saved.
+    path : Path
+        The file path where the FITS file will be saved.
+
+    Returns
+    -------
+    HDUList
+        The HDUList object representing the FITS file that was saved.
+
+    Notes
+    -----
+    Lorem ipsum.
+    """
+    v_unit: str = template.info.units['velocity_unit'].to_string()
+    x_unit: str = template.info.units['wavelength_unit'].to_string()
+    f_unit: str = template.info.units.getFluxUnit().to_string()
+
+    # [0] Primary HDU -  data and metadata
 
     hdul: HDUList = HDUList()
 
-    hdu: PrimaryHDU = PrimaryHDU(data=temp.data)
-    hdu.header['NAME'] = temp.name
+    hdu: PrimaryHDU = PrimaryHDU(data=template.data)
+    hdu.header['NAME'] = template.name
     hdu.header['CTYPE1'] = ('fwhm', 'fwhm axis')
     hdu.header['CTYPE2'] = ('x', 'spectral axis')
     hdu.header['BUNIT'] = (f_unit, 'flux unit')
-    hdu.header['LOGSPACE'] = 'y' if temp.is_logspace else 'n'
+    hdu.header['LOGSPACE'] = 'y' if template.is_logspace else 'n'
 
-    if temp.path is not None: 
-        hdu.header['PATH'] = str(temp.path)
+    if template.path is not None: 
+        hdu.header['PATH'] = str(template.path)
 
     hdul.append(hdu)
+
+    # [1] Binary table HDU - fwhm and x arrays
 
     col_fwhm: Column = Column(
         name = 'fwhm',
         format = 'F',
         unit = v_unit,
-        array = _velocity(temp.fwhm),
+        array = template.info.units.getC(template.fwhm).to(v_unit).value,
     )
     col_x: Column = Column(
         name = 'x',
         format = 'F',
         unit = x_unit,
-        array = temp.x,
+        array = template.x,
     )
     hdul.append(BinTableHDU.from_columns([col_fwhm, col_x]))
 
-    if getattr(temp, '_alpha_matrix', None) is not None:
+    # [2] Binary table HDU - sparse matrices (if they exist)
+
+    if getattr(template, '_alpha_matrix', None) is not None:
         col_xn = Column(
-            name='xn',
-            format='F',
+            name = 'xn',
+            format = 'F',
             unit = x_unit,
-            array = temp._xn,
+            array = template._xn,
         )
         col_alpha_data = Column(
-            name='alpha_data',
-            format='D',
-            array=temp._alpha_matrix.data.flatten(),
+            name = 'alpha_data',
+            format = 'D',
+            array = template._alpha_matrix.data,
         )
         col_alpha_indices = Column(
-            name='alpha_indices',
-            format='K',
-            array=temp._alpha_matrix.indices,
+            name = 'alpha_indices',
+            format = 'K',
+            array = template._alpha_matrix.indices,
         )
         col_alpha_indptr = Column(
-            name='alpha_indptr',
-            format='K',
-            array=temp._alpha_matrix.indptr,
+            name = 'alpha_indptr',
+            format = 'K',
+            array = template._alpha_matrix.indptr,
         )
         col_beta_data = Column(
-            name='beta_data',
-            format='D',
-            array=temp._beta_matrix.data.flatten(),
+            name = 'beta_data',
+            format = 'D',
+            array = template._beta_matrix.data,
         )
         col_beta_indices = Column(
-            name='beta_indices',
-            format='K',
-            array=temp._beta_matrix.indices,
+            name = 'beta_indices',
+            format = 'K',
+            array = template._beta_matrix.indices,
         )
         col_beta_indptr = Column(
-            name='beta_indptr',
-            format='K',
-            array=temp._beta_matrix.indptr,
+            name = 'beta_indptr',
+            format = 'K',
+            array = template._beta_matrix.indptr,
         )
         hdu: BinTableHDU = BinTableHDU.from_columns([
             col_xn,
@@ -89,29 +114,31 @@ def _save(temp: BaseTemplate, path: Path) -> None:
         hdr = hdu.header
         
         # no. of _xn values
-        hdr['XN_VAL'] = temp._xn.size
+        hdr['XN_VAL'] = template._xn.size
         # Alpha-matrix
-        hdr['ASHAPE'] = "{}/{}".format(*temp._alpha_matrix.shape)
+        hdr['ASHAPE'] = "{}/{}".format(*template._alpha_matrix.shape)
         # no. of alpha-matric values
-        hdr['A_VAL'] = temp._alpha_matrix.data.size
+        hdr['A_VAL'] = template._alpha_matrix.data.size
         # no. of alpha-matrix indices
-        hdr['A_IND'] = temp._alpha_matrix.indices.size
+        hdr['A_IND'] = template._alpha_matrix.indices.size
         # no. of alpha-matrix index pointers
-        hdr['A_PTR'] = temp._alpha_matrix.indptr.size
+        hdr['A_PTR'] = template._alpha_matrix.indptr.size
         # Beta-matrix
-        hdr['BSHAPE'] = "{}/{}".format(*temp._beta_matrix.shape)
+        hdr['BSHAPE'] = "{}/{}".format(*template._beta_matrix.shape)
         # no. of beta-matrix values
-        hdr['B_VAL'] = temp._beta_matrix.data.size
+        hdr['B_VAL'] = template._beta_matrix.data.size
         # no. of beta-matrix indices
-        hdr['B_IND'] = temp._beta_matrix.indices.size
+        hdr['B_IND'] = template._beta_matrix.indices.size
         # no. of beta-matrix index pointers
-        hdr['B_PTR'] = temp._beta_matrix.indptr.size
+        hdr['B_PTR'] = template._beta_matrix.indptr.size
 
         hdul.append(hdu)
 
     hdul.writeto(path, overwrite=True)
 
-def _load(path: Path, info: Info):
+    return hdul
+
+def _load(path: Path, info: Info) -> BaseTemplate:
     """
     Loads the specified IronTemplate from a FITS file.
     """
@@ -132,15 +159,20 @@ def _load(path: Path, info: Info):
             return info.units.getWavelength(val * x_unit)
         def _flux(val):
             return info.units.getFlux(val * f_unit)
+        
+        if 'PATH' in hdul[0].header: 
+            _path = Path(hdul[0].header['PATH'])
+        else:                        
+            _path = path
 
         table = hdul[1].data
         template: IronTemplate = IronTemplate(
             _velocity(drop_nonpos(table['fwhm'])),
             _wavelength(drop_nonpos(table['x'])),
             _flux(hdul[0].data),
-            info  = info,
-            name  = str(hdul[0].header['NAME']),
-            path  = path,
+            info = info,
+            name = str(hdul[0].header['NAME']),
+            path = _path,
             is_logspace = (hdul[0].header['LOGSPACE'].lower() == 'y'),
         )
 

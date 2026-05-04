@@ -21,7 +21,7 @@ from ..continuum import PowerLawModel
 
 from quasar_utils.setup import Info
 from quasar_utils.raster import rasterise
-from quasar_typing.numpy import FittableFloatVector
+from quasar_typing.numpy import FittableFloatVector, FloatVector
 
 class BalmerModel(BaseModel):
     flux  = Parameter(default=1.0, min=0.0)
@@ -31,7 +31,7 @@ class BalmerModel(BaseModel):
     scale = Parameter(default=3.0, fixed=True)
     ratio = Parameter(default=0.3, fixed=True)
 
-    @validate_call(validate_return=False)
+    @validate_call
     def __init__(
         self,
         flux: float,
@@ -43,10 +43,11 @@ class BalmerModel(BaseModel):
         *,
         edge: float = None,
         sigma_res: float = None,
-        waves: NDArray[float64] = None,
-        weights: NDArray[float64] = None,
+        waves: FloatVector = None,
+        weights: FloatVector = None,
         boltz: float = None,
         template: BalmerTemplate | None = None,
+        allow_interp_fitting: bool = False,
         name: str = 'balmer_pseudo_continuum',
         **kwargs,
     ):
@@ -69,6 +70,8 @@ class BalmerModel(BaseModel):
         self.weights: NDArray[float64] = weights / weights.sum()
         self.boltz: float = boltz
 
+        self.allow_interp_fitting: bool = allow_interp_fitting
+
         # Calculate x_grid: wavelength grid from ~1000 Å to ~4000 Å
         self.x_grid: NDArray[float64] = get_x_grid(edge, sigma_res)
 
@@ -80,23 +83,19 @@ class BalmerModel(BaseModel):
             self.tau.fixed   = True
             self.scale.fixed = True
             self.ratio.fixed = True
-
-    @property
-    def template_tuple(self) -> tuple[NDArray[float64]] | None:
-        if self.template is None: return None
-        return (self.template.data, self.template.fwhm, self.template.x)
     
     @property
-    def _perform_template_fitting(self) -> bool:
-        return (self.template is not None) \
+    def _perform_interp_fitting(self) -> bool:
+        return self.allow_interp_fitting \
+            and (self.template is not None) \
             and self.temp.fixed \
             and self.tau.fixed \
             and self.scale.fixed \
             and self.ratio.fixed
 
     def evaluate(self, x, flux, fwhm, temp, tau, scale, ratio):
-        if self._perform_template_fitting:
-            return evaluation.evaluate_template(
+        if self._perform_interp_fitting:
+            return evaluation.evaluate_interp(
                 x,
                 flux, fwhm,
                 template=self.template,
@@ -116,8 +115,8 @@ class BalmerModel(BaseModel):
         )
 
     def fit_deriv(self, x, flux, fwhm, temp, tau, scale, ratio):
-        if self._perform_template_fitting:
-            return evaluation.fit_deriv_template(
+        if self._perform_interp_fitting:
+            return evaluation.fit_deriv_interp(
                 x, 
                 flux, fwhm, 
                 template=self.template,
@@ -223,7 +222,7 @@ class BalmerModel(BaseModel):
     def _red_is_ignored(self) -> bool:
         return hasattr(self, '_prev_red_fixed')
 
-    @validate_call(validate_return=False)
+    @validate_call
     def rasterFit(
         self,
         x: FittableFloatVector,
@@ -252,12 +251,12 @@ class BalmerModel(BaseModel):
                 x, y, dy, raster_n=raster_n, inplace=True,
             )
         
-        if self._perform_template_fitting:
+        if self._perform_interp_fitting:
             f = partial(
-                evaluation.evaluate_template,
+                evaluation.evaluate_interp,
                 x=x, 
                 flux=1.0, 
-                template=self.template_tuple,
+                template=self.template,
                 interpolation_matrix=self._get_interpolation_matrix(x),
             )
         else:
@@ -284,7 +283,7 @@ class BalmerModel(BaseModel):
         else:
             fwhms = (
                 self.template.fwhm \
-                if self._perform_template_fitting else 
+                if self._perform_interp_fitting else 
                 linspace(*self.fwhm.bounds, raster_n, dtype=float)
             )
             data = stack([f(_) for _ in fwhms], axis=0)
@@ -305,7 +304,7 @@ class BalmerModel(BaseModel):
             
         return self
     
-    @validate_call(validate_return=False)
+    @validate_call
     def adjustFromPowerLaw(
         self,
         a_qsfit: float,

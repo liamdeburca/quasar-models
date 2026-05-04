@@ -1,17 +1,12 @@
 from typing import Self
 from pathlib import Path
 from numpy import empty, float64, searchsorted
-from functools import cache
-
-from pydantic import validate_call
-from pydantic_core import PydanticCustomError
-from pydantic_core.core_schema import no_info_plain_validator_function
 
 from .utils import _split_evaluate
 from ..utils.template import BaseTemplate
 
-from quasar_typing.numpy import FloatVector, FloatMatrix
-from quasar_typing.pathlib import AnyFITSPath, AbsoluteFITSPath
+from quasar_typing.numpy import FloatVector, SortedFloatVector
+from quasar_typing.pathlib import Path_, AbsoluteFITSPath
 from quasar_utils.setup import Info
 from quasar_utils.convolution import convolve_signal, kernel
 
@@ -19,44 +14,16 @@ _this_file: Path = Path(__file__).resolve()
 
 #Place cache in project root directory, in a hidden folder named '.cache/iron_templates'
 PATH_TO_CACHE: Path = _this_file.parents[3] / '.cache/iron_templates'
-if not PATH_TO_CACHE.exists(): PATH_TO_CACHE.mkdir(parents=True)
+if not PATH_TO_CACHE.exists(): 
+    PATH_TO_CACHE.mkdir(parents=True)
 
 class IronTemplate(BaseTemplate):
     """
     Template class specifically designed for Iron pseudo-continua.
     """
-    @validate_call
-    def __init__(
-        self,
-        fwhm: FloatVector,
-        x: FloatVector,
-        data: FloatMatrix,
-        *,
-        info: Info = None,
-        is_logspace: bool = False,
-        name: str | None = 'no_name',
-        path: AnyFITSPath | None = None,
-    ):
-        """
-        ** PYDANTIC VALIDATED METHOD **
-        """
-        super().__init__(
-            fwhm, x, data,
-            info=info, is_logspace=is_logspace,
-            name=name, path=path,
-        )
+    PATH_TO_CACHE: Path = PATH_TO_CACHE
 
-    @classmethod
-    def _validate(cls, value: object) -> Self:
-        if not isinstance(value, IronTemplate):
-            msg = f"Expected an IronTemplate instance, \
-                got {type(value)} instead."
-            raise PydanticCustomError('validation_error', msg)
-        return value
-        
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source, handler):
-        return no_info_plain_validator_function(cls._validate)
+    load_cache: dict[tuple[str, int], Self] = {}
     
     def copy(self, with_matrices: bool = False) -> Self:
         """
@@ -66,8 +33,7 @@ class IronTemplate(BaseTemplate):
         """
         temp: IronTemplate = IronTemplate(
             self.fwhm.copy(), self.x.copy(), self.data.copy(),
-            split=self.split, left=self.left, right=self.right, 
-            scale=self.scale, info=self.info, is_logspace=self.is_logspace,
+            info=self.info, is_logspace=self.is_logspace,
             name=self.name, path=self.path,
         )
         if with_matrices and getattr(self, '_alpha_matrix', None) is not None:
@@ -79,7 +45,7 @@ class IronTemplate(BaseTemplate):
     
     def upsample(
         self,
-        fwhm: FloatVector,
+        fwhm: SortedFloatVector,
         inplace: bool = False,
         keep_x: bool = False,
     ) -> Self:
@@ -90,26 +56,34 @@ class IronTemplate(BaseTemplate):
             "FWHM values must be >= current template's minimum FWHM."
         
         if self.is_logspace:
-            if inplace: obj = self
-            else:       obj = self.copy(with_matrices=True)
+            if inplace: 
+                obj = self
+            else:       
+                obj = self.copy(with_matrices=True)
 
             data = empty(shape=(fwhm.size, self.x.size), dtype=float64)
             indices = searchsorted(self.fwhm, fwhm)
 
-            for i, _fwhm in enumerate(fwhm):
+            fwhm_prev = self.fwhm[0]
+            data_prev = self.data[0,:]
+
+            for i, fwhm_curr in enumerate(fwhm):
                 # Check if exact match exists at the insertion index
-                if indices[i] < self.fwhm.size and self.fwhm[indices[i]] == _fwhm:
+                if indices[i] < self.fwhm.size \
+                    and self.fwhm[indices[i]] == fwhm_curr:
                     data[i,:] = self.data[indices[i]]
                 else:
                     k = kernel(
-                        (_fwhm**2 - self.fwhm[0]**2)**0.5,
-                        self.info.loading['sigma_res'],
+                        (fwhm_curr**2 - fwhm_prev**2)**0.5,
+                        self.info.loading.sigma_res,
                     )
-                    data[i,:] = convolve_signal.__wrapped__(self.data[0], k)
+                    data[i,:] = convolve_signal.__wrapped__(data_prev, k)
+
+                fwhm_prev = fwhm_curr
+                data_prev = data[i,:]
 
             obj.fwhm = fwhm
             obj.data = data
-            
         else:
             template = self.createLogspace(inplace=False, keep_x=keep_x)
             template.upsample(fwhm, inplace=True)
@@ -126,8 +100,10 @@ class IronTemplate(BaseTemplate):
         """
         Resamples the IronTemplate to the specified FWHM values.
         """
-        if inplace: obj = self
-        else:       obj = self.copy(with_matrices=True)
+        if inplace: 
+            obj = self
+        else:       
+            obj = self.copy(with_matrices=True)
 
         obj.fwhm = obj.fwhm[:1]
         obj.data = obj.data[:1]
@@ -144,13 +120,10 @@ class IronTemplate(BaseTemplate):
     ) -> Self:
         assert self.is_logspace, "Template must be in logspace."
 
-        if inplace: obj: IronTemplate = self
-        else:       obj: IronTemplate = self.copy(with_matrices=True)
-
-        obj.split = split
-        obj.left  = 1.0
-        obj.right = 1.0
-        obj.scale = scale
+        if inplace: 
+            obj = self
+        else:       
+            obj = self.copy(with_matrices=True)
 
         obj.data *= self._get_split_weight(
             obj.x, split, left, right, scale,
@@ -180,7 +153,7 @@ class IronTemplate(BaseTemplate):
 
     def save(
         self,
-        path: str | AbsoluteFITSPath,
+        path: str | Path_,
         overwrite: bool = False,
     ) -> AbsoluteFITSPath:
         """
@@ -188,32 +161,38 @@ class IronTemplate(BaseTemplate):
         """
         from .io import _save
 
-        path: Path = Path(str(path).removesuffix('.fits') + '.fits')
+        path = Path(str(path).removesuffix('.fits') + '.fits')
         if not path.is_absolute():
             path = self.PATH_TO_CACHE / path.name
 
         if path.exists() and not overwrite:
             raise FileExistsError(f"File already exists: {path}")
     
-        return _save(self, path)
+        _ = _save(self, path)
+        return path
 
     @classmethod
-    @cache
     def load(
         cls,
-        path: str | AbsoluteFITSPath,
-        info: Info = None,
+        path: str | Path_,
+        info: Info,
     ) -> Self:
         """
+        ** CACHED METHOD **
+
         Loads an IronTemplate from a FITS file.
         """
         from .io import _load
 
-        path: Path = Path(str(path).removesuffix('.fits') + '.fits')
-        if not path.is_absolute():
-            path = cls.PATH_TO_CACHE / path.name
+        cache_key = (str(path), id(info))
+        if cache_key not in cls.load_cache:
+            path = Path(str(path).removesuffix('.fits') + '.fits')
+            
+            if not path.is_absolute():
+                path = cls.PATH_TO_CACHE / path.name
+            if not path.exists():
+                raise FileNotFoundError(f"File not found: {path}")
+            
+            cls.load_cache[cache_key] = _load(path, info=info)
 
-        if not path.exists():
-            raise FileNotFoundError(f"File not found: {path}")
-        
-        return _load(path, info=info)
+        return cls.load_cache[cache_key]

@@ -13,27 +13,30 @@ from pydantic import validate_call
 
 from quasar_typing.numpy import FloatArray
 from quasar_typing.bounds import AstropyBounds
-from quasar_typing.astropy import Model_, Fittable1DModel_
-from quasar_typing.misc.literals import FluxComponent_
+from quasar_typing.astropy import Model_, CompoundModel_, Fittable1DModel_
+from quasar_typing.misc.literals import FluxComponent
 
-@validate_call(validate_return=False)
+@validate_call
 def apply_bounds(
     val: float | FloatArray,
     bounds: AstropyBounds,
 ) -> float | FloatArray:
+    """
+    ** PYDANTIC VALIDATED FUNCTION **
+    """
     return clip(
         val,
         a_min = bounds[0] if (bounds[0] is not None) else -inf,
         a_max = bounds[1] if (bounds[1] is not None) else inf,
     )
 
-@validate_call(validate_return=False)
+@validate_call
 def order_submodels(
-    submodels: Model_ | Iterable[Fittable1DModel_],
+    submodels: Fittable1DModel_ | Iterable[Fittable1DModel_],
     combine: bool = True,
-) -> Model_ | list[Fittable1DModel_]:
+) -> CompoundModel_ | list[Fittable1DModel_]:
     """
-    Lorem ipsum...
+    ** PYDANTIC VALIDATED FUNCTION **
     """
     if isinstance(submodels, Fittable1DModel):
         return submodels if combine else [submodels]
@@ -45,15 +48,14 @@ def order_submodels(
     if combine: return sum(_submodels[1:], start=_submodels[0])
     else:       return _submodels
 
-@validate_call(validate_return=False)
+@validate_call
 def separate_submodels(
     submodels: Model_ | Iterable[Fittable1DModel_],
     combine: bool = True,
-) -> dict[
-    FluxComponent_,
-    Model_ | list[Fittable1DModel_] | None,
-]:
+) -> dict[FluxComponent, Model_ | list[Fittable1DModel_] | None]:
     """
+    ** PYDANTIC VALIDATED FUNCTION **
+
     Separates a collection of Astropy models based on their respective 
     model_type properties:
     - 'pl': Power-law component
@@ -73,11 +75,13 @@ def separate_submodels(
 
     return out
 
-@validate_call(validate_return=False)
+@validate_call
 def get_configuration(
     model: Model_,
 ) -> dict[float, int]:
     """
+    ** PYDANTIC VALIDATED FUNCTION **
+
     Retrieves the configuration of a given Astropy model, defined as the count
     of submodels corresponding to each unique wavelength parameter value.
     """
@@ -86,12 +90,12 @@ def get_configuration(
     
     return Counter(m.wave.value for m in submodels)
 
-@validate_call(validate_return=False)
+@validate_call
 def get_model_parts(
     model: Model_,
-) -> dict[FluxComponent_, Model_ | None]:
+) -> dict[FluxComponent, Model_ | None]:
     """
-    Lorem ipsum.
+    ** PYDANTIC VALIDATED FUNCTION **
     """
     parts = dict(
         pl = None,
@@ -110,8 +114,11 @@ def get_model_parts(
 
     return parts
 
-@validate_call(validate_return=False)
+@validate_call
 def get_free_params(model: Model_) -> dict[str, bool]:
+    """
+    ** PYDANTIC VALIDATED FUNCTION **
+    """
     return dict([
         (p, not (model.fixed[p] or model.tied[p])) \
         for p in model.param_names

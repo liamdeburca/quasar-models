@@ -2,15 +2,13 @@
 AstroPy compatible model: IronModel.
 """
 from logging import getLogger
-from numpy import zeros_like, invert, nan, nanargmin, argmax, float64
+from numpy import zeros_like, invert, nan, nanargmin, argmax, float64, array_equal, isnan
 from numpy.typing import NDArray
 from astropy.modeling import Parameter
 from typing import Literal, Self
 from scipy.sparse import csr_matrix
 
 from pydantic import validate_call
-from pydantic_core import PydanticCustomError
-from pydantic_core.core_schema import no_info_plain_validator_function
 
 from quasar_typing.numpy import FloatVector
 from quasar_utils.interpolation import create_interp_matrix
@@ -42,6 +40,7 @@ class IronModel(BaseModel):
         left: float = 1.0,
         right: float = 1.0,
         scale: float = 1.0,
+        allow_interp_fitting: bool = False,
         **kwargs,
     ):
         super().__init__(flux, fwhm, split, left, right, **kwargs)
@@ -49,6 +48,7 @@ class IronModel(BaseModel):
         self.template: IronTemplate = template
         self.scale: float = scale
         self.sigma_res: float = sigma_res
+        self.allow_interp_fitting: bool = allow_interp_fitting
 
         # Update FWHM bounds using template
         self.fwhm.bounds  = (template.fwhm[0], template.fwhm[-1])
@@ -64,13 +64,20 @@ class IronModel(BaseModel):
         ] = {}
     
     @property
-    def _perform_template_fitting(self) -> bool:
-        return (self.left.fixed and self.left.value == 1.0) \
+    def _perform_interp_fitting(self) -> bool:
+        return self.allow_interp_fitting \
+            and (self.left.fixed and self.left.value == 1.0) \
             and (self.right.fixed and self.right.value == 1.0)
     
     def evaluate(self, x, flux, fwhm, split, left, right):
-        if self._perform_template_fitting:
-            return evaluation.evaluate_template(
+        flux = float(flux)
+        fwhm = float(fwhm)
+        split = float(split)
+        left = float(left)
+        right = float(right)
+        
+        if self._perform_interp_fitting:
+            return evaluation.evaluate_interp(
                 x,
                 flux, fwhm,
                 template=self.template,
@@ -87,6 +94,12 @@ class IronModel(BaseModel):
         )
     
     def evaluate_sparse(self, x, flux, fwhm, split, left, right):
+        flux = float(flux)
+        fwhm = float(fwhm)
+        split = float(split)
+        left = float(left)
+        right = float(right)
+        
         return evaluation.evaluate_sparse(
             x,
             flux, fwhm, split, left, right,
@@ -97,8 +110,14 @@ class IronModel(BaseModel):
         )
     
     def fit_deriv(self, x, flux, fwhm, split, left, right):
-        if self._perform_template_fitting:
-            return evaluation.fit_deriv_template(
+        flux = float(flux)
+        fwhm = float(fwhm)
+        split = float(split)
+        left = float(left)
+        right = float(right)
+        
+        if self._perform_interp_fitting:
+            return evaluation.fit_deriv_interp(
                 x,
                 flux, fwhm,
                 template=self.template,
@@ -115,17 +134,6 @@ class IronModel(BaseModel):
             interpolation_matrix=self._get_interpolation_matrix(x),
             fixed=self.fixed,
         )
-    
-    @classmethod
-    def _validate(cls, value: object) -> Self:
-        if not isinstance(value, IronModel):
-            msg = f"Expected an IronModel instance, got {type(value)} instead."
-            raise PydanticCustomError('validation_error', msg)
-        return value
-    
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source_type, handler):
-        return no_info_plain_validator_function(cls._validate)
     
     @property
     def model_type(self) -> Literal['fe']:
@@ -189,14 +197,14 @@ class IronModel(BaseModel):
         corresponding goodness-of-fit (chi-square), identifying the best 
         flux-FWHM pair.
         """
-        if inplace:
-            return self \
-                .copy() \
-                .rasterFit.__wrapped__(x, y, dy, bias=bias, inplace=True)
+        if not inplace:
+            cp = self.copy()
+            cp.rasterFit.__wrapped__(cp, x, y, dy, bias=bias, inplace=True)
+            return cp
 
         template = (
             self.template \
-            if (x is self.template.x) else 
+            if array_equal(x, self.template.x) else 
             self.template.interpolate(x, inplace=False)
         )
 
@@ -205,7 +213,7 @@ class IronModel(BaseModel):
             data = template.data * template._get_split_weight(
                 x, 
                 self.split.value, self.left.value, self.right.value, 
-                self.scale.value,
+                self.scale,
             )[None,:]
 
             chi2s, fluxs = rasterise.__wrapped__(
@@ -216,9 +224,14 @@ class IronModel(BaseModel):
                 flux_bounds=self.flux.bounds, 
                 fwhm_bounds=self.fwhm.bounds,
             )
+            if isnan(chi2s).all():
+                # Failed rasterisation, possibly due to selected data not 
+                # covering template.
+                return self
+
             idx: int = nanargmin(chi2s)
             self.flux.value = fluxs[idx]
-            self.fwhm.value = apply_bounds(template.fwhm[idx], self.fwhm.bounds)
+            self.fwhm.value = template.fwhm[idx]
 
         # Perform separate raster fits for left and right
         else:
@@ -252,6 +265,7 @@ class IronModel(BaseModel):
 
             chi2s[chi2s == 0] = nan
             idx: int = nanargmin(chi2s)
+
             self.flux.value = fluxs[idx]
             self.fwhm.value = apply_bounds(template.fwhm[idx], self.fwhm.bounds)
 

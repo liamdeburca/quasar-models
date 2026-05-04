@@ -4,7 +4,7 @@ from numpy import full_like, nan, einsum, float64
 from quasar_typing.numpy import FloatVector, FittableFloatVector, \
     FittableFloatMatrix
 
-@validate_call(validate_return=False)
+@validate_call
 def linreg(
     x: FittableFloatVector | FittableFloatMatrix,
     y: FittableFloatVector | FittableFloatMatrix,

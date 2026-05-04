@@ -29,8 +29,8 @@ class PowerLawModel(BaseModel):
         **kwargs,
     ):
         super().__init__(flux, alpha, **kwargs)
-        self.x0 = x0
-        self.y0 = y0
+        self.x0: float = x0
+        self.y0: float = y0
 
     def evaluate(self, x, flux, alpha):
         return evaluation.evaluate(x, flux, alpha, x0=self.x0)
@@ -78,7 +78,7 @@ class PowerLawModel(BaseModel):
         )
     
     ### Custom utility methods
-    @validate_call(validate_return=False)
+    @validate_call
     def getResiduals(
         self,
         x: float | FloatVector,
@@ -95,42 +95,42 @@ class PowerLawModel(BaseModel):
         
         return (_y - _f) / _dy
     
-    @validate_call(validate_return=False)
+    @validate_call
     def log(
         self,
         x_log: float | FloatVector
     ) -> float | FloatVector:
         return log(self.flux.value / self.y0) + self.alpha.value * x_log
     
-    @validate_call(validate_return=False)
+    @validate_call
     def transform_x(
         self,
         x: float | FloatVector,
     ) -> float | FloatVector:
         return log(x) - log(self.x0)
     
-    @validate_call(validate_return=False)
+    @validate_call
     def inv_transform_x(
         self,
         x_log: float | FloatVector,
     ) -> float | FloatVector:
         return self.x0 * exp(x_log)
     
-    @validate_call(validate_return=False)
+    @validate_call
     def transform_y(
         self,
         y: float | FloatVector,
     ) -> float | FloatVector:
         return log(y) - log(self.y0)
     
-    @validate_call(validate_return=False)
+    @validate_call
     def inv_transform_y(
         self,
         y_log: float | FloatVector,
     ) -> float | FloatVector:
         return self.y0 * exp(y_log)
 
-    @validate_call(validate_return=False)
+    @validate_call
     def transform_dy(
         self,
         y: float | FloatVector,
@@ -138,7 +138,7 @@ class PowerLawModel(BaseModel):
     ) -> float | FloatVector:
         return dy / y
     
-    @validate_call(validate_return=False)
+    @validate_call
     def inv_transform_dy(
         self,
         y_log: float | FloatVector,
@@ -172,7 +172,7 @@ class PowerLawModel(BaseModel):
 
         return model
     
-    @validate_call(validate_return=False)
+    @validate_call
     def bootstrap(
         self,
         x: FloatVector,

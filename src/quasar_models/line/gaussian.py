@@ -4,7 +4,7 @@
 
 from typing import Self, Literal
 from astropy.modeling import Parameter
-from numpy import pi, dot, isclose
+from numpy import pi, dot, isclose, hypot
 from scipy.stats import norm
 
 from .utils import instantiate_model
@@ -12,12 +12,10 @@ from ..utils.basemodel import BaseModel
 from ..utils.astropy import apply_bounds
 
 from pydantic import validate_call
-from pydantic_core import PydanticCustomError
-from pydantic_core.core_schema import no_info_plain_validator_function
 
 from quasar_typing.numpy import FittableFloatVector
 from quasar_typing.bounds import AstropyBounds
-from quasar_typing.misc.logger import Logger_
+from quasar_typing.logging import Logger_
 
 from . import evaluation
 
@@ -45,12 +43,7 @@ class GaussianModel(BaseModel):
     n_sigmas : float
         Number of Gaussian sigmas to include in sparse evaluation. Defaults to 
         3.0.
-
-    Notes
-    -----
-    Lorem ipsum.
     """
-
     strength = Parameter(default=1, bounds=(0, None))
     sigma_v = Parameter(default=1e-3, bounds=(0, None))
     v_off = Parameter(default=0, bounds=(-1, 1))
@@ -94,21 +87,8 @@ class GaussianModel(BaseModel):
             wave=self.wave, sigma_res=self.sigma_res, fixed=self.fixed,
         )
     
-    @classmethod
-    def _validate(cls, value: object) -> Self:
-        if not isinstance(value, GaussianModel):
-            msg = "Expected GaussianModel, got {}".format(
-                type(value).__name__,
-            )
-            raise PydanticCustomError('validation_error', msg)
-        return value
-    
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source_type, handler):
-        return no_info_plain_validator_function(cls._validate)
-    
-    @validate_call(validate_return=False)
     @staticmethod
+    @validate_call
     def instantiate(
         wave: float,
         x: FittableFloatVector,
@@ -190,7 +170,7 @@ class GaussianModel(BaseModel):
     
     @property
     def sigma(self) -> float:
-        return self.mu * (self.sigma_v.value**2 + self.sigma_res**2)**0.5
+        return self.mu * hypot(self.sigma_v.value, self.sigma_res)
 
     @property
     def peak(self) -> float:
@@ -336,7 +316,7 @@ class GaussianModel(BaseModel):
         new.n_sigmas = self.n_sigmas
         return new
     
-    @validate_call(validate_return=False)
+    @validate_call
     def makeCopy(
         self, 
         x: FittableFloatVector, 
@@ -384,30 +364,20 @@ class GaussianModel(BaseModel):
         return new
     
     def isTouchingBounds(self) -> bool:
-        """
-        Lorem ipsum.
-
-        Returns
-        -------
-        bool
-
-        Notes
-        -----
-        Lorem ipsum.
-        """
         if self.has_bounds:
             for attr in ['strength', 'sigma_v', 'v_off']:
                 param = getattr(self, attr)
 
-                # Exception: if the parameter is fixed, we ignore it even if 
-                # it's touching bounds.
-                if param.fixed: continue
+                if param.fixed: 
+                    continue
 
                 val: float = param.value
                 lb: float | None = param.bounds[0]
                 ub: float | None = param.bounds[1]
 
-                if lb is not None and isclose(val, lb): return True
-                if ub is not None and isclose(val, ub): return True
+                if lb is not None and isclose(val, lb): 
+                    return True
+                if ub is not None and isclose(val, ub): 
+                    return True
 
         return False

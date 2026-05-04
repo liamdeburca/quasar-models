@@ -22,35 +22,10 @@ from .vprofilecopies import (
     VProfileCopy5G,
 )
 
-class VProfileCopyDict:
-    """
-    Lorem ipsum.
-
-    Methods
-    -------
-    __class_getitem__(n: int)
-        Returns the corresponding VProfileCopy class for n profiles.
-
-    Raises
-    ------
-    NotImplementedError
-        If n is not in {1, 2, 3, 4, 5}.
-
-    Notes
-    -----
-    Lorem ipsum.
-    
-    Examples
-    --------
-    >>> VProfileCopyDict[1]  # Returns VProfileCopy1G
-    >>> VProfileCopyDict[3]  # Returns VProfileCopy3G
-    """
-
-    def __class_getitem__(cls, n: int) -> _VProfileCopy:
-        match n:
-            case 1: return VProfileCopy1G
-            case 2: return VProfileCopy2G
-            case 3: return VProfileCopy3G 
-            case 4: return VProfileCopy4G
-            case 5: return VProfileCopy5G
-            case _: raise NotImplementedError(f"{n=} is not yet supported!")
+VProfileCopyDict: dict[int, _VProfileCopy] = {
+    1: VProfileCopy1G,
+    2: VProfileCopy2G,
+    3: VProfileCopy3G,
+    4: VProfileCopy4G,
+    5: VProfileCopy5G,
+}

@@ -31,9 +31,10 @@ def measure_intersection(
     -----
     Lorem ipsum.
     """
-    assert x.size > 0, "Input arrays must not be empty."
-
     match x.size:
+        case 0:
+            # No datapoints
+            raise ValueError("Input arrays must not be empty.")
         case 1:
             # Only a single datapoint
             return x[0]
@@ -46,8 +47,10 @@ def measure_intersection(
             if not mask.any(): return x[-1]
 
             n = argwhere(mask).min()
-            x1, x2 = x[n-1:n+1]
-            y1, y2 = y[n-1:n+1]
+
+            # print(x.size, x[0], x[-1], n, x[n:n+2])
+            x1, x2 = x[n:n+2]
+            y1, y2 = y[n:n+2]
 
     return (x2 - x1) / (y2 - y1) * (y_crit - y1) + x1
 
@@ -152,5 +155,5 @@ def instantiate_model(
     return (
         apply_bounds(strength, strength_bounds),
         apply_bounds(sigma_v, sigma_v_bounds),
-        mu,
+        v_off,
     )

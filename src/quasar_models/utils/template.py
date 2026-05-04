@@ -8,15 +8,17 @@ from numpy.typing import NDArray
 from scipy.sparse import csr_matrix
 from pathlib import Path
 
-templates_dir: Path = Path(__file__).parent / 'templates'
-
 from pydantic import validate_call
+from pydantic_core import PydanticCustomError
+from pydantic_core.core_schema import no_info_plain_validator_function
 
 from quasar_typing.numpy import FloatVector, FloatMatrix
-from quasar_typing.pathlib import AnyFITSPath, AbsoluteFITSPath
+from quasar_typing.pathlib import AbsoluteFITSPath
 from quasar_utils.setup import Info
 from quasar_utils.binning import alpha_matrix_sparse, lin_dx
 from quasar_utils.interpolation import create_interp_matrix
+
+templates_dir: Path = Path(__file__).parent / 'templates'
 
 def drop_nan(arr: NDArray[float64]) -> NDArray[float64]:
     return arr[isfinite(arr)]
@@ -43,7 +45,7 @@ class BaseTemplate(ABC):
         info: Info = None,
         is_logspace: bool = False,
         name: str | None = 'no_name',
-        path: AnyFITSPath | None = None,
+        path: AbsoluteFITSPath | None = None,
     ):
         assert fwhm.size == data.shape[0], "fwhm and data size mismatch"
         assert x.size == data.shape[1], "x and data size mismatch"
@@ -61,18 +63,17 @@ class BaseTemplate(ABC):
         self._beta_matrix: csr_matrix | None = None
         self._xn: NDArray[float64] | None = None
 
-    @property
-    def template_tuple(self) -> TemplateTuple:
-        return (
-            self.template.data,
-            self.template.fwhm,
-            self.template.x,
-        )
-
     @classmethod
-    @abstractmethod
+    def _validate(cls, value: object) -> Self:
+        if not isinstance(value, cls):
+            msg = f"Expected {cls.__name__} instance, \
+                got {type(value).__name__} instead."
+            raise PydanticCustomError('validation_error', msg)
+        return value
+        
+    @classmethod
     def __get_pydantic_core_schema__(cls, source, handler):
-        pass
+        return no_info_plain_validator_function(cls._validate)
 
     def __getitem__(self, *sel) -> Self:
         """
@@ -130,7 +131,7 @@ class BaseTemplate(ABC):
     @abstractmethod
     def save(
         self,
-        path: AnyFITSPath,
+        path: AbsoluteFITSPath,
         overwrite: bool = False,
     ) -> AbsoluteFITSPath:
         """
@@ -156,7 +157,7 @@ class BaseTemplate(ABC):
         keep_x: bool = False,
     ) -> Self:
         """
-        Creates a logspace quivalent of the current Template. 
+        Creates a logspace equivalent of the current Template. 
 
         Parameters
         ----------
@@ -180,9 +181,9 @@ class BaseTemplate(ABC):
         x_edges[:-1] = self.x - dx / 2
         x_edges[-1] = self.x[-1] + dx[-1] / 2
 
-        if xr is None:
-            sigma_res: float = self.info.loading['sigma_res']
+        sigma_res: float = self.info.loading['sigma_res']
 
+        if xr is None:
             nr = log(x_edges[-1] / x_edges[0]) // log(1 + sigma_res) + 1
             logxr_edges = log(x_edges[0]) + sigma_res * arange(nr + 1)
             xr_edges = exp(logxr_edges)
@@ -215,8 +216,10 @@ class BaseTemplate(ABC):
         )
         self._xn = 0.5 * (xn_edges[:-1] + xn_edges[1:])
 
-        if inplace: obj = self
-        else:       obj = self.copy(with_matrices=True)
+        if inplace: 
+            obj = self
+        else:       
+            obj = self.copy(with_matrices=True)
 
         obj.x = xr
         obj.data = maximum(self._alpha_matrix.dot(self.data.T).T, 0)
@@ -230,7 +233,7 @@ class BaseTemplate(ABC):
         inplace: bool = False,
     ) -> Self:
         """
-        Mimics the logspace-quivalent of this template, i.e. the two templates 
+        Mimics the logspace-equivalent of this template, i.e. the two templates 
         must share identical beta matrices (logspace -> any space). 
         
         This method updates the fwhm and data arrays using the 
@@ -257,8 +260,10 @@ class BaseTemplate(ABC):
         assert self._beta_matrix is template._beta_matrix, \
             "Templates must share the same beta matrix."
 
-        if inplace: obj = self
-        else:       obj = self.copy(with_matrices=True)
+        if inplace: 
+            obj = self
+        else:       
+            obj = self.copy(with_matrices=True)
 
         obj.fwhm = template.fwhm.copy()
         obj.x = template._xn.copy()
@@ -280,8 +285,10 @@ class BaseTemplate(ABC):
         """
         Interpolates the template to match the new x coordinates.
         """
-        if inplace: obj = self
-        else:       obj = self.copy(with_matrices=True)
+        if inplace: 
+            obj = self
+        else:       
+            obj = self.copy(with_matrices=True)
 
         M, b = create_interp_matrix(self.x, x, left=0, right=0)
         
@@ -446,5 +453,6 @@ class LoadedTemplates:
             cls.templates[key] = template
             return template
         
-        except:
-            raise KeyError(f"Template not found: {template_name}")
+        except Exception as e:
+            msg = f"Template not found: '{template_name}' due to: {e}"
+            raise KeyError(msg)

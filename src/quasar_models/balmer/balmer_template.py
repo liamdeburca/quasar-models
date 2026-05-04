@@ -4,11 +4,9 @@ from numpy import empty, stack, float64
 from numpy.typing import NDArray
 
 from pydantic import validate_call
-from pydantic_core import PydanticCustomError
-from pydantic_core.core_schema import no_info_plain_validator_function
 
 from quasar_typing.numpy import FloatVector, FloatMatrix
-from quasar_typing.pathlib import AnyFITSPath, AbsoluteFITSPath
+from quasar_typing.pathlib import AnyAbsoluteFITSPath, AbsoluteFITSPath
 from quasar_utils.setup import Info
 from quasar_utils.convolution import convolve_signal, kernel
 
@@ -20,12 +18,15 @@ _this_file: Path = Path(__file__).resolve()
 
 #Place cache in project root directory, in a hidden folder named '.cache/balmer_templates'
 PATH_TO_CACHE: Path = _this_file.parents[3] / '.cache/balmer_templates'
-if not PATH_TO_CACHE.exists(): PATH_TO_CACHE.mkdir(parents=True)
+if not PATH_TO_CACHE.exists(): 
+    PATH_TO_CACHE.mkdir(parents=True)
 
 class BalmerTemplate(BaseTemplate):
     """
     Template class specifically designed for Balmer pseudo-continua.
     """
+    PATH_TO_CACHE: Path = PATH_TO_CACHE
+
     @validate_call
     def __init__(
         self,
@@ -33,26 +34,32 @@ class BalmerTemplate(BaseTemplate):
         x: FloatVector,
         data: FloatMatrix,
         *,
-        edge: float = None,
-        temp: float = None,
-        dens: float = None,
-        tau: float = None,
-        scale: float = None,
-        ratio: float = None,
-        waves: FloatVector = None,
-        weights: FloatVector = None,
-        case: Literal['A', 'B'] = None,
-        n_l: int = None,
-        n_u: int = None,
+        edge: float | None = None,
+        temp: float | None = None,
+        dens: float | None = None,
+        tau: float | None = None,
+        scale: float | None = None,
+        ratio: float | None = None,
+        waves: FloatVector | None = None,
+        weights: FloatVector | None = None,
+        case: Literal['A', 'B'] | None = None,
+        n_l: int | None = None,
+        n_u: int | None = None,
         info: Info = None,
         is_logspace: bool = False,
         based_on_template: bool = False,
         name: str | None = None,
-        path: AnyFITSPath | None = None,
+        path: AbsoluteFITSPath | None = None,
     ):
         """
         **PYDANTIC VALIDATED FUNCTION**
         """
+        super().__init__(
+            fwhm, x, data,
+            info=info, is_logspace=is_logspace, name=name, path=path,
+        )
+        self.based_on_template: bool = based_on_template
+
         if not based_on_template:
             assert edge is not None, "edge must be provided"
             assert temp is not None, "temp must be provided"
@@ -66,37 +73,21 @@ class BalmerTemplate(BaseTemplate):
             assert case is not None, "case must be provided"
             assert n_l is not None, "n_l must be provided"
             assert n_u is not None, "n_u must be provided"
+
+            weights /= weights.sum()
     
-        super().__init__(
-            fwhm, x, data,
-            info=info, is_logspace=is_logspace, name=name, path=path,
-        )
+        self.edge: float | None = edge
+        self.temp: float | None = temp
+        self.dens: float | None = dens
+        self.tau: float | None = tau
+        self.scale: float | None = scale
+        self.ratio: float | None = ratio
 
-        self.based_on_template: bool = based_on_template
-
-        self.edge: float = edge
-        self.temp: float = temp
-        self.dens: float = dens
-        self.tau: float = tau
-        self.scale: float = scale
-        self.ratio: float = ratio
-
-        self.waves: NDArray[float64] = waves
-        self.weights: NDArray[float64] = weights / weights.sum()
-        self.case: Literal['A', 'B'] = case
-        self.n_l: int = n_l
-        self.n_u: int = n_u
-
-    @classmethod
-    def _validate(cls, value: object) -> Self:
-        if not isinstance(value, BalmerTemplate):
-            msg = f"Expected a BalmerTemplate instance, got {type(value)} instead."
-            raise PydanticCustomError('validation_error', msg)
-        return value
-
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source, handler):
-        return no_info_plain_validator_function(cls._validate)
+        self.waves: FloatVector | None = waves
+        self.weights: FloatVector | None = weights
+        self.case: Literal['A', 'B'] | None = case
+        self.n_l: int | None = n_l
+        self.n_u: int | None = n_u
     
     def copy(self, with_matrices: bool = False) -> Self:
         """
@@ -132,7 +123,9 @@ class BalmerTemplate(BaseTemplate):
         from .evaluation import evaluate
 
         if not self.based_on_template:
-            if x is None: x = self.x
+            if x is None: 
+                x = self.x
+
             sigma_res = self.info.loading['sigma_res']
             boltz = self.info.units.getBoltzmannFactor()
 
@@ -149,8 +142,10 @@ class BalmerTemplate(BaseTemplate):
                     x_grid=get_x_grid(self.edge.value, sigma_res)
                 )
             
-            if inplace: obj = self
-            else:       obj = self.copy()
+            if inplace: 
+                obj = self
+            else:       
+                obj = self.copy()
 
             obj.fwhm = fwhm
             obj.x = x
@@ -161,8 +156,10 @@ class BalmerTemplate(BaseTemplate):
                 "FWHM values must be >= current template's minimum FWHM."
             
             if self.is_logspace:
-                if inplace: obj = self
-                else:       obj = self.copy(with_matrices=True)
+                if inplace: 
+                    obj = self
+                else:       
+                    obj = self.copy(with_matrices=True)
 
                 data = empty(
                     shape=(fwhm.size, self.x.size), 
@@ -202,8 +199,10 @@ class BalmerTemplate(BaseTemplate):
         """
         Resamples the BalmerTemplate to the specified FWHM- and x-values.
         """        
-        if inplace: obj = self
-        else:       obj = self.copy()
+        if inplace: 
+            obj = self
+        else:       
+            obj = self.copy()
 
         if self.based_on_template:
             # Remove entries to force re-evaluation
@@ -217,10 +216,9 @@ class BalmerTemplate(BaseTemplate):
 
     ### I/O
     
-    @validate_call
     def save(
         self,
-        path: str | AnyFITSPath,
+        path: AnyAbsoluteFITSPath,
         overwrite: bool = False,
     ) -> AbsoluteFITSPath:
         """
@@ -240,7 +238,7 @@ class BalmerTemplate(BaseTemplate):
     @classmethod
     def load(
         cls,
-        path: str | AnyFITSPath,
+        path: AbsoluteFITSPath,
         info: Info = None,
     ) -> Self:
         """

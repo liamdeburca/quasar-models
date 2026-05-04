@@ -7,3 +7,8 @@ __pycache__/
 
 # Files under development
 pl_wiggle.py
+
+# pytest
+.pytest_cache/
+*.ipynb
+*.egg-info
