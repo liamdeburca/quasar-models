@@ -153,6 +153,8 @@ class PowerLawModel(BaseModel):
         y: FloatVector,
         dy: FloatVector,
     ) -> Self:
+        flux = self.flux.value
+        alpha = self.alpha.value
         try:
             a, b = linreg(
                 self.transform_x.__wrapped__(self, x),
@@ -161,11 +163,19 @@ class PowerLawModel(BaseModel):
             )
             flux = apply_bounds(self.y0 * exp(a), self.flux.bounds)
             alpha = apply_bounds(b, self.alpha.bounds)
-
-        except ValidationError:
-            flux = self.flux.value
-            alpha = self.alpha.value
-
+            msg = "Linear regression successful: " \
+                f"{a=:.3e}, {b=:.3f} | {flux=:.3e}, {alpha=:.3f}."
+            logger.debug(msg)
+        except ValidationError as e:
+            msg = f"Linear regression failed due to validation error: {e}"
+            logger.warning(msg)
+        except ValueError as e:
+            msg = f"Linear regression failed due to value error: {e}"
+            logger.warning(msg)
+        except Exception as e:
+            msg = f"Linear regression failed due to unexpected error: {e}"
+            logger.warning(msg)
+            
         model = PowerLawModel(self.x0, self.y0, flux, alpha, name=self.name)
         model.flux.bounds = self.flux.bounds
         model.alpha.bounds = self.alpha.bounds

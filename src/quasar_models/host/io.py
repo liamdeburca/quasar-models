@@ -1,7 +1,7 @@
 __all__ = [
-    'PATH_TO_CACHE', 'PATH_TO_DATA',
-    'convert_path',
-    'save', 'load',
+    'PATH_TO_CACHE', 
+    'PATH_TO_DATA',
+    'save', 'load', 
     'save_to_cache', 'load_from_cache',
 ]
 
@@ -10,7 +10,7 @@ from pathlib import Path
 from astropy.io import fits
 from astropy.units import Unit
 
-from quasar_typing.numpy import FloatVector, FloatMatrix, SortedFloatVector
+from quasar_typing.numpy import FloatMatrix, SortedFloatVector, FloatVector
 from quasar_typing.scipy import csr_matrix_
 from quasar_typing.pathlib import AbsoluteFITSPath
 
@@ -19,21 +19,23 @@ from quasar_utils.setup import Info
 from quasar_models.utils.template.io import get_table_data
 
 _this_file: Path = Path(__file__).resolve()
-PATH_TO_CACHE: Path = _this_file.parent / ".cache"
-PATH_TO_DATA: Path = _this_file.parent / ".data"
+PATH_TO_CACHE: Path = _this_file.parent / '.cache'
+PATH_TO_DATA: Path = _this_file.parent / '.data'
 
-class IronTemplateProtocol(Protocol):
+class HostGalaxyTemplateProtocol(Protocol):
     fwhm: SortedFloatVector
     x: SortedFloatVector
     data: FloatMatrix
     info: Info
     is_logspace: bool
-    name: Literal['vw2001', 'v2003', 'bw']
+    name: str
     path: AbsoluteFITSPath | None
+
     _alpha_matrix: csr_matrix_ | None
     _beta_matrix: csr_matrix_ | None
     _xn: SortedFloatVector | None
 
+    age: int
     x_norm: float
     fwhm_norm: float
     normalisation: float
@@ -45,8 +47,14 @@ def convert_path(path: str | AbsoluteFITSPath) -> AbsoluteFITSPath:
             path = PATH_TO_CACHE / path
     return path
 
+def convert_params_to_path(
+    name: Literal['bc2003'],
+    age: int,
+) -> AbsoluteFITSPath:
+    return PATH_TO_CACHE / "{}:age{:0>14_}.fits".format(name, age)
+
 def save(
-    template: IronTemplateProtocol, 
+    template: HostGalaxyTemplateProtocol,
     path: str | AbsoluteFITSPath,
 ) -> AbsoluteFITSPath:
     path = convert_path(path)
@@ -54,42 +62,44 @@ def save(
     v_unit: str = template.info.units.velocity_unit.to_string()
     x_unit: str = template.info.units.wavelength_unit.to_string()
     f_unit: str = template.info.units.getFluxUnit().to_string()
+    
+    hdul = fits.HDUList()
 
-    # [0] Primary HDU -  data and metadata
-
-    hdul: fits.HDUList = fits.HDUList()
-
-    hdu: fits.PrimaryHDU = fits.PrimaryHDU(data=template.data)
-    hdu.header['NAME'] = template.name
-    hdu.header['CTYPE1'] = ('fwhm', 'fwhm axis')
-    hdu.header['CTYPE2'] = ('x', 'spectral axis')
-    hdu.header['BUNIT'] = (f_unit, 'flux unit')
-    hdu.header['LOGSPACE'] = 'y' if template.is_logspace else 'n'
-
-    if template.path is not None: 
-        hdu.header['PATH'] = str(template.path)
+    hdu = fits.PrimaryHDU(data=template.data)
+    
+    hdr = hdu.header
+    hdr['NAME'] = template.name
+    hdr['CTYPE1'] = ('fwhm', 'fwhm axis')
+    hdr['CTYPE2'] = ('x', 'spectral axis')
+    hdr['BUNIT'] = (f_unit, 'flux unit')
+    hdr['LOGSPACE'] = 'y' if template.is_logspace else 'n'
 
     hdul.append(hdu)
 
-    # [1] Binary table HDU - fwhm and x arrays
-
-    col_fwhm: fits.Column = fits.Column(
-        name = 'fwhm',
-        format = 'F',
-        unit = v_unit,
-        array = template.info.units.getC(template.fwhm).to(v_unit).value,
+    col_fwhm = fits.Column(
+        name='fwhm',
+        format='F',
+        unit=v_unit,
+        array=template.info.units.getC(template.fwhm).to(v_unit).value,
     )
-    col_x: fits.Column = fits.Column(
-        name = 'x',
-        format = 'F',
-        unit = x_unit,
-        array = template.x,
+    col_x = fits.Column(
+        name='x',
+        format='F',
+        unit=x_unit,
+        array=template.x,
     )
-    hdul.append(fits.BinTableHDU.from_columns([col_fwhm, col_x]))
+    col_age = fits.Column(
+        name='age',
+        format='J',
+        array=[template.age],
+    )
 
-    # [2] Binary table HDU - sparse matrices (if they exist)
+    hdu = fits.BinTableHDU.from_columns([
+        col_fwhm, col_x, col_age
+    ])
+    hdul.append(hdu)
 
-    if getattr(template, '_alpha_matrix', None) is not None:
+    if template._alpha_matrix is not None:
         col_xn = fits.Column(
             name = 'xn',
             format = 'F',
@@ -126,12 +136,12 @@ def save(
             format = 'K',
             array = template._beta_matrix.indptr,
         )
-        hdu: fits.BinTableHDU = fits.BinTableHDU.from_columns([
+        hdu = fits.BinTableHDU.from_columns([
             col_xn,
             col_alpha_data, col_alpha_indices, col_alpha_indptr,
             col_beta_data, col_beta_indices, col_beta_indptr,
         ])
-
+        
         hdr = hdu.header
         
         # no. of _xn values
@@ -159,22 +169,25 @@ def save(
 
     return path
 
-def save_to_cache(template: IronTemplateProtocol) -> AbsoluteFITSPath:
+def save_to_cache(template: HostGalaxyTemplateProtocol) -> AbsoluteFITSPath:
     return save(
-        template,
-        path=template.name,
+        template, 
+        convert_params_to_path(template.name, template.age),
     )
 
 def load(
-    path: str | AbsoluteFITSPath, 
+    path: str | AbsoluteFITSPath,
     info: Info,
 ) -> tuple[tuple, dict]:
     path = convert_path(path)
 
     with fits.open(path) as hdul:
-        v_unit = Unit(hdul[1].columns[0].unit)
-        x_unit = Unit(hdul[1].columns[1].unit)
-        f_unit = Unit(hdul[0].header['BUNIT'])
+        hdu0: fits.PrimaryHDU = hdul[0]
+        hdu1: fits.BinTableHDU = hdul[1]
+
+        v_unit = Unit(hdu1.columns[1].unit)
+        x_unit = Unit(hdu1.columns[2].unit)
+        f_unit = Unit(hdu0.header['BUNIT'])
 
         def transform_velocity(arr: FloatVector) -> FloatVector:
             return info.units.getC(arr * v_unit)
@@ -184,19 +197,20 @@ def load(
         
         def transform_flux(arr: FloatMatrix) -> FloatMatrix:
             return info.units.getFlux(arr * f_unit)
-
-        data = transform_flux(hdul[0].data)
-        fwhm = transform_velocity(hdul[1].data['fwhm'])[:data.shape[0]]
-        x = transform_wavelength(hdul[1].data['x'])[:data.shape[1]]
-        
-        args = (fwhm, x, data)
+                
+        args = (
+            transform_velocity(get_table_data(hdu1, 'fwhm')),
+            transform_wavelength(get_table_data(hdu1, 'x')),
+            transform_flux(hdu0.data),
+        )
         kwargs = {
-            'info': info,
-            'name': path.stem,
+            'age': hdu1.data['age'][0],
+            'name': hdu0.header['NAME'],
+            'is_logspace': hdu0.header['LOGSPACE'] == 'y',
             'path': path,
-            'is_logspace': (hdul[0].header['LOGSPACE'].lower() == 'y'),
+            'info': info,
         }
-        
+
         if len(hdul) > 2:
             hdu2: fits.BinTableHDU = hdul[2]
 
@@ -218,13 +232,13 @@ def load(
                 shape=tuple(map(int, hdu2.header['BSHAPE'].strip().split('/'))),
             )
 
-    return args, kwargs
+        return args, kwargs
 
-def load_from_cache(name: Literal['vw2001', 'v2003', 'bw'], *, info: Info) -> tuple[tuple, dict]:
+def load_from_cache(name: str, age: int, *, info: Info):
     return load(
-        convert_path(name), 
+        convert_params_to_path(name, age),
         info,
     )
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     PATH_TO_CACHE.mkdir(exist_ok=True)

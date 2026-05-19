@@ -2,52 +2,50 @@
 AstroPy compatible model: BalmerModel.
 """
 from typing import Self, Literal
-from numpy import array, linspace, clip, stack, inf, argmin, float64
+from numpy import array, float64, array_equal, unique, concatenate, nan, nanargmin
 from numpy.typing import NDArray
 from scipy.sparse import csr_matrix
 from astropy.units import Unit
 from astropy.modeling import Parameter
-from functools import partial
 
-from pydantic import validate_call
-from pydantic_core import PydanticCustomError
-from pydantic_core.core_schema import no_info_plain_validator_function
+from .continuum import BalmerContinuumTemplate
+from .series import BalmerSeriesTemplate
 
 from . import evaluation
-from .balmer_template import BalmerTemplate
-from .utils import get_x_grid
-from ..utils.basemodel import BaseModel
+from ..utils.template import TemplateModel
+from ..utils.astropy import apply_bounds
 from ..continuum import PowerLawModel
 
 from quasar_utils.setup import Info
 from quasar_utils.raster import rasterise
+from quasar_utils.decorators import validate_call
+from quasar_utils.interpolation import create_interp_matrix
+
 from quasar_typing.numpy import FittableFloatVector, FloatVector
 
-class BalmerModel(BaseModel):
+class BalmerModel(TemplateModel):
     flux  = Parameter(default=1.0, min=0.0)
     fwhm  = Parameter(default=0,   min=0.0)
-    temp  = Parameter(default=15_000.0, fixed=True)
-    tau   = Parameter(default=1.0, fixed=True)
-    scale = Parameter(default=3.0, fixed=True)
-    ratio = Parameter(default=0.3, fixed=True)
+    ratio = Parameter(default=1.0, min=0.0)
 
     @validate_call
     def __init__(
         self,
         flux: float,
         fwhm: float,
-        temp: float,
-        tau: float,
-        scale: float,
         ratio: float,
         *,
-        edge: float = None,
-        sigma_res: float = None,
-        waves: FloatVector = None,
-        weights: FloatVector = None,
-        boltz: float = None,
-        template: BalmerTemplate | None = None,
+        source: str | None = None,
+        temp: float | None = None,
+        tau: float | None = None,
+        scale: float | None = None,
+        dens: float | None = None,
+        n_u_range: tuple[int, int] | None = None,
+        info: Info = None,
+        continuum_template: BalmerContinuumTemplate | None = None,
+        series_template: BalmerSeriesTemplate | None = None,
         allow_interp_fitting: bool = False,
+        maxsize: int = 8,
         name: str = 'balmer_pseudo_continuum',
         **kwargs,
     ):
@@ -59,94 +57,132 @@ class BalmerModel(BaseModel):
         The keyword arguments `edge`, `sigma_res`, `waves`, `weights`, and 
         `boltz` must be specified. Otherwise, a ValidationError is raised. 
         """
-        super().__init__(
-            flux, fwhm, temp, tau, scale, ratio,
-            name=name, **kwargs,
-        )
+        if continuum_template is None:
+            continuum_template = BalmerContinuumTemplate.load_from_cache(
+                temp, tau, scale, info=info,
+            )
+        if not continuum_template.info == info:
+            msg = "The BalmerContinuumTemplate's info instance does not " \
+                "match the BalmerModel's info instance."
+            raise ValueError(msg)
 
-        self.edge: float = edge
-        self.sigma_res: float = sigma_res
-        self.waves: NDArray[float64] = waves
-        self.weights: NDArray[float64] = weights / weights.sum()
-        self.boltz: float = boltz
+        if series_template is None:
+            series_template = BalmerSeriesTemplate.load_from_cache(
+                source, temp, dens, n_u_range, info=info,
+            )
+        elif not series_template.info == info:
+            msg = "The BalmerSeriesTemplate's info instance does not match " \
+                "the BalmerModel's info instance."
+            raise ValueError(msg)
 
+        if not continuum_template.temp == series_template.temp:
+            msg = "The continuum ({}) and series ({}) template do not have " \
+                "the same temperatures!".format(
+                    info.units.getTemperature(continuum_template.temp), 
+                    info.units.getTemperature(series_template.temp),
+                )
+            raise ValueError(msg)
+        
+        if not array_equal(continuum_template.fwhm, series_template.fwhm):
+            fwhms = unique(
+                concatenate([continuum_template.fwhm, series_template.fwhm]),
+            )
+            continuum_template.upsample(fwhms, inplace=True)
+            series_template.upsample(fwhms, inplace=True)
+            
+        super().__init__(flux, fwhm, ratio, name=name, **kwargs)
+
+        self.info: Info = info
+        self.continuum_template: BalmerContinuumTemplate = continuum_template
+        self.series_template: BalmerSeriesTemplate = series_template
         self.allow_interp_fitting: bool = allow_interp_fitting
 
-        # Calculate x_grid: wavelength grid from ~1000 Å to ~4000 Å
-        self.x_grid: NDArray[float64] = get_x_grid(edge, sigma_res)
+        self._initialise_cache(maxsize)
 
-        # Template-fitting
-        self.template: BalmerTemplate | None = template
-        if template is not None:
-            # Template-fitting enabled!
-            self.temp.fixed  = True
-            self.tau.fixed   = True
-            self.scale.fixed = True
-            self.ratio.fixed = True
+        self.same_xs: bool = array_equal(
+            self.continuum_template.x, 
+            self.series_template.x,
+        )
+
+        # Update FWHM bounds using template
+        self.fwhm.bounds = (continuum_template.fwhm[0], continuum_template.fwhm[-1])
+        self.fwhm.value  = apply_bounds(self.fwhm.value, self.fwhm.bounds)
+
+    @property
+    def edge(self) -> float:
+        return self.info.balmer.edge
+
+    @property
+    def waves(self) -> FloatVector:
+        return self.series_template.waves
     
     @property
-    def _perform_interp_fitting(self) -> bool:
-        return self.allow_interp_fitting \
-            and (self.template is not None) \
-            and self.temp.fixed \
-            and self.tau.fixed \
-            and self.scale.fixed \
-            and self.ratio.fixed
+    def weights(self) -> FloatVector:
+        return self.series_template.weights
+    
+    @property
+    def temp(self) -> float:
+        return self.series_template.temp
+    
+    @property
+    def dens(self) -> float:
+        return self.series_template.dens
+    
+    @property
+    def n_u_range(self) -> tuple[int, int]:
+        return self.series_template.n_u_range
+    
+    @property
+    def source(self) -> str:
+        return self.series_template.name
+    
+    @property
+    def tau(self) -> float:
+        return self.continuum_template.tau
+    
+    @property
+    def scale(self) -> float:
+        return self.continuum_template.scale
+    
+    def evaluate(self, x, flux, fwhm, ratio):
+        flux = float(flux)
+        fwhm = float(fwhm)
+        ratio = float(ratio)
 
-    def evaluate(self, x, flux, fwhm, temp, tau, scale, ratio):
         if self._perform_interp_fitting:
             return evaluation.evaluate_interp(
-                x,
-                flux, fwhm,
-                template=self.template,
-                interpolation_matrix=self._get_interpolation_matrix(x),
+                x, flux, fwhm, ratio,
+                continuum_template=self.continuum_template,
+                series_template=self.series_template,
+                **self._get_interpolation_matrices(x),
             )
-        
         return evaluation.evaluate(
-            x,
-            flux, fwhm, temp, tau, scale, ratio,
-            sigma_res=self.sigma_res,
-            edge=self.edge,
-            waves=self.waves,
-            weights=self.weights,
-            boltz=self.boltz,
-            x_grid=self.x_grid,
-            interpolation_matrix=self._get_interpolation_matrix(x),
+            x, flux, fwhm, ratio,
+            continuum_template=self.continuum_template,
+            series_template=self.series_template,
+            **self._get_interpolation_matrices(x),
         )
 
-    def fit_deriv(self, x, flux, fwhm, temp, tau, scale, ratio):
+    def fit_deriv(self, x, flux, fwhm, ratio):
+        flux = float(flux)
+        fwhm = float(fwhm)
+        ratio = float(ratio)
+
         if self._perform_interp_fitting:
             return evaluation.fit_deriv_interp(
-                x, 
-                flux, fwhm, 
-                template=self.template,
-                interpolation_matrix=self._get_interpolation_matrix(x),
+                x, flux, fwhm, ratio,
+                continuum_template=self.continuum_template,
+                series_template=self.series_template,
                 fixed=self.fixed,
+                **self._get_interpolation_matrices(x),
             )
-        
         return evaluation.fit_deriv(
-            x,
-            flux, fwhm, temp, tau, scale, ratio,
-            sigma_res=self.sigma_res,
-            edge=self.edge,
-            waves=self.waves,
-            weights=self.weights,
-            boltz=self.boltz,
-            x_grid=self.x_grid,
-            interpolation_matrix=self._get_interpolation_matrix(x),
+            x, flux, fwhm, ratio,
+            continuum_template=self.continuum_template,
+            series_template=self.series_template,
             fixed=self.fixed,
+            **self._get_interpolation_matrices(x),
         )
-    
-    @classmethod
-    def _validate(cls, value: object) -> Self:
-        if not isinstance(value, cls):
-            msg = f"Expected BalmerModel instance, got {type(value)} instead."
-            raise PydanticCustomError('validation_error', msg)
-        return value
-    
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source_type, handler):
-        return no_info_plain_validator_function(cls._validate)
     
     @property
     def model_type(self) -> Literal['ba']:
@@ -162,65 +198,29 @@ class BalmerModel(BaseModel):
         """
         return (2.0, 0.0)
     
-    def _get_interpolation_matrix(
+    def _calculate_interpolation_matrices(
         self,
         x_out: NDArray[float64],
-    ) -> tuple[csr_matrix, NDArray[float64]]:
+    ) -> dict[str, tuple[csr_matrix, NDArray[float64]]]:
         """
-        Retrieves an interpolation matrix from the cache which maps from the 
-        BalmerTemplate's x-grid to the provided x_out grid. 
+        This method should be called previous to a fitting run, where the same
+        interpolation matrix will be reused multiple times.
         """
-        cache_key: tuple[int, int] = (x_out.size, hash(x_out.tobytes()))
-        return self._interpolation_cache.get(cache_key, None)
-
-    def _ignore_blue_side(self) -> None:
-        """
-        Ignore the blue side of the Balmer pseudo-continuum model by nullifying
-        the (blackbody + attenuation) contribution. The attenuation is also 
-        nullified.
-        """
-        self._prev_blue_fixed: dict[str, bool] = {
-            'tau':  self.tau.fixed, 
-            'scale': self.scale.fixed, 
-            'ratio': self.ratio.fixed,
-        }
-        self.tau.fixed = True
-        self.scale.fixed = True
-        self.ratio.fixed = True
-
-    def _restore_blue_side(self) -> None:
-        """
-        Restore the blue side of the Balmer pseudo-continuum model.
-        """
-        self.tau.fixed = self._prev_blue_fixed['tau']
-        self.scale.fixed = self._prev_blue_fixed['scale']
-        self.ratio.fixed = self._prev_blue_fixed['ratio']
-        del self._prev_blue_fixed
-
-    def _ignore_red_side(self) -> None:
-        """
-        Ignore the red side of the Balmer pseudo-continuum model by nullifying
-        the (line series) contribution.
-        """
-        self._prev_red_fixed: dict[str, bool] = {
-            'ratio': self.ratio.fixed,
-        }
-        self.ratio.fixed = True
-
-    def _restore_red_side(self) -> None:
-        """
-        Restore the red side of the Balmer pseudo-continuum model.
-        """
-        self.ratio.fixed = self._prev_red_fixed['ratio']
-        del self._prev_red_fixed
-
-    @property
-    def _blue_is_ignored(self) -> bool:
-        return hasattr(self, '_prev_blue_fixed')
-
-    @property
-    def _red_is_ignored(self) -> bool:
-        return hasattr(self, '_prev_red_fixed')
+        cache_key: int = hash(x_out.tobytes())
+        if cache_key not in self._interpolation_cache:
+            interp_matrix_cont = create_interp_matrix(
+                self.continuum_template.x, x_out, left=0, right=0,
+            )
+            interp_matrix_series = (
+                interp_matrix_cont 
+                if self.same_xs else 
+                create_interp_matrix(self.series_template.x, x_out, left=0, right=0)
+            )
+            self._interpolation_cache[cache_key] = dict(
+                continuum_interpolation_matrix=interp_matrix_cont, 
+                series_interpolation_matrix=interp_matrix_series,
+            )
+        return self._interpolation_cache[cache_key]
 
     @validate_call
     def rasterFit(
@@ -229,7 +229,6 @@ class BalmerModel(BaseModel):
         y: FittableFloatVector,
         dy: FittableFloatVector,
         *,
-        raster_n: int = 20,
         inplace: bool = False,
     ) -> Self:
         """
@@ -237,72 +236,59 @@ class BalmerModel(BaseModel):
 
         Notes
         -----
-        A raster fit is only supported for models with fixed 'ratio' parameters.
-        The ratio parameter is held fixed during the raster fit, and its value
-        is assigned to the best-fit model.
+        'ratio' parameter is held fixed at the current value. 
         """
-        if not self.fwhm.fixed and (None in self.fwhm.bounds):
-            msg = "Cannot perform raster fit with free 'fwhm' and \
-                non-finite bounds."
-            raise ValueError(msg)
-        
-        if not inplace: 
-            return self.copy().rasterFit.__wrapped__(
-                x, y, dy, raster_n=raster_n, inplace=True,
-            )
-        
-        if self._perform_interp_fitting:
-            f = partial(
-                evaluation.evaluate_interp,
-                x=x, 
-                flux=1.0, 
-                template=self.template,
-                interpolation_matrix=self._get_interpolation_matrix(x),
-            )
-        else:
-            f = partial(
-                evaluation.evaluate,
-                x=x, 
-                flux=1.0, 
-                temp=self.temp.value,
-                tau=self.tau.value,
-                scale=self.scale.value,
-                ratio=self.ratio.value,
-                sigma_res=self.sigma_res,
-                edge=self.edge,
-                waves=self.waves,
-                weights=self.weights,
-                boltz=self.boltz,
-                x_grid=self.x_grid,
-                interpolation_matrix=self._get_interpolation_matrix(x),
-            )
-        
-        if self.fwhm.fixed:
-            fwhms = array([self.fwhm.value], dtype=float)
-            data = f(self.fwhm.value)[:,None]
-        else:
-            fwhms = (
-                self.template.fwhm \
-                if self._perform_interp_fitting else 
-                linspace(*self.fwhm.bounds, raster_n, dtype=float)
-            )
-            data = stack([f(_) for _ in fwhms], axis=0)
+        assert not (self.flux.fixed and self.fwhm.fixed)
 
-        # Chi2 loss function
+        if self.fwhm.fixed:
+            fwhm = array([self.fwhm.value], dtype=float64)
+            data = evaluation.evaluate(
+                x, 1.0, self.fwhm.value, self.ratio.value,
+                continuum_template=self.continuum_template,
+                series_template=self.series_template,
+            )[None,:]
+        else:
+            continuum_template = (
+                self.continuum_template
+                if array_equal(self.continuum_template.x, x) else
+                self.continuum_template.interpolate(x, inplace=False)
+            )
+            series_template = (
+                self.series_template
+                if array_equal(self.series_template.x, x) else
+                self.series_template.interpolate(x, inplace=False)
+            )
+            fwhm = continuum_template.fwhm
+            data = continuum_template.data \
+                + self.ratio.value * series_template.data
+
+        if self.flux.fixed:
+            flux_bounds = (self.flux.value, self.flux.value)
+        else:
+            flux_bounds = self.flux.bounds
+
         chi2s, fluxs = rasterise.__wrapped__(
-            y, dy, fwhms, data,
-            flux_bounds=self.flux.bounds,
+            y, dy,
+            fwhm,
+            data,
+            flux_bounds=flux_bounds,
             fwhm_bounds=self.fwhm.bounds,
         )
+        
+        obj = self if inplace else self.copy()
+        if (chi2s == 0).all():
+            #! Raise warning
+            return obj
 
-        if self.fwhm.fixed:
-            self.flux.value = fluxs[0]
-        else:
-            idx: int = argmin(chi2s).flatten()[0]
-            self.flux.value = fluxs[idx]
-            self.fwhm.value = fwhms[idx]
-            
-        return self
+        chi2s[chi2s == 0] = nan
+        idx = nanargmin(chi2s)
+
+        if not self.flux.fixed:
+            obj.flux.value = fluxs[idx]
+        if not self.fwhm.fixed:
+            obj.fwhm.value = apply_bounds(fwhm[idx], self.fwhm.bounds)
+
+        return obj
     
     @validate_call
     def adjustFromPowerLaw(
@@ -333,22 +319,15 @@ class BalmerModel(BaseModel):
             If True, modifies this instance in-place. Otherwise, returns a copy.
             Default is False.
         """
-        if not inplace:
-            return self.copy().adjustFromPowerLaw.__wrapped__(
-                a_qsfit, model, info, inplace=True,
-        )
-        wave: float = info.units.getWavelength(3000 * Unit('angstrom'))
-        y_pl: float = model(wave)
-        y_ba: float = self.evaluate(
-            wave, 
-            1.0, self.fwhm.value, self.temp.value, 
-            self.tau.value, self.scale.value, self.ratio.value,
+        wave = info.units.getWavelength(3000 * Unit('angstrom'))
+        y_pl = model(wave)
+        y_ba = evaluation.evaluate(
+            wave, 1.0, self.fwhm.value, self.ratio.value,
+            continuum_template=self.continuum_template,
+            series_template=self.series_template,
         )
 
-        self.flux.value = clip(
-            a_qsfit * y_pl / y_ba,
-            lb if ((lb := self.flux.bounds[0]) is not None) else 0,
-            ub if ((ub := self.flux.bounds[1]) is not None) else inf,
-        )
+        obj = self if inplace else self.copy()
+        obj.flux.value = apply_bounds(a_qsfit * y_pl / y_ba, obj.flux.bounds)
 
-        return self
+        return obj

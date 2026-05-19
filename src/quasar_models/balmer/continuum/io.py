@@ -1,52 +1,67 @@
 __all__ = [
     'PATH_TO_CACHE', 'PATH_TO_DATA',
-    'convert_path',
+    'convert_path', 'convert_params_to_path',
     'save', 'load',
     'save_to_cache', 'load_from_cache',
 ]
 
-from typing import Protocol, Literal
+from typing import Protocol
 from pathlib import Path
 from astropy.io import fits
 from astropy.units import Unit
 
-from quasar_typing.numpy import FloatVector, FloatMatrix, SortedFloatVector
+from quasar_typing.numpy import FloatMatrix, SortedFloatVector, FloatVector
 from quasar_typing.scipy import csr_matrix_
-from quasar_typing.pathlib import AbsoluteFITSPath
+from quasar_typing.pathlib import AbsoluteFITSPath, AnyAbsoluteFITSPath
 
 from quasar_utils.setup import Info
 
-from quasar_models.utils.template.io import get_table_data
+from ...utils.template.io import drop_nonpos
 
 _this_file: Path = Path(__file__).resolve()
-PATH_TO_CACHE: Path = _this_file.parent / ".cache"
-PATH_TO_DATA: Path = _this_file.parent / ".data"
+PATH_TO_CACHE: Path = _this_file.parents[1] / ".cache"
+PATH_TO_DATA: Path = _this_file.parents[1] / ".data"
 
-class IronTemplateProtocol(Protocol):
+class BalmerContinuumTemplateProtocol(Protocol):
     fwhm: SortedFloatVector
     x: SortedFloatVector
     data: FloatMatrix
     info: Info
     is_logspace: bool
-    name: Literal['vw2001', 'v2003', 'bw']
+    name: str
     path: AbsoluteFITSPath | None
     _alpha_matrix: csr_matrix_ | None
     _beta_matrix: csr_matrix_ | None
     _xn: SortedFloatVector | None
 
-    x_norm: float
-    fwhm_norm: float
-    normalisation: float
+    temp: float
+    tau: float
+    scale: float
 
 def convert_path(path: str | AbsoluteFITSPath) -> AbsoluteFITSPath:
     if isinstance(path, str):
-        path = Path(path.removesuffix('.fits') + '.fits')
+        path = Path(str.removesuffix('.fits') + '.fits')
         if '/' not in path.as_posix():
             path = PATH_TO_CACHE / path
     return path
 
+def convert_params_to_path(
+    temp: float,
+    tau: float,
+    scale: float,
+    *,
+    info: Info,
+) -> AnyAbsoluteFITSPath:    
+    return PATH_TO_CACHE / \
+        "continuum:edge{:.1f}_temp{:.1e}_tau{:.1f}_scale{:.1f}.fits".format(
+            info.units.getWavelength(info.balmer.edge).to('angstrom').value,
+            info.units.getTemperature(temp).to('K').value,
+            info.units.getDensity(tau).to('cm^-3').value,
+            scale,
+        )
+
 def save(
-    template: IronTemplateProtocol, 
+    template: BalmerContinuumTemplateProtocol,
     path: str | AbsoluteFITSPath,
 ) -> AbsoluteFITSPath:
     path = convert_path(path)
@@ -54,42 +69,55 @@ def save(
     v_unit: str = template.info.units.velocity_unit.to_string()
     x_unit: str = template.info.units.wavelength_unit.to_string()
     f_unit: str = template.info.units.getFluxUnit().to_string()
+    t_unit: str = template.info.units.temp_unit.to_string()
+    
+    hdul = fits.HDUList()
 
-    # [0] Primary HDU -  data and metadata
-
-    hdul: fits.HDUList = fits.HDUList()
-
-    hdu: fits.PrimaryHDU = fits.PrimaryHDU(data=template.data)
-    hdu.header['NAME'] = template.name
-    hdu.header['CTYPE1'] = ('fwhm', 'fwhm axis')
-    hdu.header['CTYPE2'] = ('x', 'spectral axis')
-    hdu.header['BUNIT'] = (f_unit, 'flux unit')
-    hdu.header['LOGSPACE'] = 'y' if template.is_logspace else 'n'
-
-    if template.path is not None: 
-        hdu.header['PATH'] = str(template.path)
+    hdu = fits.PrimaryHDU(data=template.data)
+    
+    hdr = hdu.header
+    hdr['NAME'] = template.name
+    hdr['CTYPE1'] = ('fwhm', 'fwhm axis')
+    hdr['CTYPE2'] = ('x', 'spectral axis')
+    hdr['BUNIT'] = (f_unit, 'flux unit')
+    hdr['LOGSPACE'] = 'y' if template.is_logspace else 'n'
 
     hdul.append(hdu)
 
-    # [1] Binary table HDU - fwhm and x arrays
-
-    col_fwhm: fits.Column = fits.Column(
-        name = 'fwhm',
-        format = 'F',
-        unit = v_unit,
-        array = template.info.units.getC(template.fwhm).to(v_unit).value,
+    col_fwhm = fits.Column(
+        name='fwhm',
+        format='F',
+        unit=v_unit,
+        array=template.info.units.getC(template.fwhm).to(v_unit).value,
     )
-    col_x: fits.Column = fits.Column(
-        name = 'x',
-        format = 'F',
-        unit = x_unit,
-        array = template.x,
+    col_x = fits.Column(
+        name='x',
+        format='F',
+        unit=x_unit,
+        array=template.x,
     )
-    hdul.append(fits.BinTableHDU.from_columns([col_fwhm, col_x]))
+    col_temp = fits.Column(
+        name='temp',
+        format='F',
+        unit=t_unit,
+        array=[template.temp],
+    )
+    col_tau = fits.Column(
+        name='tau',
+        format='F',
+        array=[template.tau],
+    )
+    col_scale = fits.Column(
+        name='scale',
+        format='F',
+        array=[template.scale],
+    )
+    hdu = fits.BinTableHDU.from_columns(
+        [col_fwhm, col_x, col_temp, col_tau, col_scale],
+    )
+    hdul.append(hdu)
 
-    # [2] Binary table HDU - sparse matrices (if they exist)
-
-    if getattr(template, '_alpha_matrix', None) is not None:
+    if template._alpha_matrix is not None:
         col_xn = fits.Column(
             name = 'xn',
             format = 'F',
@@ -126,12 +154,12 @@ def save(
             format = 'K',
             array = template._beta_matrix.indptr,
         )
-        hdu: fits.BinTableHDU = fits.BinTableHDU.from_columns([
+        hdu = fits.BinTableHDU.from_columns([
             col_xn,
             col_alpha_data, col_alpha_indices, col_alpha_indptr,
             col_beta_data, col_beta_indices, col_beta_indptr,
         ])
-
+        
         hdr = hdu.header
         
         # no. of _xn values
@@ -159,22 +187,29 @@ def save(
 
     return path
 
-def save_to_cache(template: IronTemplateProtocol) -> AbsoluteFITSPath:
+def save_to_cache(template: BalmerContinuumTemplateProtocol) -> AbsoluteFITSPath:
     return save(
-        template,
-        path=template.name,
+        template, 
+        convert_params_to_path(
+            template.temp, template.tau, template.scale, 
+            info=template.info,
+        ),
     )
 
 def load(
-    path: str | AbsoluteFITSPath, 
+    path: str | AbsoluteFITSPath,
     info: Info,
 ) -> tuple[tuple, dict]:
     path = convert_path(path)
 
     with fits.open(path) as hdul:
-        v_unit = Unit(hdul[1].columns[0].unit)
-        x_unit = Unit(hdul[1].columns[1].unit)
-        f_unit = Unit(hdul[0].header['BUNIT'])
+        hdu0: fits.PrimaryHDU = hdul[0]
+        hdu1: fits.BinTableHDU = hdul[1]
+
+        v_unit = Unit(hdu1.columns[0].unit)
+        x_unit = Unit(hdu1.columns[1].unit)
+        f_unit = Unit(hdu0.header['BUNIT'])
+        t_unit = Unit(hdu1.columns[2].unit)
 
         def transform_velocity(arr: FloatVector) -> FloatVector:
             return info.units.getC(arr * v_unit)
@@ -184,19 +219,25 @@ def load(
         
         def transform_flux(arr: FloatMatrix) -> FloatMatrix:
             return info.units.getFlux(arr * f_unit)
-
-        data = transform_flux(hdul[0].data)
-        fwhm = transform_velocity(hdul[1].data['fwhm'])[:data.shape[0]]
-        x = transform_wavelength(hdul[1].data['x'])[:data.shape[1]]
         
-        args = (fwhm, x, data)
+        def transform_temperature(arr: FloatVector) -> FloatVector:
+            return info.units.getTemperature(arr * t_unit)
+                
+        args = (
+            drop_nonpos(transform_velocity(hdu1.data['fwhm'])),
+            drop_nonpos(transform_wavelength(hdu1.data['x'])),
+            transform_flux(hdu0.data),
+            transform_temperature(hdu1.data['temp'])[0],
+            hdu1.data['tau'][0],
+            hdu1.data['scale'][0],
+        )
         kwargs = {
-            'info': info,
-            'name': path.stem,
+            'name': hdu0.header['NAME'],
+            'is_logspace': hdu0.header['LOGSPACE'] == 'y',
             'path': path,
-            'is_logspace': (hdul[0].header['LOGSPACE'].lower() == 'y'),
+            'info': info,
         }
-        
+
         if len(hdul) > 2:
             hdu2: fits.BinTableHDU = hdul[2]
 
@@ -218,13 +259,17 @@ def load(
                 shape=tuple(map(int, hdu2.header['BSHAPE'].strip().split('/'))),
             )
 
-    return args, kwargs
-
-def load_from_cache(name: Literal['vw2001', 'v2003', 'bw'], *, info: Info) -> tuple[tuple, dict]:
+        return args, kwargs
+    
+def load_from_cache(
+    temp: float,
+    tau: float,
+    scale: float,
+    *,
+    info: Info,
+) -> tuple[tuple, dict]:
+    
     return load(
-        convert_path(name), 
-        info,
+        convert_params_to_path(temp, tau, scale, info=info),
+        info=info,
     )
-
-if __name__ == "__main__":
-    PATH_TO_CACHE.mkdir(exist_ok=True)

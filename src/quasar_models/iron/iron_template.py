@@ -1,29 +1,50 @@
-from typing import Self
-from pathlib import Path
-from numpy import empty, float64, searchsorted
+__all__ = ['IronTemplate']
+
+from typing import Self, ClassVar, Literal
+from functools import lru_cache
+from numpy import interp
+from dataclasses import field
+from pydantic.dataclasses import dataclass
+
+from quasar_typing.numpy import FloatVector
+from quasar_typing.pathlib import AbsoluteFITSPath, AbsoluteDirPath
+from quasar_utils.setup import Info
+
+from .io import PATH_TO_CACHE, save, load, save_to_cache, load_from_cache
+
+from ..utils.template import evaluate as template_evaluate
 
 from .utils import _split_evaluate
 from ..utils.template import BaseTemplate
 
-from quasar_typing.numpy import FloatVector, SortedFloatVector
-from quasar_typing.pathlib import Path_, AbsoluteFITSPath
-from quasar_utils.setup import Info
-from quasar_utils.convolution import convolve_signal, kernel
-
-_this_file: Path = Path(__file__).resolve()
-
-#Place cache in project root directory, in a hidden folder named '.cache/iron_templates'
-PATH_TO_CACHE: Path = _this_file.parents[3] / '.cache/iron_templates'
-if not PATH_TO_CACHE.exists(): 
-    PATH_TO_CACHE.mkdir(parents=True)
-
+@dataclass
 class IronTemplate(BaseTemplate):
     """
     Template class specifically designed for Iron pseudo-continua.
     """
-    PATH_TO_CACHE: Path = PATH_TO_CACHE
+    name: Literal['vw2001', 'v2003', 'bw'] = field(default='vw2001', kw_only=True)
 
-    load_cache: dict[tuple[str, int], Self] = {}
+    x_norm: float | None = field(default=None, kw_only=True)
+    fwhm_norm: float | None = field(default=None, kw_only=True)
+    normalisation: float | None = field(default=None, kw_only=True)
+
+    PATH_TO_CACHE: ClassVar[AbsoluteDirPath] = PATH_TO_CACHE
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+
+        _ = AbsoluteDirPath._validate(self.PATH_TO_CACHE)
+
+        if self.fwhm_norm is None:
+            self.fwhm_norm = self.info.iron.fwhm_norm
+
+        y = template_evaluate(
+            self.x, 1.0, self.fwhm_norm, 
+            template=self, normalisation=1.0,
+        )
+        self.x_norm = self.x[y.argmax()]
+        if self.normalisation is None:
+            self.normalisation = y.max()
     
     def copy(self, with_matrices: bool = False) -> Self:
         """
@@ -31,84 +52,23 @@ class IronTemplate(BaseTemplate):
         is True, the logspace-transformation matrices are also copied, if 
         available.
         """
-        temp: IronTemplate = IronTemplate(
-            self.fwhm.copy(), self.x.copy(), self.data.copy(),
-            info=self.info, is_logspace=self.is_logspace,
-            name=self.name, path=self.path,
+        with_matrices &= getattr(self, '_alpha_matrix', None) is not None
+
+        return IronTemplate(
+            self.fwhm.copy(),
+            self.x.copy(),
+            self.data.copy(),
+            x_norm=self.x_norm,
+            fwhm_norm=self.fwhm_norm,
+            normalisation=self.normalisation,
+            info=self.info,
+            is_logspace=self.is_logspace,
+            name=self.name,
+            path=self.path,
+            _alpha_matrix=self._alpha_matrix if with_matrices else None,
+            _beta_matrix=self._beta_matrix if with_matrices else None,
+            _xn=self._xn if with_matrices else None,
         )
-        if with_matrices and getattr(self, '_alpha_matrix', None) is not None:
-            temp._alpha_matrix = self._alpha_matrix
-            temp._beta_matrix = self._beta_matrix
-            temp._xn = self._xn
-
-        return temp
-    
-    def upsample(
-        self,
-        fwhm: SortedFloatVector,
-        inplace: bool = False,
-        keep_x: bool = False,
-    ) -> Self:
-        """
-        Upsamples the IronTemplate to the specified FWHM values.
-        """        
-        assert not (fwhm < self.fwhm[0]).any(), \
-            "FWHM values must be >= current template's minimum FWHM."
-        
-        if self.is_logspace:
-            if inplace: 
-                obj = self
-            else:       
-                obj = self.copy(with_matrices=True)
-
-            data = empty(shape=(fwhm.size, self.x.size), dtype=float64)
-            indices = searchsorted(self.fwhm, fwhm)
-
-            fwhm_prev = self.fwhm[0]
-            data_prev = self.data[0,:]
-
-            for i, fwhm_curr in enumerate(fwhm):
-                # Check if exact match exists at the insertion index
-                if indices[i] < self.fwhm.size \
-                    and self.fwhm[indices[i]] == fwhm_curr:
-                    data[i,:] = self.data[indices[i]]
-                else:
-                    k = kernel(
-                        (fwhm_curr**2 - fwhm_prev**2)**0.5,
-                        self.info.loading.sigma_res,
-                    )
-                    data[i,:] = convolve_signal.__wrapped__(data_prev, k)
-
-                fwhm_prev = fwhm_curr
-                data_prev = data[i,:]
-
-            obj.fwhm = fwhm
-            obj.data = data
-        else:
-            template = self.createLogspace(inplace=False, keep_x=keep_x)
-            template.upsample(fwhm, inplace=True)
-            obj = self.mimicLogspace(template, inplace=inplace)
-
-        return obj
-    
-    def resample(
-        self,
-        fwhm: FloatVector,
-        inplace: bool = False,
-        keep_x: bool = False,
-    ) -> Self:
-        """
-        Resamples the IronTemplate to the specified FWHM values.
-        """
-        if inplace: 
-            obj = self
-        else:       
-            obj = self.copy(with_matrices=True)
-
-        obj.fwhm = obj.fwhm[:1]
-        obj.data = obj.data[:1]
-
-        return obj.upsample(fwhm, inplace=True, keep_x=keep_x)
 
     def applySplit(
         self,
@@ -120,10 +80,7 @@ class IronTemplate(BaseTemplate):
     ) -> Self:
         assert self.is_logspace, "Template must be in logspace."
 
-        if inplace: 
-            obj = self
-        else:       
-            obj = self.copy(with_matrices=True)
+        obj = self if inplace else self.copy(with_matrices=True)
 
         obj.data *= self._get_split_weight(
             obj.x, split, left, right, scale,
@@ -148,51 +105,26 @@ class IronTemplate(BaseTemplate):
         """
         return _split_evaluate(
             x, split, left, right,
-            sigma_res=self.info.loading['sigma_res'], scale=scale,
+            sigma_res=self.info.loading.sigma_res, scale=scale,
         )
 
-    def save(
-        self,
-        path: str | Path_,
-        overwrite: bool = False,
-    ) -> AbsoluteFITSPath:
+    def save(self, path: str | AbsoluteFITSPath) -> AbsoluteFITSPath:
         """
         Saves the IronTemplate to a FITS file.
         """
-        from .io import _save
-
-        path = Path(str(path).removesuffix('.fits') + '.fits')
-        if not path.is_absolute():
-            path = self.PATH_TO_CACHE / path.name
-
-        if path.exists() and not overwrite:
-            raise FileExistsError(f"File already exists: {path}")
+        return save(self, path)
     
-        _ = _save(self, path)
-        return path
-
     @classmethod
-    def load(
-        cls,
-        path: str | Path_,
-        info: Info,
-    ) -> Self:
-        """
-        ** CACHED METHOD **
-
-        Loads an IronTemplate from a FITS file.
-        """
-        from .io import _load
-
-        cache_key = (str(path), id(info))
-        if cache_key not in cls.load_cache:
-            path = Path(str(path).removesuffix('.fits') + '.fits')
-            
-            if not path.is_absolute():
-                path = cls.PATH_TO_CACHE / path.name
-            if not path.exists():
-                raise FileNotFoundError(f"File not found: {path}")
-            
-            cls.load_cache[cache_key] = _load(path, info=info)
-
-        return cls.load_cache[cache_key]
+    # @lru_cache(maxsize=None)
+    def load(cls, path: str | AbsoluteFITSPath, info: Info) -> Self:
+        args, kwargs = load(path, info)
+        return IronTemplate(*args, **kwargs)
+    
+    def save_to_cache(self) -> AbsoluteFITSPath:
+        return save_to_cache(self)
+    
+    @classmethod
+    # @lru_cache(maxsize=None)
+    def load_from_cache(cls, name: Literal['vw2001', 'v2003', 'bw'], *, info: Info) -> AbsoluteFITSPath:
+        args, kwargs = load_from_cache(name, info=info)
+        return IronTemplate(*args, **kwargs)

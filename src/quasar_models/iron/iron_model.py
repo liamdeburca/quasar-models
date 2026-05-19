@@ -3,25 +3,23 @@ AstroPy compatible model: IronModel.
 """
 from logging import getLogger
 from numpy import zeros_like, invert, nan, nanargmin, argmax, float64, array_equal, isnan
-from numpy.typing import NDArray
 from astropy.modeling import Parameter
 from typing import Literal, Self
-from scipy.sparse import csr_matrix
-
-from pydantic import validate_call
 
 from quasar_typing.numpy import FloatVector
-from quasar_utils.interpolation import create_interp_matrix
+
+from quasar_utils.setup import Info
+from quasar_utils.decorators import validate_call
 from quasar_utils.raster import rasterise
 
 from . import evaluation
 from .iron_template import IronTemplate
-from ..utils.basemodel import BaseModel
+from ..utils.template import TemplateModel
 from ..utils.astropy import apply_bounds
 
 logger = getLogger(__name__)
 
-class IronModel(BaseModel):
+class IronModel(TemplateModel):
     flux = Parameter(min=0)
     fwhm = Parameter(min=0)
     split = Parameter(default=1, min=0, fixed=True)
@@ -31,24 +29,35 @@ class IronModel(BaseModel):
     @validate_call
     def __init__(
         self,
-        template: IronTemplate,
         flux: float,
         fwhm: float,
-        sigma_res: float,
         *,
+        info: Info,
+        template: IronTemplate | None = None,
         split: float = 1.0,
         left: float = 1.0,
         right: float = 1.0,
-        scale: float = 1.0,
         allow_interp_fitting: bool = False,
+        maxsize: int = 8,
+        name: str = 'iron_model',
         **kwargs,
     ):
-        super().__init__(flux, fwhm, split, left, right, **kwargs)
+        if template is None:
+            template = IronTemplate.load_from_cache(name, info=info)
+        else:
+            if not template.info == info:
+                msg = "The IronTemplate's info instance does not match "\
+                    "the IronModel's info instance."
+                raise ValueError(msg)
+            name = template.name
+        
+        super().__init__(flux, fwhm, split, left, right, name=name, **kwargs)
 
+        self.info: Info = info
         self.template: IronTemplate = template
-        self.scale: float = scale
-        self.sigma_res: float = sigma_res
         self.allow_interp_fitting: bool = allow_interp_fitting
+
+        self._initialise_cache(maxsize)
 
         # Update FWHM bounds using template
         self.fwhm.bounds  = (template.fwhm[0], template.fwhm[-1])
@@ -57,11 +66,6 @@ class IronModel(BaseModel):
         # Update SPLIT bounds using template
         self.split.bounds = (template.x[0], template.x[-1])
         self.split.value  = apply_bounds(self.split.value, self.split.bounds)
-
-        self._interpolation_cache: dict[
-            tuple[int, int], 
-            tuple[csr_matrix, NDArray[float64]],
-        ] = {}
     
     @property
     def _perform_interp_fitting(self) -> bool:
@@ -81,16 +85,14 @@ class IronModel(BaseModel):
                 x,
                 flux, fwhm,
                 template=self.template,
-                interpolation_matrix=self._get_interpolation_matrix(x),
+                **self._get_interpolation_matrices(x),
             )
         
         return evaluation.evaluate(
             x,
             flux, fwhm, split, left, right,
-            sigma_res=self.sigma_res,
-            scale=self.scale,
             template=self.template,
-            interpolation_matrix=self._get_interpolation_matrix(x),
+            **self._get_interpolation_matrices(x),
         )
     
     def evaluate_sparse(self, x, flux, fwhm, split, left, right):
@@ -103,10 +105,8 @@ class IronModel(BaseModel):
         return evaluation.evaluate_sparse(
             x,
             flux, fwhm, split, left, right,
-            sigma_res=self.sigma_res,
-            scale=self.scale,
             template=self.template,
-            interpolation_matrix=self._get_interpolation_matrix(x),
+            **self._get_interpolation_matrices(x),
         )
     
     def fit_deriv(self, x, flux, fwhm, split, left, right):
@@ -121,17 +121,15 @@ class IronModel(BaseModel):
                 x,
                 flux, fwhm,
                 template=self.template,
-                interpolation_matrix=self._get_interpolation_matrix(x),
+                **self._get_interpolation_matrices(x),
                 fixed=self.fixed,
             )
         
         return evaluation.fit_deriv(
             x,
             flux, fwhm, split, left, right,
-            sigma_res=self.sigma_res,
-            scale=self.scale,
             template=self.template,
-            interpolation_matrix=self._get_interpolation_matrix(x),
+            **self._get_interpolation_matrices(x),
             fixed=self.fixed,
         )
     
@@ -150,35 +148,6 @@ class IronModel(BaseModel):
         return (1.0, self.template.x[argmax(self.template.data[0])])
     
     # Utilities
-
-    def _get_interpolation_matrix(
-        self,
-        x_out: NDArray[float64],
-    ) -> tuple[csr_matrix, NDArray[float64]]:
-        """
-        Retrieves an interpolation matrix from the cache which maps from the 
-        IronTemplate's x-grid to the provided x_out grid. 
-        """
-        cache_key: tuple[int, int] = (x_out.size, hash(x_out.tobytes()))
-        return self._interpolation_cache.get(cache_key, None)
-    
-    def _calculate_interpolation_matrix(
-        self,
-        x_out: NDArray[float64],
-    ) -> tuple[csr_matrix, NDArray[float64]]:
-        """
-        Calculates an interpolation matrix which maps from the IronTemplate's
-        x-grid to the provided x_out grid, and stores it in the cache.
-
-        This method should be called previous to a fitting run, where the same
-        interpolation matrix will be reused multiple times.
-        """
-        cache_key: tuple[int, int] = (x_out.size, hash(x_out.tobytes()))
-        if cache_key not in self._interpolation_cache.keys():
-            self._interpolation_cache[cache_key] = create_interp_matrix(
-                self.template.x, x_out, left=0, right=0,
-            )
-        return self._interpolation_cache[cache_key]
     
     @validate_call
     def rasterFit(
