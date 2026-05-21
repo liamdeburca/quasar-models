@@ -1,4 +1,4 @@
-from numpy import arange, empty, array, arange, float64
+from numpy import arange, empty, array, float64
 from pathlib import Path
 from astropy.io.fits import open as fits_open
 from astropy.units import Unit
@@ -37,7 +37,8 @@ class VestergaardWilkes2001:
             
             fwhm = empty(hdr['NAXIS2'], dtype=float64)
             for key, line in hdr.items():
-                if not key.startswith('APERT'): continue
+                if not key.startswith('APERT'):
+                    continue
 
                 elems = [
                     elem \

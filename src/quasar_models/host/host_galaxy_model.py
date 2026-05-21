@@ -68,12 +68,12 @@ class HostGalaxyModel(TemplateModel):
             return evaluation.evaluate_interp(
                 x, flux, fwhm,
                 host_galaxy_template=self.template,
-                interpolation_matrix=self._get_interpolation_matrices(x),
+                interpolation_matrix=self._calculate_interpolation_matrices(x),
             )
         return evaluation.evaluate(
             x, flux, fwhm,
             host_galaxy_template=self.template,
-            interpolation_matrix=self._get_interpolation_matrices(x),
+            interpolation_matrix=self._calculate_interpolation_matrices(x),
         )
     
     def fit_deriv(self, x, flux, fwhm):
@@ -84,12 +84,12 @@ class HostGalaxyModel(TemplateModel):
             return evaluation.fit_deriv_interp(
                 x, flux, fwhm,
                 host_galaxy_template=self.template,
-                interpolation_matrix=self._get_interpolation_matrices(x),
+                interpolation_matrix=self._calculate_interpolation_matrices(x),
             )
         return evaluation.fit_deriv(
             x, flux, fwhm,
             host_galaxy_template=self.template,
-            interpolation_matrix=self._get_interpolation_matrices(x),
+            interpolation_matrix=self._calculate_interpolation_matrices(x),
         )
     
     # Utilities

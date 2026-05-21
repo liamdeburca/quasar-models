@@ -16,8 +16,6 @@ from quasar_typing.pathlib import AbsoluteFITSPath
 
 from quasar_utils.setup import Info
 
-from quasar_models.utils.template.io import get_table_data
-
 _this_file: Path = Path(__file__).resolve()
 PATH_TO_CACHE: Path = _this_file.parent / ".cache"
 PATH_TO_DATA: Path = _this_file.parent / ".data"

@@ -18,7 +18,6 @@ class TemplateModel(BaseModel, ABC):
     - __call__ (method): populates the interpolation matrix cache and calls the 
                          evaluate method.
     - _perform_interp_fitting (property)
-    - _get_interpolation_matrices (method)
     - _calculate_interpolation_matrices (method)
 
     ** Abstract methods/properties **
@@ -52,13 +51,6 @@ class TemplateModel(BaseModel, ABC):
         if isinstance(x, ndarray):
             _ = self._calculate_interpolation_matrices(x)
         return self.evaluate(x, *self.parameters)
-
-    def _get_interpolation_matrices(
-        self, 
-        x_out: FloatVector,
-    ) -> dict[str, tuple[csr_matrix_, FloatVector]]:
-        cache_key = hash(x_out.tobytes())
-        return self._interpolation_cache[cache_key]
     
     def _calculate_interpolation_matrices(
         self,

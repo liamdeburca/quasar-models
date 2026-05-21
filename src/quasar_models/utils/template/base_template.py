@@ -4,7 +4,7 @@ from typing import Self, ClassVar, Any
 from abc import ABC, abstractmethod
 from numpy import (
     log, isfinite, arange, empty, exp, median, full_like, float64, maximum,
-    stack, searchsorted, array_equal,
+    stack, searchsorted, array_equal, diff, 
 )
 from numpy.typing import NDArray
 from pathlib import Path
@@ -216,15 +216,20 @@ class BaseTemplate(ABC):
         template : Template
             The logspace-equivalent template.
         """
-        if self.is_logspace: 
-            return self if inplace else self.copy(with_matrices=True)
+        obj = self if inplace else self.copy(with_matrices=False)
+        if self.is_logspace:
+            return (
+                obj 
+                if array_equal(obj.x, xr) else 
+                obj.interpolate(xr, inplace=True)
+            )
 
-        dx = lin_dx(self.x)
-        x_edges = empty(self.x.size + 1, dtype=float)
-        x_edges[:-1] = self.x - dx / 2
-        x_edges[-1] = self.x[-1] + dx[-1] / 2
+        dx = lin_dx(obj.x)
+        x_edges = empty(obj.x.size + 1, dtype=float)
+        x_edges[:-1] = obj.x - dx / 2
+        x_edges[-1] = obj.x[-1] + dx[-1] / 2
 
-        sigma_res: float = self.info.loading['sigma_res']
+        sigma_res: float = obj.info.loading['sigma_res']
 
         if xr is None:
             nr = log(x_edges[-1] / x_edges[0]) // log(1 + sigma_res) + 1
@@ -239,6 +244,8 @@ class BaseTemplate(ABC):
             logxr_edges[-1] = logxr[-1] + dlogxr[-1] / 2
             xr_edges = exp(logxr_edges)
 
+        dxr = xr * sigma_res
+
         if keep_x:
             xn_edges = x_edges
         else:
@@ -251,17 +258,22 @@ class BaseTemplate(ABC):
             xn_edges[n_left:-n_right] = x_edges
             xn_edges[-n_right:] = x_edges[-1] + dxn * arange(1, n_right+1)
 
-        self._alpha_matrix = alpha_matrix_sparse.__wrapped__(
+        obj._alpha_matrix = alpha_matrix_sparse.__wrapped__(
             x_edges, xr_edges,
+            dx=dx,
+            dxr=dxr,
+            conserve=obj.info.loading.conserve,
         )
-        self._beta_matrix = alpha_matrix_sparse.__wrapped__(
+        obj._beta_matrix = alpha_matrix_sparse.__wrapped__(
             xr_edges, xn_edges,
+            dx=dxr,
+            dxr=dx if keep_x else diff(xn_edges),
+            conserve=obj.info.loading.conserve,
         )
-        self._xn = 0.5 * (xn_edges[:-1] + xn_edges[1:])
+        obj._xn = 0.5 * (xn_edges[:-1] + xn_edges[1:])
 
-        obj = self if inplace else self.copy(with_matrices=True)
         obj.x = xr
-        obj.data = maximum(self._alpha_matrix.dot(self.data.T).T, 0)
+        obj.data = maximum(obj._alpha_matrix.dot(obj.data.T).T, 0)
         obj.is_logspace = True
 
         return obj

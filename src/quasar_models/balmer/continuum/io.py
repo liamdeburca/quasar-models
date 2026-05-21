@@ -16,8 +16,6 @@ from quasar_typing.pathlib import AbsoluteFITSPath, AnyAbsoluteFITSPath
 
 from quasar_utils.setup import Info
 
-from ...utils.template.io import drop_nonpos
-
 _this_file: Path = Path(__file__).resolve()
 PATH_TO_CACHE: Path = _this_file.parents[1] / ".cache"
 PATH_TO_DATA: Path = _this_file.parents[1] / ".data"
@@ -222,11 +220,15 @@ def load(
         
         def transform_temperature(arr: FloatVector) -> FloatVector:
             return info.units.getTemperature(arr * t_unit)
+        
+        data = transform_flux(hdul[0].data)
+        fwhm = transform_velocity(hdul[1].data['fwhm'])[:data.shape[0]]
+        x = transform_wavelength(hdul[1].data['x'])[:data.shape[1]]
                 
         args = (
-            drop_nonpos(transform_velocity(hdu1.data['fwhm'])),
-            drop_nonpos(transform_wavelength(hdu1.data['x'])),
-            transform_flux(hdu0.data),
+            fwhm,
+            x,
+            data,
             transform_temperature(hdu1.data['temp'])[0],
             hdu1.data['tau'][0],
             hdu1.data['scale'][0],

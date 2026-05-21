@@ -154,13 +154,13 @@ class BalmerModel(TemplateModel):
                 x, flux, fwhm, ratio,
                 continuum_template=self.continuum_template,
                 series_template=self.series_template,
-                **self._get_interpolation_matrices(x),
+                **self._calculate_interpolation_matrices(x),
             )
         return evaluation.evaluate(
             x, flux, fwhm, ratio,
             continuum_template=self.continuum_template,
             series_template=self.series_template,
-            **self._get_interpolation_matrices(x),
+            **self._calculate_interpolation_matrices(x),
         )
 
     def fit_deriv(self, x, flux, fwhm, ratio):
@@ -174,14 +174,14 @@ class BalmerModel(TemplateModel):
                 continuum_template=self.continuum_template,
                 series_template=self.series_template,
                 fixed=self.fixed,
-                **self._get_interpolation_matrices(x),
+                **self._calculate_interpolation_matrices(x),
             )
         return evaluation.fit_deriv(
             x, flux, fwhm, ratio,
             continuum_template=self.continuum_template,
             series_template=self.series_template,
             fixed=self.fixed,
-            **self._get_interpolation_matrices(x),
+            **self._calculate_interpolation_matrices(x),
         )
     
     @property

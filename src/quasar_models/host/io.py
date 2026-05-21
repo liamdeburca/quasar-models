@@ -16,8 +16,6 @@ from quasar_typing.pathlib import AbsoluteFITSPath
 
 from quasar_utils.setup import Info
 
-from quasar_models.utils.template.io import get_table_data
-
 _this_file: Path = Path(__file__).resolve()
 PATH_TO_CACHE: Path = _this_file.parent / '.cache'
 PATH_TO_DATA: Path = _this_file.parent / '.data'
@@ -90,7 +88,7 @@ def save(
     )
     col_age = fits.Column(
         name='age',
-        format='J',
+        format='D',
         array=[template.age],
     )
 
@@ -185,8 +183,8 @@ def load(
         hdu0: fits.PrimaryHDU = hdul[0]
         hdu1: fits.BinTableHDU = hdul[1]
 
-        v_unit = Unit(hdu1.columns[1].unit)
-        x_unit = Unit(hdu1.columns[2].unit)
+        v_unit = Unit(hdu1.columns[0].unit)
+        x_unit = Unit(hdu1.columns[1].unit)
         f_unit = Unit(hdu0.header['BUNIT'])
 
         def transform_velocity(arr: FloatVector) -> FloatVector:
@@ -197,12 +195,12 @@ def load(
         
         def transform_flux(arr: FloatMatrix) -> FloatMatrix:
             return info.units.getFlux(arr * f_unit)
-                
-        args = (
-            transform_velocity(get_table_data(hdu1, 'fwhm')),
-            transform_wavelength(get_table_data(hdu1, 'x')),
-            transform_flux(hdu0.data),
-        )
+        
+        data = transform_flux(hdul[0].data)
+        fwhm = transform_velocity(hdul[1].data['fwhm'])[:data.shape[0]]
+        x = transform_wavelength(hdul[1].data['x'])[:data.shape[1]]
+        
+        args = (fwhm, x, data)                
         kwargs = {
             'age': hdu1.data['age'][0],
             'name': hdu0.header['NAME'],

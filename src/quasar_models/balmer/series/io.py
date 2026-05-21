@@ -269,11 +269,15 @@ def load(
         
         def transform_density(arr: FloatVector) -> FloatVector:
             return info.units.getDensity(arr * d_unit)
+        
+        data = transform_flux(hdul[0].data)
+        fwhm = transform_velocity(hdul[1].data['fwhm'])[:data.shape[0]]
+        x = transform_wavelength(hdul[1].data['x'])[:data.shape[1]]
                                 
         args = (
-            drop_nonpos(transform_velocity(hdu1.data['fwhm'])),
-            drop_nonpos(transform_wavelength(hdu1.data['x'])),
-            transform_flux(hdu0.data),
+            fwhm,
+            drop_nonpos(x),
+            data,
             drop_nonpos(transform_wavelength(hdu1.data['waves'])),
             drop_nonpos(hdu1.data['weights']),
             transform_temperature(hdu1.data['temp'])[0],

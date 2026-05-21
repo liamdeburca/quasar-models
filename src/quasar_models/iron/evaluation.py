@@ -256,7 +256,7 @@ def fit_deriv_interp(
     df_dleft  = zeros_like(x, dtype=float64)
     df_dright = zeros_like(x, dtype=float64)
 
-    df_dflux, df_dfwhm = template.evaluation.fit_deriv_interp(
+    df_dflux, df_dfwhm = template_evaluation.fit_deriv_interp(
         x, flux, fwhm,
         template=template,
         interpolation_matrix=interpolation_matrix,

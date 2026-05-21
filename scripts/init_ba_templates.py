@@ -154,8 +154,7 @@ def main_verbose() -> None:
             print(f"Initialising: {cls.name}... Failed!")
 
 def main(silent: bool = False) -> None:
-    if silent: main_silent()
-    else:      main_verbose()
+    main_silent() if silent else main_verbose()
 
 def plot(name: str) -> None:
     template: BalmerTemplate = BalmerTemplate.load(name, info=info)

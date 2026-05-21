@@ -85,14 +85,14 @@ class IronModel(TemplateModel):
                 x,
                 flux, fwhm,
                 template=self.template,
-                **self._get_interpolation_matrices(x),
+                **self._calculate_interpolation_matrices(x),
             )
         
         return evaluation.evaluate(
             x,
             flux, fwhm, split, left, right,
             template=self.template,
-            **self._get_interpolation_matrices(x),
+            **self._calculate_interpolation_matrices(x),
         )
     
     def evaluate_sparse(self, x, flux, fwhm, split, left, right):
@@ -106,7 +106,7 @@ class IronModel(TemplateModel):
             x,
             flux, fwhm, split, left, right,
             template=self.template,
-            **self._get_interpolation_matrices(x),
+            **self._calculate_interpolation_matrices(x),
         )
     
     def fit_deriv(self, x, flux, fwhm, split, left, right):
@@ -121,7 +121,7 @@ class IronModel(TemplateModel):
                 x,
                 flux, fwhm,
                 template=self.template,
-                **self._get_interpolation_matrices(x),
+                **self._calculate_interpolation_matrices(x),
                 fixed=self.fixed,
             )
         
@@ -129,7 +129,7 @@ class IronModel(TemplateModel):
             x,
             flux, fwhm, split, left, right,
             template=self.template,
-            **self._get_interpolation_matrices(x),
+            **self._calculate_interpolation_matrices(x),
             fixed=self.fixed,
         )
     
@@ -182,7 +182,7 @@ class IronModel(TemplateModel):
             data = template.data * template._get_split_weight(
                 x, 
                 self.split.value, self.left.value, self.right.value, 
-                self.scale,
+                self.info.iron.scale,
             )[None,:]
 
             chi2s, fluxs = rasterise.__wrapped__(
@@ -243,11 +243,8 @@ class IronModel(TemplateModel):
                 self.left.bounds = (min(self.left.bounds[0], 1.0), 1.0)
                 self.left.fixed = True
 
-                if cond_l: flux = fluxs_left[idx]
-                else:      flux = fluxs_right[idx]
-
-                if cond_r: right = fluxs_right[idx] / flux
-                else:      right = 1.0
+                flux = (fluxs_left if cond_l else fluxs_right)[idx]
+                right = fluxs_right[idx] / flux if cond_r else 1.0
 
                 self.right.value = apply_bounds(right, self.right.bounds)
                 self.right.fixed = False
@@ -257,11 +254,8 @@ class IronModel(TemplateModel):
                 self.right.bounds = (min(self.right.bounds[0], 1.0), 1.0)
                 self.right.fixed = True
 
-                if cond_r: flux = fluxs_right[idx]
-                else:      flux = fluxs_left[idx]
-
-                if cond_l: left = fluxs_left[idx] / flux
-                else:      left = 1.0
+                flux = (fluxs_right if cond_r else fluxs_left)[idx]
+                left = fluxs_left[idx] / flux if cond_l else 1.0
 
                 self.left.value = apply_bounds(left, self.left.bounds)
                 self.left.fixed = False

@@ -63,11 +63,50 @@ class BC2003:
                     path=None,
                     age=age,
                 )
+                template.normalise(inplace=True)
                 template.save_to_cache()
                 del template
 
 def main() -> None:
     BC2003().main()
 
+def plot() -> None:
+    import matplotlib.pyplot as plt
+
+    bc2003 = BC2003()
+    info = bc2003.info
+        
+    templates: list[HostGalaxyTemplate] = sorted(
+        (HostGalaxyTemplate.load(path, info) for path in PATH_TO_CACHE.glob("bc2003*.fits")),
+        key=lambda t: t.age,
+    )
+
+    fig, ax = plt.subplots(dpi=300, figsize=(8, 4))
+    ax.set_title('Host Galaxy Templates', loc='left')
+
+    for t in templates:
+        ax.plot(t.x, t.data[0], label=f"{t.age/1_000_000_000:.0f} Gyr", lw=1)
+
+    ax.set_xlabel(
+        r"$\lambda_{\mathrm{rest}}$ (" + info.units.wavelength_unit.to_string() + ")",
+        loc='right',
+    )
+    ax.set_ylabel('Flux density (a.u.)')
+    ax.set_ylim(0)
+    ax.legend(loc='upper right')
+
+    plt.show()
+
 if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--plot', action='store_true',
+        help="Whether to plot the generated templates.",
+    )
+    args = parser.parse_args()
+
     main()
+    if args.plot:
+        plot()
