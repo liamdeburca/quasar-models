@@ -20,8 +20,8 @@ class BaseModel(ABC, Fittable1DModel, metaclass=BaseModelMeta):
     @classmethod
     def _validate(cls, value: object) -> Self:
         if not isinstance(value, cls):
-            msg = f"Expected {cls.__name__} instance, \
-                got {type(value).__name__}"
+            msg = f"Expected {cls.__name__} instance, "\
+                f"got {type(value).__name__}"
             raise PydanticCustomError('validation_error', msg)
         return value
     

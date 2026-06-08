@@ -1,6 +1,3 @@
-"""
-    Lorem ipsum.
-"""
 __all__ = [
     'VProfileCopy1G',
     'VProfileCopy2G',
@@ -8,20 +5,22 @@ __all__ = [
     'VProfileCopy4G',
     'VProfileCopy5G',
 ]
+
 from abc import abstractmethod
 from typing import Self, Callable, Iterable, ClassVar
 from astropy.modeling import Parameter
-from functools import partial
 from itertools import product
 from numpy import zeros_like, float64
 from numpy.typing import NDArray
 
-from . import evaluation
-from .gaussian import GaussianModel
-from ..utils.basemodel import BaseModel
-from ..utils.astropy import apply_bounds
+from quasar_models.line.gaussian import GaussianModel
+from quasar_models.utils.basemodel import BaseModel
+from quasar_models.utils.astropy import apply_bounds
+from quasar_models.tying import IdenticalTie
 
 from quasar_typing.astropy import CompoundModel_ 
+
+from . import evaluation
 
 def _evaluate(
     x: float | NDArray[float64],
@@ -90,13 +89,6 @@ def _fit_deriv(
             dfs[3*i + 3][:] = strength_scale * _dfs[2]
 
     return dfs
-
-def tie_parameters(
-    compound_model, 
-    model_name: str, 
-    param_name: str,
-) -> float:
-    return getattr(compound_model[model_name], param_name).value    
 
 ###
 
@@ -231,11 +223,7 @@ class _VProfileCopy(BaseModel):
             attr.bounds = getattr(g, pname).bounds
 
             if tie_vel_profile: 
-                attr.tied = partial(
-                    tie_parameters,
-                    model_name = g.name,
-                    param_name = pname,
-                )
+                attr.tied = IdenticalTie.from_model(g, pname)
             
         return model
     
@@ -384,14 +372,14 @@ class _VProfileCopy(BaseModel):
         -----
         Lorem ipsum.
         """
-        current_strength = sum([
+        current_strength = sum(
             getattr(self, f"strength_{i}").value \
             for i in range(1, self.n_profiles+1)
-        ])
-        model_strength = sum([
+        )
+        model_strength = sum(
             m.strength.value 
             for m in (model if isinstance(model, Iterable) else [model])
-        ])
+        )
         self.strength_scale.value = apply_bounds(
             model_strength / current_strength, 
             self.strength_scale.bounds,
@@ -418,9 +406,10 @@ class _VProfileCopy(BaseModel):
         )
         for i, name in enumerate(names):
             g = GaussianModel(self.wave, self.sigma_res, name=name)
-            g.strength = getattr(self, f"strength_{i+1}")
-            g.sigma_v = getattr(self, f"sigma_v_{i+1}")
-            g.v_off = getattr(self, f"v_off_{i+1}")
+
+            for attr_name in ('strength', 'sigma_v', 'v_off'):
+                getattr(g, attr_name).value = getattr(self, f"{attr_name}_{i+1}").value
+                getattr(g, attr_name).bounds = getattr(self, f"{attr_name}_{i+1}").bounds
 
             gaussian_models.append(g)
 
@@ -429,7 +418,7 @@ class _VProfileCopy(BaseModel):
 class VProfileCopy1G(_VProfileCopy):
     """
     Lorem ipsum.
-
+3
     Attributes
     ----------
     strength_scale : Parameter
@@ -462,6 +451,10 @@ class VProfileCopy1G(_VProfileCopy):
         wave: float,
         name: str,
         *gs: GaussianModel,
+        strength_scale_value: float = 1.0,
+        strength_scale_bounds: tuple[float | None, float | None] = (0, None),
+        strength_scale_fixed: bool = False,
+        freeze: bool = False,
         **kwargs,
     ):
         assert len(gs) == self.n_profiles
@@ -473,31 +466,59 @@ class VProfileCopy1G(_VProfileCopy):
         self.sigma_res: float = gs[0].sigma_res
         self.master_name: str = gs[0].pure_name
 
+        self.strength_scale.value = strength_scale_value
+        self.strength_scale.bounds = strength_scale_bounds
+        self.strength_scale.fixed = strength_scale_fixed
+
         self._adapt_to_models(*gs, tie_vel_profile=True, inplace=True)
-        self._freeze_velocity_profile(inplace=True)
-        self._forget_ties(inplace=True)
+
+        if freeze:
+            self._freeze_velocity_profile(inplace=True)
+            self._forget_ties(inplace=True)
 
     @classmethod
     def from_model(
         cls,
         wave: float,
         name: str,
-        model: GaussianModel | Iterable[GaussianModel],
+        model: GaussianModel,
+        *,
+        strength_scale_value: float = 1.0,
+        strength_scale_bounds: tuple[float | None, float | None] = (0, None),
+        strength_scale_fixed: bool = False,
         freeze: bool = False,
         **kwargs,
     ) -> Self:
-        if isinstance(model, GaussianModel):
-            model = (model,)
-        else:
-            model = tuple(model)
-            assert len(model) == 1
+        return VProfileCopy1G(
+            wave, 
+            name, 
+            model,
+            strength_scale_value=strength_scale_value,
+            strength_scale_bounds=strength_scale_bounds,
+            strength_scale_fixed=strength_scale_fixed,
+            freeze=freeze,
+            **kwargs,
+        )
 
-        vprof = VProfileCopy1G(wave, name, *model, **kwargs)
-        if freeze:
-            vprof._freeze_velocity_profile(inplace=True)
-            vprof._forget_ties(inplace=True)
-
-        return vprof
+    def makeCopy(
+        self,
+        master_model: GaussianModel,
+        *,
+        strength_scale_value: float = 1.0,
+        strength_scale_bounds: tuple[float | None, float | None] = (0, None),
+        strength_scale_fixed: bool = False,
+        freeze: bool = False,
+    ) -> Self:
+        copied_model = VProfileCopy1G.from_model(
+            self.wave,
+            self.name,
+            master_model,
+            strength_scale_value=strength_scale_value,
+            strength_scale_bounds=strength_scale_bounds,
+            strength_scale_fixed=strength_scale_fixed,
+            freeze=freeze,
+        )
+        return copied_model
     
 class VProfileCopy2G(_VProfileCopy):
     """
@@ -575,6 +596,9 @@ class VProfileCopy2G(_VProfileCopy):
         if freeze:
             vprof._freeze_velocity_profile(inplace=True)
             vprof._forget_ties(inplace=True)
+        else:
+            vprof._thaw_velocity_profile(inplace=True)
+            vprof._remember_ties(inplace=True)
 
         return vprof
 
@@ -658,6 +682,9 @@ class VProfileCopy3G(_VProfileCopy):
         if freeze:
             vprof._freeze_velocity_profile(inplace=True)
             vprof._forget_ties(inplace=True)
+        else:
+            vprof._thaw_velocity_profile(inplace=True)
+            vprof._remember_ties(inplace=True)
 
         return vprof
     
@@ -745,6 +772,9 @@ class VProfileCopy4G(_VProfileCopy):
         if freeze:
             vprof._freeze_velocity_profile(inplace=True)
             vprof._forget_ties(inplace=True)
+        else:
+            vprof._thaw_velocity_profile(inplace=True)
+            vprof._remember_ties(inplace=True)
 
         return vprof
     
@@ -836,5 +866,8 @@ class VProfileCopy5G(_VProfileCopy):
         if freeze:
             vprof._freeze_velocity_profile(inplace=True)
             vprof._forget_ties(inplace=True)
+        else:
+            vprof._thaw_velocity_profile(inplace=True)
+            vprof._remember_ties(inplace=True)
 
         return vprof

@@ -3,7 +3,8 @@
 """
 __all__ = ['evaluate', 'evaluate_sparse', 'fit_deriv']
 
-from numpy import exp, pi, hypot, zeros_like, float64, bool_
+from math import hypot
+from numpy import exp, pi, zeros_like, float64, bool_
 from numpy.typing import NDArray
 
 N_SIGMAS:  float = 3.0

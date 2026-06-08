@@ -216,7 +216,7 @@ class BaseTemplate(ABC):
         template : Template
             The logspace-equivalent template.
         """
-        obj = self if inplace else self.copy(with_matrices=False)
+        obj = self if inplace else self.copy(with_matrices=True)
         if self.is_logspace:
             return (
                 obj 
@@ -264,12 +264,19 @@ class BaseTemplate(ABC):
             dxr=dxr,
             conserve=obj.info.loading.conserve,
         )
+
         obj._beta_matrix = alpha_matrix_sparse.__wrapped__(
             xr_edges, xn_edges,
             dx=dxr,
             dxr=dx if keep_x else diff(xn_edges),
             conserve=obj.info.loading.conserve,
         )
+        if not inplace:
+            # Remember the beta matrix if you need to mimic the logspace 
+            # template later
+            self._alpha_matrix = obj._alpha_matrix
+            self._beta_matrix = obj._beta_matrix
+
         obj._xn = 0.5 * (xn_edges[:-1] + xn_edges[1:])
 
         obj.x = xr
@@ -304,12 +311,12 @@ class BaseTemplate(ABC):
         assert template.is_logspace, "Provided template must be in logspace."
         assert not self.is_logspace, "Current template must be in linspace."
 
-        assert hasattr(self, '_beta_matrix'), \
+        assert self._beta_matrix is not None, \
             "Current template must have a beta matrix."
-        assert hasattr(template, '_beta_matrix'), \
+        assert template._beta_matrix is not None, \
             "Provided template must have a beta matrix."
         assert self._beta_matrix is template._beta_matrix, \
-            "Templates must share the same beta matrix."
+            "Templates must share the same beta matrix if 'inplace=True'."
 
         if inplace: 
             obj = self

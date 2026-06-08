@@ -41,12 +41,8 @@ def order_submodels(
     if isinstance(submodels, Fittable1DModel):
         return submodels if combine else [submodels]
     
-    _submodels: list[Fittable1DModel] = sorted(
-        submodels, 
-        key=lambda m: m.sorting_key,
-    )
-    if combine: return sum(_submodels[1:], start=_submodels[0])
-    else:       return _submodels
+    ms = sorted(submodels, key=lambda m: m.sorting_key)
+    return sum(ms[1:], start=ms[0]) if combine else ms
 
 @validate_call
 def separate_submodels(

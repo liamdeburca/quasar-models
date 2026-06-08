@@ -1,23 +1,23 @@
 """
     Lorem ipsum.
 """
-
 from typing import Self, Literal
 from astropy.modeling import Parameter
-from numpy import pi, dot, isclose, hypot
+from math import hypot
+from numpy import pi, dot, isclose
 from scipy.stats import norm
 
-from .utils import instantiate_model
-from ..utils.basemodel import BaseModel
-from ..utils.astropy import apply_bounds
-
-from pydantic import validate_call
+from quasar_models.utils.basemodel import BaseModel
+from quasar_models.utils.astropy import apply_bounds
 
 from quasar_typing.numpy import FittableFloatVector
 from quasar_typing.bounds import AstropyBounds
 from quasar_typing.logging import Logger_
 
+from quasar_utils.decorators import validate_call
+
 from . import evaluation
+from .utils import instantiate_model
 
 N_SIGMAS:  float = 3.0
 GAUSS_AMP: float = 1 / (2 * pi)**0.5
@@ -228,9 +228,7 @@ class GaussianModel(BaseModel):
         Lorem ipsum.
         """
         x, _, dy, _ = obj.getMaskedCoords(without_absorption=True)
-        profile = norm(self.mu, self.sigma)
-        p = profile.pdf(x) * (x * self.sigma_res)
-        
+        p = norm.pdf(x, self.mu, self.sigma) * (x * self.sigma_res)        
         return self.peak / dot(p, dy)
     
     def getFluxSNR(self, obj: object) -> float:
@@ -250,9 +248,7 @@ class GaussianModel(BaseModel):
         Lorem ipsum.
         """
         x, y, dy, _ = obj.getMaskedCoords(without_absorption=True)
-        dist = norm(self.mu, self.sigma)
-        p = dist.pdf(x) * (x * self.sigma_res)
-        
+        p = norm.pdf(x, self.mu, self.sigma) * (x * self.sigma_res)        
         return dot(p, y) / dot(p, dy)
     
     def getLineSNR(self, obj: object) -> float:
@@ -272,9 +268,7 @@ class GaussianModel(BaseModel):
         Lorem ipsum.
         """
         x, _, dy, _ = obj.getMaskedCoords(without_absorption=True)
-        dist = norm(self.mu, self.sigma)
-        p = dist.pdf(x) * (x * self.sigma_res)
-        
+        p = norm.pdf(x, self.mu, self.sigma) * (x * self.sigma_res)        
         return self.strength.value / dot(p, dy)
     
     def getWeightedAbsorption(self, obj: object) -> float:
@@ -294,8 +288,7 @@ class GaussianModel(BaseModel):
         Lorem ipsum.
         """        
         x, _, _, _, is_absorbed = obj.getMaskedCoords(without_absorption=False)
-        dist = norm(self.mu, self.sigma)
-        p = dist.pdf(x) * (x * self.sigma_res)
+        p = norm.pdf(x, self.mu, self.sigma) * (x * self.sigma_res)
         return dot(p, is_absorbed)
     
     def copy(self) -> Self:
@@ -324,8 +317,6 @@ class GaussianModel(BaseModel):
         z: FittableFloatVector,
     ) -> Self:
         """
-        ** PYDANTIC VALIDATED METHOD **
-
         Lorem ipsum.
 
         Parameters
