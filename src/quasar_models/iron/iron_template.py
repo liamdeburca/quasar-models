@@ -22,7 +22,7 @@ class IronTemplate(BaseTemplate):
     """
     Template class specifically designed for Iron pseudo-continua.
     """
-    name: Literal['vw2001', 'v2003', 'bw'] = field(default='vw2001', kw_only=True)
+    name: Literal['vw2001', 'v2003', 'bw'] | str = field(default='vw2001', kw_only=True)
 
     x_norm: float | None = field(default=None, kw_only=True)
     fwhm_norm: float | None = field(default=None, kw_only=True)
@@ -125,6 +125,11 @@ class IronTemplate(BaseTemplate):
     
     @classmethod
     # @lru_cache(maxsize=None)
-    def load_from_cache(cls, name: Literal['vw2001', 'v2003', 'bw'], *, info: Info) -> AbsoluteFITSPath:
+    def load_from_cache(
+        cls, 
+        name: Literal['vw2001', 'v2003', 'bw'] | str, 
+        *, 
+        info: Info,
+    ) -> AbsoluteFITSPath:
         args, kwargs = load_from_cache(name, info=info)
         return IronTemplate(*args, **kwargs)

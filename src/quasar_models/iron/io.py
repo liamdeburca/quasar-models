@@ -26,7 +26,7 @@ class IronTemplateProtocol(Protocol):
     data: FloatMatrix
     info: Info
     is_logspace: bool
-    name: Literal['vw2001', 'v2003', 'bw']
+    name: Literal['vw2001', 'v2003', 'bw'] | str
     path: AbsoluteFITSPath | None
     _alpha_matrix: csr_matrix_ | None
     _beta_matrix: csr_matrix_ | None
@@ -218,11 +218,12 @@ def load(
 
     return args, kwargs
 
-def load_from_cache(name: Literal['vw2001', 'v2003', 'bw'], *, info: Info) -> tuple[tuple, dict]:
-    return load(
-        convert_path(name), 
-        info,
-    )
+def load_from_cache(
+    name: Literal['vw2001', 'v2003', 'bw'] | str, 
+    *, 
+    info: Info,
+) -> tuple[tuple, dict]:
+    return load(convert_path(name), info)
 
 if __name__ == "__main__":
     PATH_TO_CACHE.mkdir(exist_ok=True)
