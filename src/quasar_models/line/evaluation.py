@@ -4,21 +4,22 @@
 __all__ = ['evaluate', 'evaluate_sparse', 'fit_deriv']
 
 from math import hypot
-from numpy import exp, pi, zeros_like, float64, bool_
-from numpy.typing import NDArray
+from numpy import exp, pi, float64, zeros
+
+from quasar_typing.numpy import FloatVector, BoolVector, FloatMatrix
 
 N_SIGMAS:  float = 3.0
 GAUSS_AMP: float = 1 / (2 * pi)**0.5
 
 def evaluate(
-    x: float | NDArray[float64],
+    x: float | FloatVector,
     strength: float,
     sigma_v: float,
     v_off: float,
     wave: float = 1.0,
     sigma_res: float = 1.0,
     gauss_amp: float = GAUSS_AMP,
-) -> float | NDArray[float64]:
+) -> float | FloatVector:
     """
     ** NUMBA OPTIMISED FUNCTION (FASTMATH) **
 
@@ -49,7 +50,7 @@ def evaluate(
     return gauss_amp * strength * exp(-0.5 * z * z) * inv_sigma
 
 def evaluate_sparse(
-    x: NDArray[float64],
+    x: FloatVector,
     strength: float,
     sigma_v: float,
     v_off: float,
@@ -57,7 +58,7 @@ def evaluate_sparse(
     sigma_res: float = 1.0,
     n_sigmas: float = N_SIGMAS,
     gauss_amp: float = GAUSS_AMP,
-) -> tuple[NDArray[bool_], NDArray[float64]]:
+) -> tuple[BoolVector, FloatVector]:
     """
     ** NUMBA OPTIMISED FUNCTION (FASTMATH) **
 
@@ -94,7 +95,7 @@ def evaluate_sparse(
     return mask, y
 
 def fit_deriv_numba(
-    x: NDArray[float64],
+    x: FloatVector,
     strength: float,
     sigma_v: float,
     v_off: float,
@@ -104,7 +105,7 @@ def fit_deriv_numba(
     fixed_strength: bool = True,
     fixed_sigma_v: bool = True,
     fixed_v_off: bool = True,
-) -> list[NDArray[float64]]:
+) -> list[FloatVector]:
     """
     ** NUMBA OPTIMISED FUNCTION (FASTMATH) **
 
@@ -132,9 +133,9 @@ def fit_deriv_numba(
     -----
     Lorem ipsum.
     """
-    df_dstrength = zeros_like(x, dtype=float64)
-    df_dsigma_v  = zeros_like(x, dtype=float64)
-    df_dv_off    = zeros_like(x, dtype=float64)
+    df_dstrength = zeros(x.size, dtype=float64)
+    df_dsigma_v = zeros(x.size, dtype=float64)
+    df_dv_off = zeros(x.size, dtype=float64)
 
     if not (fixed_strength and fixed_sigma_v and fixed_v_off):
         mean = wave * (1 + v_off)
@@ -159,7 +160,7 @@ def fit_deriv_numba(
     return [df_dstrength, df_dsigma_v, df_dv_off]
 
 def fit_deriv(
-    x: NDArray[float64],
+    x: FloatVector,
     strength: float,
     sigma_v: float,
     v_off: float,
@@ -167,7 +168,7 @@ def fit_deriv(
     sigma_res: float,
     fixed: dict[str, bool] | None = None,
     gauss_amp: float = GAUSS_AMP,   
-) -> list[NDArray[float64]]:
+) -> list[FloatVector]:
     """
     ** NUMBA OPTIMISED FUNCTION (FASTMATH) **
 
@@ -193,7 +194,7 @@ def fit_deriv(
     Lorem ipsum.
     """
     if fixed is None:
-        fixed = {'strength': True, 'sigma_v': True, 'v_off': True}
+        fixed = {'strength': False, 'sigma_v': False, 'v_off': False}
 
     return fit_deriv_numba(
         x,
@@ -203,22 +204,22 @@ def fit_deriv(
         wave,
         sigma_res,
         gauss_amp,
-        fixed_strength=fixed.get('strength', True),
-        fixed_sigma_v=fixed.get('sigma_v', True),
-        fixed_v_off=fixed.get('v_off', True),
+        fixed_strength=fixed['strength'],
+        fixed_sigma_v=fixed['sigma_v'],
+        fixed_v_off=fixed['v_off'],
     )
 
 ### Derivative w.r.t. x --  useful for numerical optimisation
 
 def prime(
-    x: float | NDArray[float64],
+    x: float | FloatVector,
     strength: float,
     sigma_v: float,
     v_off: float,
     wave: float = 1.0,
     sigma_res: float = 1.0,
     gauss_amp: float = GAUSS_AMP,
-) -> float | NDArray[float64]:
+) -> float | FloatVector:
     """
     ** NUMBA OPTIMISED FUNCTION (FASTMATH) **
 

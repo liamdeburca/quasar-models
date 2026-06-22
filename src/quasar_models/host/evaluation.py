@@ -41,6 +41,8 @@ def fit_deriv(
     interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
     fixed: dict[str, bool] | None = None,
 ) -> list[FloatVector]:
+    if fixed is None:
+        fixed = {'flux': False, 'fwhm': False}
     return evaluation.fit_deriv(
         x, flux, fwhm, 
         template=host_galaxy_template,
@@ -57,6 +59,8 @@ def fit_deriv_interp(
     interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
     fixed: dict[str, bool] | None = None,
 ) -> list[FloatVector]:
+    if fixed is None:
+        fixed = {'flux': False, 'fwhm': False}
     return evaluation.fit_deriv_interp(
         x, flux, fwhm, 
         template=host_galaxy_template,

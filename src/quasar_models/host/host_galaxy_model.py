@@ -2,13 +2,16 @@
 AstroPy compatible model: HostGalaxyModel.
 """
 from logging import getLogger
-from typing import Self
+from typing import Self, Literal, ClassVar
 from numpy import isfinite, argmin
 from astropy.modeling import Parameter
 
 from quasar_typing.numpy import FloatVector
+
 from quasar_utils.decorators import validate_call
 from quasar_utils.setup import Info
+
+from .io import convert_params_to_name
 
 from .host_galaxy_template import HostGalaxyTemplate
 from . import evaluation
@@ -18,47 +21,77 @@ from ..utils.template import TemplateModel
 logger = getLogger(__name__)
 
 class HostGalaxyModel(TemplateModel):
-    flux = Parameter(min=0)
-    fwhm = Parameter(min=0)
+    flux = Parameter(
+        default=1.0,
+        min=0.0,
+    )
+    fwhm = Parameter(
+        default=0.0,
+        min=0.0,
+        fixed=True,
+    )
 
-    @validate_call
-    def __init__(
-        self,
+    model_type: ClassVar[Literal['hg']] = 'hg'
+
+    @classmethod
+    def create(
+        cls,
         flux: float,
         fwhm: float,
         *,
-        info: Info,
+        info: Info | None = None,
         template: HostGalaxyTemplate | None = None,
         allow_interp_fitting: bool = False,
-        maxsize: int = 8,
-        name: str = 'host_galaxy_model',
-        **kwargs,
-    ):
+        name: Literal['bc2003'] | None = None,
+        age: int | None = None,
+    ) -> Self:
         if template is None:
-            template = HostGalaxyTemplate.load_from_cache(name, info=info)
-        else:
-            if not template.info == info:
-                msg = "The HostGalaxyTemplate's info instance does not match " \
-                    "the HostGalaxyModel's info instance."
+            if info is None:
+                msg = "'info' cannot be None if 'template' is not provided."
                 raise ValueError(msg)
-        
-            name = template.name
+            if name is None:
+                msg = "'name' cannot be None if 'template' is not provided."
+                raise ValueError(msg)
+            if age is None:
+                msg = "'age' cannot be None if 'template' is not provided."
+                raise ValueError(msg)
+            
+            template = HostGalaxyTemplate.load_from_cache(
+                name=name, 
+                age=age, 
+                info=info,
+            )
 
-        super().__init__(flux, fwhm, name=name, **kwargs)
-        
-        self.info: Info = info
-        self.template: HostGalaxyTemplate = template
-        self.allow_interp_fitting: bool = allow_interp_fitting
+        model = HostGalaxyModel(
+            flux, fwhm,
+            name=convert_params_to_name(template.name, template.age),
+            meta={
+                'template': template,
+                'allow_interp_fitting': allow_interp_fitting,
+                '_interpolation_matrices': {},
+            },
+        )
+        model.fwhm.bounds = (template.fwhm[0], template.fwhm[-1])
+        model.fwhm.value = apply_bounds.__wrapped__(
+            model.fwhm.value, 
+            model.fwhm.bounds,
+        )
 
-        self._initialise_cache(maxsize)
+        return model
+    
+    @property
+    def template(self) -> HostGalaxyTemplate: 
+        return self.meta['template']
 
-        # Update FWHM bounds using template
-        self.fwhm.bounds = (template.fwhm[0], template.fwhm[-1])
-        self.fwhm.value  = apply_bounds(self.fwhm.value, self.fwhm.bounds)
+    @template.setter
+    def template(self, value: HostGalaxyTemplate) -> None:
+        self.meta['template'] = value
 
     @property
-    def _perform_interp_fitting(self) -> bool:
-        return self.allow_interp_fitting
+    def sorting_key(self) -> tuple[float, float]:
+        return (3.0, self.template.x_norm)
+
+    ### 
     
     def evaluate(self, x, flux, fwhm):
         flux = float(flux)
@@ -68,12 +101,12 @@ class HostGalaxyModel(TemplateModel):
             return evaluation.evaluate_interp(
                 x, flux, fwhm,
                 host_galaxy_template=self.template,
-                interpolation_matrix=self._calculate_interpolation_matrices(x),
+                **self._interpolation_matrices,
             )
         return evaluation.evaluate(
             x, flux, fwhm,
             host_galaxy_template=self.template,
-            interpolation_matrix=self._calculate_interpolation_matrices(x),
+            **self._interpolation_matrices,
         )
     
     def fit_deriv(self, x, flux, fwhm):
@@ -84,12 +117,14 @@ class HostGalaxyModel(TemplateModel):
             return evaluation.fit_deriv_interp(
                 x, flux, fwhm,
                 host_galaxy_template=self.template,
-                interpolation_matrix=self._calculate_interpolation_matrices(x),
+                fixed=self.fixed_dict,
+                **self._interpolation_matrices,
             )
         return evaluation.fit_deriv(
             x, flux, fwhm,
             host_galaxy_template=self.template,
-            interpolation_matrix=self._calculate_interpolation_matrices(x),
+            **self._interpolation_matrices,
+            fixed=self.fixed_dict,
         )
     
     # Utilities

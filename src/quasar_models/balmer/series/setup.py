@@ -92,10 +92,12 @@ class SH1995:
             self.fwhm, self.x,
             waves, weights, 
             temp, dens, n_u_range,
-            info=self.info,
             is_logspace=True,
-            name=self.name,
+            sigma_res=self.info.loading.sigma_res,
+            x_norm=self.info.balmer.edge,
+            fwhm_norm=self.info.balmer.fwhm_norm,
             normalisation=None,
+            name=self.name,
         )
         return template.normalise(inplace=True)
     
@@ -105,7 +107,7 @@ class SH1995:
                 temp=temp, 
                 dens=dens, 
                 n_u_range=self.n_u_range,
-            ).save_to_cache()
+            ).save_to_cache(self.info)
 
 def main() -> None:
     SH1995().main()
@@ -131,7 +133,7 @@ def plot() -> None:
     sel = slice(None, None, 10)
 
     for path in PATH_TO_CACHE.glob("series*.fits"):
-        template = BalmerSeriesTemplate.load(path, info)
+        template = BalmerSeriesTemplate.load(path=path, info=info)
 
         fig, ax = plt.subplots(dpi=300, figsize=(8, 4))
         ax.set_title(path.stem, loc='left')

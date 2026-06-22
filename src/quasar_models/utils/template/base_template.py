@@ -1,6 +1,6 @@
 __all__ = ['BaseTemplate']
 
-from typing import Self, ClassVar, Any
+from typing import Self
 from abc import ABC, abstractmethod
 from numpy import (
     log, isfinite, arange, empty, exp, median, full_like, float64, maximum,
@@ -37,25 +37,54 @@ FWHM_TO_SIGMA: float = 1 / SIGMA_TO_FWHM
 
 TemplateTuple = tuple[FloatMatrix, FloatVector, FloatVector]
 
-@dataclass(eq=False)
+@dataclass
 class BaseTemplate(ABC):
-    fwhm: SortedFloatVector
-    x: SortedFloatVector
-    data: FloatMatrix
+    fwhm: SortedFloatVector = field(kw_only=True)
+    x: SortedFloatVector = field(kw_only=True)
+    data: FloatMatrix = field(kw_only=True)
 
-    info: Info = field(default_factory=Info, kw_only=True)
-    is_logspace: bool = field(default=False, kw_only=True)
-    name: str = field(default='no_name', kw_only=True)
+    is_logspace: bool = field(kw_only=True)
+    sigma_res: float | None = field(default=None, kw_only=True)
+    name: str = field(kw_only=True)
+
     path: AbsoluteFITSPath | None = field(default=None, kw_only=True)
 
     _alpha_matrix: csr_matrix_ | None = field(default=None, repr=False, kw_only=True)
     _beta_matrix: csr_matrix_ | None = field(default=None, repr=False, kw_only=True)
     _xn: SortedFloatVector | None = field(default=None, repr=False, kw_only=True)
 
-    SIGMA_TO_FWHM: ClassVar[float] = 2 * (2 * log(2))**0.5
-    FWHM_TO_SIGMA: ClassVar[float] = 1 / SIGMA_TO_FWHM
+    x_norm: float = field(kw_only=True)
+    fwhm_norm: float = field(kw_only=True)
+    normalisation: float | None = field(default=None, kw_only=True)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        if self.is_logspace:
+            assert self.sigma_res is not None
+        else:
+            assert self.sigma_res is None
+
+        self._validate_shapes()
+
+    def __getstate__(self) -> dict:
+        # Serialisation is primarily used in fitting routines, where binning 
+        # matrices are not needed.
+        return {
+            'fwhm': self.fwhm,
+            'x': self.x,
+            'data': self.data,
+            'is_logspace': self.is_logspace,
+            'sigma_res': self.sigma_res,
+            'name': self.name,
+            'path': self.path,
+            'x_norm': self.x_norm,
+            'fwhm_norm': self.fwhm_norm,
+            'normalisation': self.normalisation,
+        }
+    
+    def __setstate__(self, state: dict) -> None:
+        self.__init__(**state)
+        
+    def _validate_shapes(self):
         if self.fwhm.size != self.data.shape[0]:
             msg = "fwhm size {} does not match first axis of data {}".format(
                 self.fwhm.size, self.data.shape[0],
@@ -86,11 +115,19 @@ class BaseTemplate(ABC):
 
         return obj
 
-    def __eq__(self, other: Any) -> bool:
-        if not isinstance(other, BaseTemplate):
-            return False
-
-        return array_equal(self.fwhm, other.fwhm) \
+    def __eq__(self, other: object) -> bool:
+        """
+        True if all attributes are equal. 
+        """
+        return isinstance(other, self.__class__) \
+            and (self.name == other.name) \
+            and (self.is_logspace == other.is_logspace) \
+            and (self.sigma_res == other.sigma_res) \
+            and (self.path == other.path) \
+            and (self.x_norm == other.x_norm) \
+            and (self.fwhm_norm == other.fwhm_norm) \
+            and (self.normalisation == other.normalisation) \
+            and array_equal(self.fwhm, other.fwhm) \
             and array_equal(self.x, other.x) \
             and array_equal(self.data, other.data)
     
@@ -118,6 +155,8 @@ class BaseTemplate(ABC):
         fwhm: SortedFloatVector,
         inplace: bool = False,
         keep_x: bool = False,
+        *,
+        sigma_res: float | None = None,
     ) -> Self:
         """
         Upsamples the Template to the specified FWHM values.
@@ -139,7 +178,7 @@ class BaseTemplate(ABC):
                 else:
                     k = kernel(
                         (fwhm_curr**2 - fwhm_prev**2)**0.5,
-                        self.info.loading.sigma_res,
+                        self.sigma_res,
                     )
                     data[i,:] = convolve_signal.__wrapped__(data_prev, k)
 
@@ -149,7 +188,12 @@ class BaseTemplate(ABC):
             obj.fwhm = fwhm
             obj.data = data
         else:
-            template = self.createLogspace(inplace=False, keep_x=keep_x)
+            assert sigma_res is not None
+
+            template = self.createLogspace(
+                sigma_res=sigma_res,
+                keep_x=keep_x,
+            )
             template.upsample(fwhm, inplace=True)
             obj = self.mimicLogspace(template, inplace=inplace)
 
@@ -195,9 +239,11 @@ class BaseTemplate(ABC):
 
     def createLogspace(
         self,
+        *,
+        sigma_res: float,
         xr: FloatVector | None = None,
-        inplace: bool = False,
         keep_x: bool = False,
+        conserve: bool = True,
     ) -> Self:
         """
         Creates a logspace equivalent of the current Template. 
@@ -216,20 +262,13 @@ class BaseTemplate(ABC):
         template : Template
             The logspace-equivalent template.
         """
-        obj = self if inplace else self.copy(with_matrices=True)
         if self.is_logspace:
-            return (
-                obj 
-                if array_equal(obj.x, xr) else 
-                obj.interpolate(xr, inplace=True)
-            )
-
-        dx = lin_dx(obj.x)
-        x_edges = empty(obj.x.size + 1, dtype=float)
-        x_edges[:-1] = obj.x - dx / 2
-        x_edges[-1] = obj.x[-1] + dx[-1] / 2
-
-        sigma_res: float = obj.info.loading['sigma_res']
+            return self.interpolate(xr, inplace=False)
+        
+        dx = lin_dx(self.x)
+        x_edges = empty(self.x.size + 1, dtype=float)
+        x_edges[:-1] = self.x - dx / 2
+        x_edges[-1] = self.x[-1] + dx[-1] / 2
 
         if xr is None:
             nr = log(x_edges[-1] / x_edges[0]) // log(1 + sigma_res) + 1
@@ -258,32 +297,30 @@ class BaseTemplate(ABC):
             xn_edges[n_left:-n_right] = x_edges
             xn_edges[-n_right:] = x_edges[-1] + dxn * arange(1, n_right+1)
 
-        obj._alpha_matrix = alpha_matrix_sparse.__wrapped__(
+        cp = self.copy()
+        cp.is_logspace = True
+        cp.sigma_res = sigma_res
+        cp._xn = 0.5 * (xn_edges[:-1] + xn_edges[1:])
+        cp.x = xr
+
+        self._alpha_matrix = cp._alpha_matrix = alpha_matrix_sparse.__wrapped__(
             x_edges, xr_edges,
             dx=dx,
             dxr=dxr,
-            conserve=obj.info.loading.conserve,
+            conserve=conserve,
         )
-
-        obj._beta_matrix = alpha_matrix_sparse.__wrapped__(
+        self._beta_matrix = cp._beta_matrix = alpha_matrix_sparse.__wrapped__(
             xr_edges, xn_edges,
             dx=dxr,
             dxr=dx if keep_x else diff(xn_edges),
-            conserve=obj.info.loading.conserve,
+            conserve=conserve,
         )
-        if not inplace:
-            # Remember the beta matrix if you need to mimic the logspace 
-            # template later
-            self._alpha_matrix = obj._alpha_matrix
-            self._beta_matrix = obj._beta_matrix
+        cp.data = maximum(cp._alpha_matrix.dot(cp.data.T).T, 0)
 
-        obj._xn = 0.5 * (xn_edges[:-1] + xn_edges[1:])
+        cp.normalisation = None
+        cp.__post_init__()
 
-        obj.x = xr
-        obj.data = maximum(obj._alpha_matrix.dot(obj.data.T).T, 0)
-        obj.is_logspace = True
-
-        return obj
+        return cp
     
     def mimicLogspace(
         self,

@@ -2,12 +2,11 @@
 AstroPy compatible model: IronModel.
 """
 from logging import getLogger
-from numpy import zeros_like, invert, nan, nanargmin, argmax, float64, array_equal, isnan
+from numpy import zeros_like, invert, nan, nanargmin, argmax, float64, array_equal, isfinite
 from astropy.modeling import Parameter
-from typing import Literal, Self
+from typing import Literal, Self, ClassVar
 
 from quasar_typing.numpy import FloatVector
-
 from quasar_utils.setup import Info
 from quasar_utils.decorators import validate_call
 from quasar_utils.raster import rasterise
@@ -20,52 +19,95 @@ from ..utils.astropy import apply_bounds
 logger = getLogger(__name__)
 
 class IronModel(TemplateModel):
-    flux = Parameter(min=0)
-    fwhm = Parameter(min=0)
-    split = Parameter(default=1, min=0, fixed=True)
-    left = Parameter(default=1, min=0, max=1, fixed=True)
-    right = Parameter(default=1, min=0, max=1, fixed=True)
+    flux = Parameter(
+        default=1.0,
+        min=0.0,
+        fixed=False,
+    )
+    fwhm = Parameter(
+        default=1.0,
+        min=0.0,
+        fixed=False,
+    )
+    split = Parameter(
+        default=1.0,
+        min=0.0,
+        fixed=True,
+    )
+    left = Parameter(
+        default=1.0,
+        min=0.0,
+        max=1.0,
+        fixed=True,
+    )
+    right = Parameter(
+        default=1.0,
+        min=0.0,
+        max=1.0,
+        fixed=True,
+    )
 
-    @validate_call
-    def __init__(
-        self,
+    model_type: ClassVar[Literal['fe']] = 'fe'
+
+    @classmethod
+    def create(
+        cls,
         flux: float,
         fwhm: float,
         *,
-        info: Info,
+        scale: float,
         template: IronTemplate | None = None,
+        info: Info | None = None,
         split: float = 1.0,
         left: float = 1.0,
         right: float = 1.0,
         allow_interp_fitting: bool = False,
-        maxsize: int = 8,
-        name: str = 'iron_model',
-        **kwargs,
-    ):
+        name: str | Literal['vw2001', 'v2003', 'bw'] | None = None,
+    ) -> Self:
         if template is None:
-            template = IronTemplate.load_from_cache(name, info=info)
-        else:
-            if not template.info == info:
-                msg = "The IronTemplate's info instance does not match "\
-                    "the IronModel's info instance."
+            if info is None:
+                msg = "'info' cannot be None if 'template' is not provided."
                 raise ValueError(msg)
-            name = template.name
-        
-        super().__init__(flux, fwhm, split, left, right, name=name, **kwargs)
+            if name is None:
+                msg = "'name' cannot be None if 'template' is not provided."
+                raise ValueError(msg)
+            
+            template = IronTemplate.load_from_cache(name=name, info=info)
 
-        self.info: Info = info
-        self.template: IronTemplate = template
-        self.allow_interp_fitting: bool = allow_interp_fitting
+        model = IronModel(
+            flux, fwhm,
+            split=split, left=left, right=right,
+            name=template.name,
+            meta={
+                'template': template,
+                'scale': scale,
+                'allow_interp_fitting': allow_interp_fitting,
+                '_interpolation_matrices': {},
+            }
+        )
+        model.split.bounds = (
+            template.x[0],
+            template.x[-1],
+        )
+        model.split.value = apply_bounds.__wrapped__(
+            model.split.value,
+            model.split.bounds,
+        )
+        return model
+    
+    @property
+    def template(self) -> IronTemplate: return self.meta['template']
 
-        self._initialise_cache(maxsize)
+    @template.setter
+    def template(self, value: IronTemplate) -> None:
+        self.meta['template'] = value
 
-        # Update FWHM bounds using template
-        self.fwhm.bounds  = (template.fwhm[0], template.fwhm[-1])
-        self.fwhm.value   = apply_bounds(self.fwhm.value, self.fwhm.bounds)
-        
-        # Update SPLIT bounds using template
-        self.split.bounds = (template.x[0], template.x[-1])
-        self.split.value  = apply_bounds(self.split.value, self.split.bounds)
+    @property
+    def scale(self) -> float: return self.meta['scale']
+
+    @scale.setter
+    def scale(self, value: float) -> None:
+        self.meta['scale'] = value
     
     @property
     def _perform_interp_fitting(self) -> bool:
@@ -85,14 +127,14 @@ class IronModel(TemplateModel):
                 x,
                 flux, fwhm,
                 template=self.template,
-                **self._calculate_interpolation_matrices(x),
+                **self._interpolation_matrices,
             )
         
         return evaluation.evaluate(
             x,
             flux, fwhm, split, left, right,
             template=self.template,
-            **self._calculate_interpolation_matrices(x),
+            **self._interpolation_matrices,
         )
     
     def evaluate_sparse(self, x, flux, fwhm, split, left, right):
@@ -106,7 +148,7 @@ class IronModel(TemplateModel):
             x,
             flux, fwhm, split, left, right,
             template=self.template,
-            **self._calculate_interpolation_matrices(x),
+            **self._interpolation_matrices,
         )
     
     def fit_deriv(self, x, flux, fwhm, split, left, right):
@@ -115,37 +157,30 @@ class IronModel(TemplateModel):
         split = float(split)
         left = float(left)
         right = float(right)
-        
+
         if self._perform_interp_fitting:
             return evaluation.fit_deriv_interp(
                 x,
                 flux, fwhm,
                 template=self.template,
-                **self._calculate_interpolation_matrices(x),
-                fixed=self.fixed,
+                fixed=self.fixed_dict,
+                **self._interpolation_matrices,
             )
         
         return evaluation.fit_deriv(
             x,
             flux, fwhm, split, left, right,
             template=self.template,
-            **self._calculate_interpolation_matrices(x),
-            fixed=self.fixed,
+            fixed=self.fixed_dict,
+            **self._interpolation_matrices,
         )
-    
-    @property
-    def model_type(self) -> Literal['fe']:
-        """
-        Returns a string-representation of the model type.
-        """
-        return 'fe'
-    
+            
     @property
     def sorting_key(self) -> tuple[float, float]:
         """
         Return a tuple used for sorting models.
         """
-        return (1.0, self.template.x[argmax(self.template.data[0])])
+        return (1.0, self.template.x_norm)
     
     # Utilities
     
@@ -160,8 +195,6 @@ class IronModel(TemplateModel):
         inplace: bool = False,
     ) -> Self:
         """
-        **PYDANTIC VALIDATED FUNCTION**
-
         For each available FWHM, calculates the best-fit flux and the 
         corresponding goodness-of-fit (chi-square), identifying the best 
         flux-FWHM pair.
@@ -182,7 +215,7 @@ class IronModel(TemplateModel):
             data = template.data * template._get_split_weight(
                 x, 
                 self.split.value, self.left.value, self.right.value, 
-                self.info.iron.scale,
+                self.scale,
             )[None,:]
 
             chi2s, fluxs = rasterise.__wrapped__(
@@ -193,7 +226,8 @@ class IronModel(TemplateModel):
                 flux_bounds=self.flux.bounds, 
                 fwhm_bounds=self.fwhm.bounds,
             )
-            if isnan(chi2s).all():
+
+            if not isfinite(chi2s).any():
                 # Failed rasterisation, possibly due to selected data not 
                 # covering template.
                 return self

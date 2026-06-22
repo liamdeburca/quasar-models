@@ -31,12 +31,15 @@ def _split_fit_deriv(
     *,
     sigma_res: float = None,
     scale: float = None,
-    fixed: dict[str, bool] = None,
+    fixed: dict[str, bool] | None = None,
 ) -> list[NDArray[float64], NDArray[float64], NDArray[float64]]:
     """
     Calculates the partial derivatives of the split function with respect to the
     parameters: 'split', 'left', 'right'.
     """
+    if fixed is None:
+        fixed = {'split': False, 'left': False, 'right': False}
+    
     assert sigma_res is not None, "sigma_res must be provided"
     assert scale is not None, "scale must be provided"
 
@@ -44,7 +47,7 @@ def _split_fit_deriv(
     df_dleft  = zeros_like(x, dtype=float64)
     df_dright = zeros_like(x, dtype=float64)
 
-    if fixed is not None and not all(fixed.values()):
+    if not all(fixed.values()):
         _exp_z = exp(clip(log(split / x) / (scale * sigma_res), -5, 5))
         s = 1 / (1 + _exp_z)
 
@@ -84,7 +87,8 @@ def prepare_data_for_split(
 
     This approach ensures that convolved signals are as correct as possible. 
     """
-    if left == right == 1.0: return template.fwhm, template.data
+    if left == right == 1.0: 
+        return template.fwhm, template.data
     
     _fwhm = template.fwhm[:1]
     _data = template.data[:1] * _split_evaluate(

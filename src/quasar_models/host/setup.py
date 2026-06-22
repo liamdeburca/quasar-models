@@ -8,12 +8,14 @@ It currently supports data from the following:
 __all__ = ['BC2003']
 
 from pathlib import Path
-from numpy import array, float64, isclose
+from numpy import array, float64
 from astropy.io import fits
 from astropy.units import Unit
+from astropy.constants import c
 
 from quasar_utils.setup import Info
 from quasar_typing.numpy import FloatVector
+
 
 from quasar_models.host.io import PATH_TO_DATA, PATH_TO_CACHE
 from quasar_models.host.host_galaxy_template import HostGalaxyTemplate
@@ -22,7 +24,7 @@ class BC2003:
     name: str = 'bc2003'
     paths: list[Path] = sorted(PATH_TO_DATA.glob("tau06_z02_*_001.fits"))
 
-    x_lb: float = 3200.0
+    x_lb: float = 1000.0
     x_ub: float = 9500.0
 
     def __init__(self):
@@ -54,17 +56,17 @@ class BC2003:
                 y = y[mask]
 
                 template = HostGalaxyTemplate(
-                    self.fwhm, 
-                    self.info.units.getWavelength(x * Unit('angstrom')), 
-                    y[None,:],
-                    info=self.info,
+                    fwhm=self.fwhm,
+                    x=self.info.units.getWavelength(x * Unit('angstrom')),
+                    data=y[None,:],
                     is_logspace=False,
                     name=self.name,
-                    path=None,
+                    x_norm=self.info.host.x_norm,
+                    fwhm_norm=self.info.host.fwhm_norm,
                     age=age,
                 )
                 template.normalise(inplace=True)
-                template.save_to_cache()
+                template.save_to_cache(self.info)
                 del template
 
 def main() -> None:
@@ -77,7 +79,10 @@ def plot() -> None:
     info = bc2003.info
         
     templates: list[HostGalaxyTemplate] = sorted(
-        (HostGalaxyTemplate.load(path, info) for path in PATH_TO_CACHE.glob("bc2003*.fits")),
+        (
+            HostGalaxyTemplate.load(path=path, info=info) 
+            for path in PATH_TO_CACHE.glob("bc2003*.fits")
+        ),
         key=lambda t: t.age,
     )
 

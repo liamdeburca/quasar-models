@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Self
+from typing import Self, Iterator
 from astropy.modeling import CompoundModel, Fittable1DModel, Model
+
+from pydantic_core import PydanticCustomError
+from pydantic_core.core_schema import no_info_plain_validator_function
 
 class BaseParameterTie(ABC):
     def __init__(
@@ -10,6 +13,32 @@ class BaseParameterTie(ABC):
     ) -> None:
         self.target_name = target_name
         self.target_parameter = target_parameter
+
+    def __iter__(self) -> Iterator[str]:
+        yield self.target_name
+        yield self.target_parameter
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, self.__class__) \
+            and (tuple(self) == tuple(other))
+
+    def copy(self) -> Self:
+        return self.__class__(
+            target_name=self.target_name,
+            target_parameter=self.target_parameter,
+        )
+
+    @classmethod
+    def _validate(cls, value: object) -> Self:
+        if not isinstance(value, cls):
+            msg = f"Expected a {cls.__name__} instance, "\
+                f"got {type(value).__name__}."
+            raise PydanticCustomError("validation_error", msg)
+        return value
+    
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source, handler):
+        return no_info_plain_validator_function(cls._validate)
 
     @abstractmethod
     def __call__(self, model: CompoundModel) -> float: ...

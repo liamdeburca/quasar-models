@@ -1,14 +1,15 @@
 from logging import getLogger
 from astropy.modeling import Parameter
-from typing import Self, Callable, Literal
+from typing import Self, Callable, Literal, ClassVar
 from numpy import log, exp, float64
 from numpy.typing import NDArray
 
-from pydantic import validate_call
-from pydantic_core import ValidationError, PydanticCustomError
-from pydantic_core.core_schema import no_info_plain_validator_function
+from pydantic_core import ValidationError
+
+from quasar_utils.decorators import validate_call
 
 from quasar_typing.numpy import FloatVector, FloatMatrix
+
 from . import evaluation
 from ..utils.basemodel import BaseModel
 from ..utils.linear_regression import linreg
@@ -17,54 +18,81 @@ from ..utils.astropy import apply_bounds
 logger = getLogger(__name__)
 
 class PowerLawModel(BaseModel):
-    flux = Parameter(default=1, bounds=(0, None))
-    alpha = Parameter(default=0, bounds=(-10, 10))
+    flux = Parameter(
+        default=1.0,
+        bounds=(0.0, None),
+        fixed=False,
+    )
+    alpha = Parameter(
+        default=1.0,
+        bounds=(-10.0, 10.0),
+        fixed=False,
+    )
 
-    def __init__(
-        self,
+    model_type: ClassVar[Literal['pl']] = 'pl'
+
+    @classmethod
+    def create(
+        cls,
         x0: float,
         y0: float,
         flux: float,
         alpha: float,
-        **kwargs,
-    ):
-        super().__init__(flux, alpha, **kwargs)
-        self.x0: float = x0
-        self.y0: float = y0
+        name: str = 'powerlaw',
+    ) -> Self:
+        return PowerLawModel(
+            flux,
+            alpha,
+            meta={'x0': x0, 'y0': y0},
+            name=name,
+        )
+    
+    @property
+    def x0(self) -> float:
+        return self.meta['x0']
+    
+    @x0.setter
+    def x0(self, value: float) -> None:
+        self.meta['x0'] = value
+    
+    @property
+    def y0(self) -> float:
+        return self.meta['y0']
+
+    @y0.setter
+    def y0(self, value: float) -> None:
+        self.meta['y0'] = value
 
     def evaluate(self, x, flux, alpha):
-        return evaluation.evaluate(x, flux, alpha, x0=self.x0)
+        return evaluation.evaluate(
+            x, 
+            flux, alpha, 
+            x0=self.x0,
+        )
     
     def evaluate_sparse(self, x, flux, alpha):
-        return evaluation.evaluate_sparse(x, flux, alpha, x0=self.x0)
+        return evaluation.evaluate_sparse(
+            x, 
+            flux, alpha, 
+            x0=self.x0,
+        )
     
     def fit_deriv(self, x, flux, alpha):
-        return evaluation.fit_deriv(x, flux, alpha, x0=self.x0, fixed=self.fixed)
+        return evaluation.fit_deriv(
+            x, 
+            flux, alpha, 
+            x0=self.x0, 
+            fixed=self.fixed_dict,
+        )
 
     def inverse(self, y, flux, alpha):
-        return evaluation.inverse(y, flux, alpha, x0=self.x0)
-    
-    @classmethod
-    def _validate(cls, value: object) -> Self:
-        if not isinstance(value, PowerLawModel):
-            msg = "Expected PowerLawModel, got {}".format(
-                type(value).__name__,
-            )
-            raise PydanticCustomError('validation_error', msg)
-        return value
-    
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source_type, handler):
-        return no_info_plain_validator_function(cls._validate)
+        return evaluation.inverse(
+            y, 
+            flux, alpha, 
+            x0=self.x0,
+        )
     
     # Utilities
-
-    @property
-    def model_type(self) -> Literal['pl']:
-        """
-        Returns a string denoting the model type.
-        """
-        return 'pl'
     
     @property
     def sorting_key(self) -> tuple[float, float]:
@@ -72,10 +100,7 @@ class PowerLawModel(BaseModel):
         Returns a key used for sorting submodels of compound models. The key is
         a tuple. 
         """
-        return (
-            0.,     # 0: power law, 1: iron emission, 2: line emission
-            0.      # ...
-        )
+        return (0.0, 0.0)
     
     ### Custom utility methods
     @validate_call
@@ -176,7 +201,13 @@ class PowerLawModel(BaseModel):
             msg = f"Linear regression failed due to unexpected error: {e}"
             logger.warning(msg)
             
-        model = PowerLawModel(self.x0, self.y0, flux, alpha, name=self.name)
+        model = PowerLawModel.create(
+            self.x0, 
+            self.y0, 
+            flux, 
+            alpha, 
+            name=self.name,
+        )
         model.flux.bounds = self.flux.bounds
         model.alpha.bounds = self.alpha.bounds
 

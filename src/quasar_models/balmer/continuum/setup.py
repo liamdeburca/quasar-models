@@ -1,8 +1,7 @@
 """
 This script contains utilities for setting up various Balmer continuum templates.
 """
-from pathlib import Path
-from numpy import arange, exp, log
+from numpy import arange, log
 from astropy.units import Unit
 from astropy.constants import c
 from itertools import product
@@ -52,8 +51,11 @@ class QSFit:
         scale: float,
     ) -> BalmerContinuumTemplate:
         return BalmerContinuumTemplate.instantiate(
-            self.fwhm, self.x,
-            temp, tau, scale,
+            self.fwhm, 
+            self.x,
+            temp, 
+            tau, 
+            scale,
             info=self.info,
             is_logspace=True,
             name=self.name,
@@ -65,7 +67,7 @@ class QSFit:
                 temp=temp, 
                 tau=tau, 
                 scale=scale,
-            ).save_to_cache()
+            ).save_to_cache(self.info)
 
 def main():
     QSFit().main()
@@ -91,7 +93,7 @@ def plot() -> None:
     sel = slice(None, None, 10)
 
     for path in PATH_TO_CACHE.glob("continuum*.fits"):
-        template = BalmerContinuumTemplate.load(path, info)
+        template = BalmerContinuumTemplate.load(path=path, info=info)
 
         fig, ax = plt.subplots(dpi=300, figsize=(8, 4))
         ax.set_title(path.stem, loc='left')

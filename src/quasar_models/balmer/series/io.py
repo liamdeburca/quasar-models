@@ -10,29 +10,19 @@ from pathlib import Path
 from astropy.io import fits
 from astropy.units import Unit
 
-from quasar_typing.numpy import FloatMatrix, SortedFloatVector, FloatVector
-from quasar_typing.scipy import csr_matrix_
+from quasar_typing.numpy import SortedFloatVector, FloatVector
 from quasar_typing.pathlib import AbsoluteFITSPath, AnyAbsoluteFITSPath
 
 from quasar_utils.setup import Info
 
-from ...utils.template.io import drop_nonpos
+from ...utils.template.io import _save, _load, BaseTemplateProtocol
 
 _this_file: Path = Path(__file__).resolve()
 PATH_TO_CACHE: Path = _this_file.parents[1] / ".cache"
 PATH_TO_DATA: Path = _this_file.parents[1] / ".data"
 
-class BalmerSeriesTemplateProtocol(Protocol):
-    fwhm: SortedFloatVector
-    x: SortedFloatVector
-    data: FloatMatrix
-    info: Info
-    is_logspace: bool
-    name: Literal['sh1995']
-    path: AbsoluteFITSPath | None
-    _alpha_matrix: csr_matrix_ | None
-    _beta_matrix: csr_matrix_ | None
-    _xn: SortedFloatVector | None
+class BalmerSeriesTemplateProtocol(BaseTemplateProtocol, Protocol):
+    name: Literal['SH1995']
 
     waves: SortedFloatVector
     weights: FloatVector
@@ -40,22 +30,19 @@ class BalmerSeriesTemplateProtocol(Protocol):
     dens: float
     n_u_range: tuple[int, int]
 
-    fwhm_norm: float
-    normalisation: float
-
 def convert_path(path: str | AbsoluteFITSPath) -> AbsoluteFITSPath:
     if isinstance(path, str):
-        path = Path(str.removesuffix('.fits') + '.fits')
+        path = Path(str(path).removesuffix('.fits') + '.fits')
         if '/' not in path.as_posix():
             path = PATH_TO_CACHE / path
     return path
 
 def convert_params_to_path(
+    *,
     name: Literal['sh1995'],
     temp: float,
     dens: float,
     n_u_range: tuple[int, int],
-    *,
     info: Info,
     mode: Literal['save', 'load'],
 ) -> AnyAbsoluteFITSPath:
@@ -88,181 +75,95 @@ def convert_params_to_path(
     raise FileNotFoundError(msg)
 
 def save(
+    *,
     template: BalmerSeriesTemplateProtocol,
     path: str | AbsoluteFITSPath,
+    info: Info,
 ) -> AbsoluteFITSPath:
     path = convert_path(path)
-
-    v_unit: str = template.info.units.velocity_unit.to_string()
-    x_unit: str = template.info.units.wavelength_unit.to_string()
-    f_unit: str = template.info.units.getFluxUnit().to_string()
-    t_unit: str = template.info.units.temp_unit.to_string()
-    d_unit: str = template.info.units.dens_unit.to_string()
-    
-    hdul = fits.HDUList()
-
-    hdu = fits.PrimaryHDU(data=template.data)
-    
-    hdr = hdu.header
-    hdr['NAME'] = template.name
-    hdr['CTYPE1'] = ('fwhm', 'fwhm axis')
-    hdr['CTYPE2'] = ('x', 'spectral axis')
-    hdr['BUNIT'] = (f_unit, 'flux unit')
-    hdr['LOGSPACE'] = 'y' if template.is_logspace else 'n'
-
-    hdul.append(hdu)
-
-    col_fwhm = fits.Column(
-        name='fwhm',
-        format='F',
-        unit=v_unit,
-        array=template.info.units.getC(template.fwhm).to(v_unit).value,
+    hdul = _save(
+        template=template,
+        info=info,
     )
-    col_x = fits.Column(
-        name='x',
-        format='F',
-        unit=x_unit,
-        array=template.x,
-    )
-    col_waves = fits.Column(
+
+    x_unit: str = info.units.wavelength_unit.to_string()
+    t_unit: str = info.units.temp_unit.to_string()
+    d_unit: str = info.units.dens_unit.to_string()
+
+    hdul[0].header['N_WAVES'] = template.waves.size
+
+    hdul[1].columns.add_col(fits.Column(
         name='waves',
-        format='F',
+        format='D',
         unit=x_unit,
         array=template.waves,
-    )
-    col_weights = fits.Column(
+    ))
+    hdul[1].columns.add_col(fits.Column(
         name='weights',
-        format='F',
+        format='D',
         array=template.weights,
-    )
-    col_temp = fits.Column(
+    ))
+    hdul[1].columns.add_col(fits.Column(
         name='temp',
-        format='F',
+        format='D',
         unit=t_unit,
         array=[template.temp],
-    )
-    col_dens = fits.Column(
+    ))
+    hdul[1].columns.add_col(fits.Column(
         name='dens',
-        format='F',
+        format='D',
         unit=d_unit,
         array=[template.dens],
-    )
-    col_n_u = fits.Column(
+    ))
+    hdul[1].columns.add_col(fits.Column(
         name='n_u_range',
         format='I',
         array=list(template.n_u_range),
-    )
-    hdu = fits.BinTableHDU.from_columns([
-        col_fwhm, col_x, 
-        col_waves, col_weights, 
-        col_temp, col_dens, col_n_u, 
-    ])
-    hdul.append(hdu)
-
-    if template._alpha_matrix is not None:
-        col_xn = fits.Column(
-            name = 'xn',
-            format = 'F',
-            unit = x_unit,
-            array = template._xn,
-        )
-        col_alpha_data = fits.Column(
-            name = 'alpha_data',
-            format = 'D',
-            array = template._alpha_matrix.data,
-        )
-        col_alpha_indices = fits.Column(
-            name = 'alpha_indices',
-            format = 'K',
-            array = template._alpha_matrix.indices,
-        )
-        col_alpha_indptr = fits.Column(
-            name = 'alpha_indptr',
-            format = 'K',
-            array = template._alpha_matrix.indptr,
-        )
-        col_beta_data = fits.Column(
-            name = 'beta_data',
-            format = 'D',
-            array = template._beta_matrix.data,
-        )
-        col_beta_indices = fits.Column(
-            name = 'beta_indices',
-            format = 'K',
-            array = template._beta_matrix.indices,
-        )
-        col_beta_indptr = fits.Column(
-            name = 'beta_indptr',
-            format = 'K',
-            array = template._beta_matrix.indptr,
-        )
-        hdu = fits.BinTableHDU.from_columns([
-            col_xn,
-            col_alpha_data, col_alpha_indices, col_alpha_indptr,
-            col_beta_data, col_beta_indices, col_beta_indptr,
-        ])
-        
-        hdr = hdu.header
-        
-        # no. of _xn values
-        hdr['XN_VAL'] = template._xn.size
-        # Alpha-matrix
-        hdr['ASHAPE'] = "{}/{}".format(*template._alpha_matrix.shape)
-        # no. of alpha-matric values
-        hdr['A_VAL'] = template._alpha_matrix.data.size
-        # no. of alpha-matrix indices
-        hdr['A_IND'] = template._alpha_matrix.indices.size
-        # no. of alpha-matrix index pointers
-        hdr['A_PTR'] = template._alpha_matrix.indptr.size
-        # Beta-matrix
-        hdr['BSHAPE'] = "{}/{}".format(*template._beta_matrix.shape)
-        # no. of beta-matrix values
-        hdr['B_VAL'] = template._beta_matrix.data.size
-        # no. of beta-matrix indices
-        hdr['B_IND'] = template._beta_matrix.indices.size
-        # no. of beta-matrix index pointers
-        hdr['B_PTR'] = template._beta_matrix.indptr.size
-
-        hdul.append(hdu)
+    ))
 
     hdul.writeto(path, overwrite=True)
-
     return path
 
-def save_to_cache(template: BalmerSeriesTemplateProtocol) -> AbsoluteFITSPath:
+def save_to_cache(
+    *,
+    template: BalmerSeriesTemplateProtocol,
+    info: Info,
+) -> AbsoluteFITSPath:
+    path = convert_params_to_path(
+        name=template.name,
+        temp=template.temp,
+        dens=template.dens,
+        n_u_range=template.n_u_range,
+        info=info,
+        mode='save',
+    )
     return save(
-        template, 
-        convert_params_to_path(
-            template.name, template.temp, template.dens, template.n_u_range, 
-            info=template.info,
-            mode='save',
-        ),
+        template=template,
+        path=path,
+        info=info,
     )
 
 def load(
+    *,
     path: str | AbsoluteFITSPath,
     info: Info,
-) -> tuple[tuple, dict]:
+) -> dict:
     path = convert_path(path)
+    kwargs = _load(
+        path=path,
+        info=info,
+    )
+    kwargs['x_norm'] = info.balmer.edge
+    kwargs['fwhm_norm'] = info.balmer.fwhm_norm
+    kwargs['normalisation'] = None
 
     with fits.open(path) as hdul:
-        hdu0: fits.PrimaryHDU = hdul[0]
-        hdu1: fits.BinTableHDU = hdul[1]
-
-        v_unit = Unit(hdu1.columns[0].unit)
-        x_unit = Unit(hdu1.columns[1].unit)
-        f_unit = Unit(hdu0.header['BUNIT'])
-        t_unit = Unit(hdu1.columns[4].unit)
-        d_unit = Unit(hdu1.columns[5].unit)
-
-        def transform_velocity(arr: FloatVector) -> FloatVector:
-            return info.units.getC(arr * v_unit)
+        x_unit = Unit(hdul[1].columns[1].unit)
+        t_unit = Unit(hdul[1].columns[4].unit)
+        d_unit = Unit(hdul[1].columns[5].unit)
 
         def transform_wavelength(arr: FloatVector) -> FloatVector:
             return info.units.getWavelength(arr * x_unit)
-        
-        def transform_flux(arr: FloatMatrix) -> FloatMatrix:
-            return info.units.getFlux(arr * f_unit)
         
         def transform_temperature(arr: FloatVector) -> FloatVector:
             return info.units.getTemperature(arr * t_unit)
@@ -270,62 +171,31 @@ def load(
         def transform_density(arr: FloatVector) -> FloatVector:
             return info.units.getDensity(arr * d_unit)
         
-        data = transform_flux(hdul[0].data)
-        fwhm = transform_velocity(hdul[1].data['fwhm'])[:data.shape[0]]
-        x = transform_wavelength(hdul[1].data['x'])[:data.shape[1]]
-                                
-        args = (
-            fwhm,
-            drop_nonpos(x),
-            data,
-            drop_nonpos(transform_wavelength(hdu1.data['waves'])),
-            drop_nonpos(hdu1.data['weights']),
-            transform_temperature(hdu1.data['temp'])[0],
-            transform_density(hdu1.data['dens'])[0],
-            tuple(hdu1.data['n_u_range'][:2]),
-        )
-        kwargs = {
-            'name': hdu0.header['NAME'],
-            'is_logspace': hdu0.header['LOGSPACE'] == 'y',
-            'path': path,
-            'info': info,
-        }
+        n_waves = hdul[0].header['N_WAVES']
 
-        if len(hdul) > 2:
-            hdu2: fits.BinTableHDU = hdul[2]
+        kwargs['waves'] = transform_wavelength(hdul[1].data['waves'][:n_waves])
+        kwargs['weights'] = hdul[1].data['weights'][:n_waves]
+        kwargs['temp'] = transform_temperature(hdul[1].data['temp'])[0]
+        kwargs['dens'] = transform_density(hdul[1].data['dens'])[0]
+        kwargs['n_u_range'] = tuple(hdul[1].data['n_u_range'][:2])
 
-            kwargs['_xn'] = transform_wavelength(hdu2.data['xn'])
-            kwargs['_alpha_matrix'] = csr_matrix_(
-                (
-                    hdu2.data['alpha_data'], 
-                    hdu2.data['alpha_indices'], 
-                    hdu2.data['alpha_indptr'],
-                ),
-                shape=tuple(map(int, hdu2.header['ASHAPE'].strip().split('/'))),
-            )
-            kwargs['_beta_matrix'] = csr_matrix_(
-                (
-                    hdu2.data['beta_data'], 
-                    hdu2.data['beta_indices'], 
-                    hdu2.data['beta_indptr'],
-                ), 
-                shape=tuple(map(int, hdu2.header['BSHAPE'].strip().split('/'))),
-            )
-
-    return args, kwargs
+    return kwargs
     
 def load_from_cache(
+    *,
     name: Literal['sh1995'],
     temp: float,
     dens: float,
     n_u_range: tuple[int, int],
-    *,
     info: Info,
     find_any: bool = True,
-) -> tuple[tuple, dict]:
+) -> dict:
     path = convert_params_to_path(
-        name, temp, dens, n_u_range, 
+        name=name, 
+        temp=temp, 
+        dens=dens, 
+        n_u_range=n_u_range, 
         info=info, 
         mode='load' if find_any else 'save',
     )
-    return load(path, info)
+    return load(path=path, info=info)

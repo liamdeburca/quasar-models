@@ -39,11 +39,14 @@ def attenuation_fit_deriv(
     """
     Exponential attenuation's derivatives.
     """
+    if fixed is None:
+        fixed = {'tau': False, 'scale': False}
+
     df_dtau = zeros_like(x, dtype=float64)
     df_dscale = zeros_like(x, dtype=float64)
 
     mask = (x <= edge)
-    if mask.any() and (fixed is not None) and not all(fixed.values()):
+    if mask.any() and not all(fixed.values()):
         _x = x[mask]
         r = (_x / edge)**scale
         s = tau * r
@@ -92,13 +95,16 @@ def continuum_fit_deriv(
 ) -> list[FloatVector]:
     """
     The continuum (Planck function) contribution's derivative(s).
-    """    
+    """
+    if fixed is None:
+        fixed = {'flux': False, 'temp': False}
+
     df_dflux = zeros_like(x, dtype=float64)
     df_dtemp = zeros_like(x, dtype=float64)
 
     mask = (x <= edge)
 
-    if mask.any() and (fixed is not None) and not all(fixed.values()):
+    if mask.any() and not all(fixed.values()):
         _x = x[mask]
         y = boltz / (temp * _x)
         exp_y = exp(y)
@@ -147,7 +153,15 @@ def fit_deriv(
     normalisation: float | None = None,
     fixed: dict[str, bool] | None = None,
 ) -> list[FloatVector]:
-    
+    if fixed is None:
+        fixed = {
+            'flux': False,
+            'fwhm': False,
+            'temp': False,
+            'tau': False,
+            'scale': False,
+        }
+
     df_dflux = zeros_like(x, dtype=float)
     df_dfwhm = zeros_like(x, dtype=float)
     df_dtemp = zeros_like(x, dtype=float)
@@ -190,7 +204,7 @@ def fit_deriv(
             _dcont = continuum_fit_deriv(
                 x, flux, temp,
                 boltz=boltz,
-                fixed={p: fixed[p] for p in ['flux', 'temp']}
+                fixed={p: fixed[p] for p in ('flux', 'temp')}
             )
         return _dcont
 
@@ -211,7 +225,7 @@ def fit_deriv(
             _datte = attenuation_fit_deriv(
                 x, tau, scale,
                 edge=edge,
-                fixed={p: fixed[p] for p in ['tau', 'scale']},
+                fixed={p: fixed[p] for p in ('tau', 'scale')},
             )
         return _datte  
 

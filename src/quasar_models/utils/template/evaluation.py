@@ -38,7 +38,7 @@ def evaluate(
     if template_data is None:
         template_data = template.data
     if sigma_res is None:
-        sigma_res = template.info.loading.sigma_res
+        sigma_res = template.sigma_res
     if normalisation is None:
         normalisation = template.normalisation
 
@@ -65,7 +65,10 @@ def fit_deriv(
     normalisation: float | None = None,
     interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
     fixed: dict[str, bool] | None = None,
-) -> list[FloatVector, FloatVector]:
+) -> list[FloatVector]:
+    if fixed is None:
+        fixed = {'flux': False, 'fwhm': False}
+
     df_dflux = zeros_like(x, dtype=float64)
     df_dfwhm = zeros_like(x, dtype=float64)
 
@@ -76,11 +79,11 @@ def fit_deriv(
     if template_data is None:
         template_data = template.data
     if sigma_res is None:
-        sigma_res = template.info.loading.sigma_res
+        sigma_res = template.sigma_res
     if normalisation is None:
         normalisation = template.normalisation
 
-    if (fixed is not None) and not all(fixed.values()):
+    if not all(fixed.values()):
         transform = get_template_transform(x, template_x, interpolation_matrix)
 
         if not fixed['flux']:
@@ -123,7 +126,7 @@ def evaluate_interp(
     if template_data is None:
         template_data = template.data
     if sigma_res is None:
-        sigma_res = template.info.loading.sigma_res
+        sigma_res = template.sigma_res
     if normalisation is None:
         normalisation = template.normalisation
 
@@ -155,7 +158,10 @@ def fit_deriv_interp(
     normalisation: float | None = None,
     interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
     fixed: dict[str, bool] | None = None,
-) -> list[FloatVector, FloatVector]:
+) -> list[FloatVector]:
+    if fixed is None:
+        fixed = {'flux': False, 'fwhm': False}
+    
     df_dflux = zeros_like(x, dtype=float64)
     df_dfwhm = zeros_like(x, dtype=float64)
 
@@ -166,11 +172,11 @@ def fit_deriv_interp(
     if template_data is None:
         template_data = template.data
     if sigma_res is None:
-        sigma_res = template.info.loading.sigma_res
+        sigma_res = template.sigma_res
     if normalisation is None:
         normalisation = template.normalisation
 
-    if (fixed is not None) and not all(fixed.values()):
+    if not all(fixed.values()):
         transform = get_template_transform(x, template_x, interpolation_matrix)
 
         idx = _identify_closest_idx(template_fwhm, fwhm, for_deriv=True)

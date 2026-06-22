@@ -27,7 +27,7 @@ def evaluate(
     Summed velocity-space Gaussian contributions normalised to 'flux' at the 
     Balmer edge.
     """
-    assert fwhm > 0
+    assert fwhm > 0.0
     
     if flux == 0: 
         return zeros_like(x, dtype=float64)
@@ -80,6 +80,9 @@ def fit_deriv(
     Vectorised partial derivatives of the summed Balmer series Gaussians.
     Derivatives with respect to normalized signal: signal(edge) = 1.
     """
+    if fixed is None:
+        fixed = {'flux': False, 'fwhm': False}
+        
     df_dflux = zeros_like(x, dtype=float64)
     df_dfwhm = zeros_like(x, dtype=float64)
 

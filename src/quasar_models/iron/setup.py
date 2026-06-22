@@ -46,19 +46,22 @@ class VestergaardWilkes2001:
             self.info.units['velocity_unit'] = Unit('1 km/s')
 
             self.template = IronTemplate(
-                self.info.units.getC(fwhm * self.info.units['velocity_unit']),
-                self.info.units.getWavelength(x * self.info.units['wavelength_unit']),
-                data,
-                info=self.info,
+                fwhm=self.info.units.getC(fwhm * self.info.units['velocity_unit']),
+                x=self.info.units.getWavelength(x * self.info.units['wavelength_unit']),
+                data=data,
                 is_logspace=False,
                 name="vw2001",
+                fwhm_norm=self.info.iron.fwhm_norm,
+            )
+            _template: IronTemplate = self.template.createLogspace(
+                sigma_res=self.info.loading.sigma_res,
+                xr=x_log,
             )
 
-            _template = self.template.createLogspace(x_log)
             _template.resample(self.template.fwhm, inplace=True)
             self.template.mimicLogspace(_template, inplace=True)
-
-            self.template.save_to_cache()
+            
+            self.template.save_to_cache(self.info)
 
 class Veron2003:
     def __init__(self):
@@ -97,19 +100,22 @@ class Veron2003:
             self.info.units['velocity_unit'] = Unit('1 km/s')
 
             self.template = IronTemplate(
-                self.info.units.getC(fwhm * self.info.units['velocity_unit']),
-                self.info.units.getWavelength(x * self.info.units['wavelength_unit']),
-                data,
-                info=self.info,
-                name="v2003",
+                fwhm=self.info.units.getC(fwhm * self.info.units['velocity_unit']),
+                x=self.info.units.getWavelength(x * self.info.units['wavelength_unit']),
+                data=data,
                 is_logspace=False,
+                name="v2003",
+                fwhm_norm=self.info.iron.fwhm_norm,
             )
 
-            _template = self.template.createLogspace(x_log)
+            _template: IronTemplate = self.template.createLogspace(
+                sigma_res=self.info.loading.sigma_res,
+                xr=x_log,
+            )
             _template.resample(self.template.fwhm, inplace=True)
             self.template.mimicLogspace(_template, inplace=True)
 
-            self.template.save_to_cache()
+            self.template.save_to_cache(self.info)
 
 class BevWills:
     def __init__(self):
@@ -140,22 +146,25 @@ class BevWills:
         self.info.units['velocity_unit'] = Unit('1 km/s')
 
         self.template = IronTemplate(
-            self.info.units.getC(fwhm * self.info.units['velocity_unit']),
-            self.info.units.getWavelength(x * self.info.units['wavelength_unit']),
-            data,
-            info = self.info,
-            name = 'bw',
+            fwhm=self.info.units.getC(fwhm * self.info.units['velocity_unit']),
+            x=self.info.units.getWavelength(x * self.info.units['wavelength_unit']),
+            data=data,
             is_logspace=False,
+            name="bw",
+            fwhm_norm=self.info.iron.fwhm_norm,
         )
 
-        vw2001 = IronTemplate.load_from_cache("vw2001", info=self.info)
+        vw2001 = IronTemplate.load_from_cache(name="vw2001", info=self.info)
 
-        _template = self.template.createLogspace(x_log)
+        _template = self.template.createLogspace(
+            sigma_res=self.info.loading.sigma_res,
+            xr=x_log,
+        )
         _template.resample(vw2001.fwhm, inplace=True)
         self.template.mimicLogspace(_template, inplace=True)
         self.template.data /= self.template.data[-1].max()
 
-        self.template.save_to_cache()
+        self.template.save_to_cache(self.info)
 
 def main_silent() -> None:
     VestergaardWilkes2001().main()
@@ -198,9 +207,9 @@ def plot() -> None:
     def transform(fwhm):
         return info.units.getC(fwhm).to('1e3km/s').value
     
-    vw_2001 = IronTemplate.load_from_cache("vw2001", info=info)
-    v_2003 = IronTemplate.load_from_cache("v2003", info=info)
-    bw = IronTemplate.load_from_cache("bw", info=info)
+    vw_2001 = IronTemplate.load_from_cache(name="vw2001", info=info)
+    v_2003 = IronTemplate.load_from_cache(name="v2003", info=info)
+    bw = IronTemplate.load_from_cache(name="bw", info=info)
 
     norm = Normalize(
         vmin=transform(vw_2001.fwhm[0]), 
@@ -258,5 +267,15 @@ def plot() -> None:
     plt.show()
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Initialise iron templates.")
+    parser.add_argument(
+        "--plot", 
+        action='store_true', 
+    )
+    args = parser.parse_args()
+
     main(silent=True)
-    plot()
+    if args.plot:
+        plot()

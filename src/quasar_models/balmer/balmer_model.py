@@ -1,10 +1,9 @@
 """
 AstroPy compatible model: BalmerModel.
 """
-from typing import Self, Literal
+from typing import Self, Literal, ClassVar
 from numpy import array, float64, array_equal, unique, concatenate, nan, nanargmin
 from numpy.typing import NDArray
-from scipy.sparse import csr_matrix
 from astropy.units import Unit
 from astropy.modeling import Parameter
 
@@ -24,62 +23,93 @@ from quasar_utils.interpolation import create_interp_matrix
 from quasar_typing.numpy import FittableFloatVector, FloatVector
 
 class BalmerModel(TemplateModel):
-    flux  = Parameter(default=1.0, min=0.0)
-    fwhm  = Parameter(default=0,   min=0.0)
-    ratio = Parameter(default=1.0, min=0.0)
+    flux = Parameter(
+        default=1.0, 
+        min=0.0,
+    )
+    fwhm = Parameter(
+        default=0,   
+        min=0.0,
+    )
+    ratio = Parameter(
+        default=1.0, 
+        min=0.0,
+    )
 
-    @validate_call
-    def __init__(
-        self,
+    model_type: ClassVar[Literal['ba']] = 'ba'
+
+    @classmethod
+    def create(
+        cls,
         flux: float,
         fwhm: float,
         ratio: float,
         *,
-        source: str | None = None,
+        edge: float,
+
+        continuum_template: BalmerContinuumTemplate | None = None,
+        series_template: BalmerSeriesTemplate | None = None,
+        info: Info | None = None,
+
         temp: float | None = None,
         tau: float | None = None,
         scale: float | None = None,
         dens: float | None = None,
         n_u_range: tuple[int, int] | None = None,
-        info: Info = None,
-        continuum_template: BalmerContinuumTemplate | None = None,
-        series_template: BalmerSeriesTemplate | None = None,
         allow_interp_fitting: bool = False,
-        maxsize: int = 8,
-        name: str = 'balmer_pseudo_continuum',
-        **kwargs,
-    ):
-        """
-        ** PYDANTIC VALIDATED METHOD **
-
-        Notes
-        -----
-        The keyword arguments `edge`, `sigma_res`, `waves`, `weights`, and 
-        `boltz` must be specified. Otherwise, a ValidationError is raised. 
-        """
+        name: str | Literal['SH1995'] | None = None,
+    ) -> Self:
         if continuum_template is None:
+            if info is None:
+                msg = "'info' cannot be None if 'continuum_template' is not provided."
+                raise ValueError(msg)
+            if temp is None:
+                msg = "'temp' cannot be None if 'continuum_template' is not provided."
+                raise ValueError(msg)
+            if tau is None:
+                msg = "'tau' cannot be None if 'continuum_template' is not provided."
+                raise ValueError(msg)
+            if scale is None:
+                msg = "'scale' cannot be None if 'continuum_template' is not provided."
+                raise ValueError(msg)
+            
             continuum_template = BalmerContinuumTemplate.load_from_cache(
-                temp, tau, scale, info=info,
+                temp=temp, 
+                tau=tau, 
+                scale=scale, 
+                info=info,
             )
-        if not continuum_template.info == info:
-            msg = "The BalmerContinuumTemplate's info instance does not " \
-                "match the BalmerModel's info instance."
-            raise ValueError(msg)
 
         if series_template is None:
+            if info is None:
+                msg = "'info' cannot be None if 'series_template' is not provided."
+                raise ValueError(msg)
+            if name is None:
+                msg = "'name' cannot be None if 'series_template' is not provided."
+                raise ValueError(msg)
+            if temp is None:
+                msg = "'temp' cannot be None if 'series_template' is not provided."
+                raise ValueError(msg)
+            if dens is None:
+                msg = "'dens' cannot be None if 'series_template' is not provided."
+                raise ValueError(msg)
+            if n_u_range is None:
+                msg = "'n_u_range' cannot be None if 'series_template' is not provided."
+                raise ValueError(msg)
+            
             series_template = BalmerSeriesTemplate.load_from_cache(
-                source, temp, dens, n_u_range, info=info,
+                name=name, 
+                temp=temp, 
+                dens=dens, 
+                n_u_range=n_u_range, 
+                info=info,
             )
-        elif not series_template.info == info:
-            msg = "The BalmerSeriesTemplate's info instance does not match " \
-                "the BalmerModel's info instance."
-            raise ValueError(msg)
 
         if not continuum_template.temp == series_template.temp:
             msg = "The continuum ({}) and series ({}) template do not have " \
                 "the same temperatures!".format(
-                    info.units.getTemperature(continuum_template.temp), 
-                    info.units.getTemperature(series_template.temp),
+                    continuum_template.temp, 
+                    series_template.temp,
                 )
             raise ValueError(msg)
         
@@ -89,28 +119,53 @@ class BalmerModel(TemplateModel):
             )
             continuum_template.upsample(fwhms, inplace=True)
             series_template.upsample(fwhms, inplace=True)
-            
-        super().__init__(flux, fwhm, ratio, name=name, **kwargs)
 
-        self.info: Info = info
-        self.continuum_template: BalmerContinuumTemplate = continuum_template
-        self.series_template: BalmerSeriesTemplate = series_template
-        self.allow_interp_fitting: bool = allow_interp_fitting
-
-        self._initialise_cache(maxsize)
-
-        self.same_xs: bool = array_equal(
-            self.continuum_template.x, 
-            self.series_template.x,
+        model = BalmerModel(
+            flux, fwhm, ratio,
+            name=name or 'balmer',
+            meta={
+                'continuum_template': continuum_template,
+                'series_template': series_template,
+                'allow_interp_fitting': allow_interp_fitting,
+                'edge': edge,
+                '_interpolation_matrices': {},
+            }
+        )
+        model.fwhm.bounds = (continuum_template.fwhm[0], continuum_template.fwhm[-1])
+        model.fwhm.value = apply_bounds.__wrapped__(
+            model.fwhm.value, 
+            model.fwhm.bounds,
         )
 
-        # Update FWHM bounds using template
-        self.fwhm.bounds = (continuum_template.fwhm[0], continuum_template.fwhm[-1])
-        self.fwhm.value  = apply_bounds(self.fwhm.value, self.fwhm.bounds)
+        return model
+    
+    @property
+    def continuum_template(self) -> BalmerContinuumTemplate:
+        return self.meta['continuum_template']
+    
+    @continuum_template.setter
+    def continuum_template(self, value: BalmerContinuumTemplate) -> None:
+        self.meta['continuum_template'] = value
+
+    @property
+    def series_template(self) -> BalmerSeriesTemplate:
+        return self.meta['series_template']
+    
+    @series_template.setter
+    def series_template(self, value: BalmerSeriesTemplate) -> None:
+        self.meta['series_template'] = value
+
+    @property
+    def same_xs(self) -> bool:
+        return array_equal(self.continuum_template.x, self.series_template.x)
 
     @property
     def edge(self) -> float:
-        return self.info.balmer.edge
+        return self.meta['edge']
+    
+    @edge.setter
+    def edge(self, value: float) -> None:
+        self.meta['edge'] = value
 
     @property
     def waves(self) -> FloatVector:
@@ -149,18 +204,21 @@ class BalmerModel(TemplateModel):
         fwhm = float(fwhm)
         ratio = float(ratio)
 
+        if not self._interpolation_matrices:
+            self._calculate_interpolation_matrices(x)
+
         if self._perform_interp_fitting:
             return evaluation.evaluate_interp(
                 x, flux, fwhm, ratio,
                 continuum_template=self.continuum_template,
                 series_template=self.series_template,
-                **self._calculate_interpolation_matrices(x),
+                **self._interpolation_matrices,
             )
         return evaluation.evaluate(
             x, flux, fwhm, ratio,
             continuum_template=self.continuum_template,
             series_template=self.series_template,
-            **self._calculate_interpolation_matrices(x),
+            **self._interpolation_matrices,
         )
 
     def fit_deriv(self, x, flux, fwhm, ratio):
@@ -168,28 +226,24 @@ class BalmerModel(TemplateModel):
         fwhm = float(fwhm)
         ratio = float(ratio)
 
+        if not self._interpolation_matrices:
+            self._calculate_interpolation_matrices(x)
+
         if self._perform_interp_fitting:
             return evaluation.fit_deriv_interp(
                 x, flux, fwhm, ratio,
                 continuum_template=self.continuum_template,
                 series_template=self.series_template,
-                fixed=self.fixed,
-                **self._calculate_interpolation_matrices(x),
+                fixed=self.fixed_dict,
+                **self._interpolation_matrices,
             )
         return evaluation.fit_deriv(
             x, flux, fwhm, ratio,
             continuum_template=self.continuum_template,
             series_template=self.series_template,
-            fixed=self.fixed,
-            **self._calculate_interpolation_matrices(x),
+            fixed=self.fixed_dict,
+            **self._interpolation_matrices,
         )
-    
-    @property
-    def model_type(self) -> Literal['ba']:
-        """
-        Returns a string-representation of the model type.
-        """
-        return 'ba'
     
     @property
     def sorting_key(self) -> tuple[float, float]:
@@ -198,29 +252,19 @@ class BalmerModel(TemplateModel):
         """
         return (2.0, 0.0)
     
-    def _calculate_interpolation_matrices(
-        self,
-        x_out: NDArray[float64],
-    ) -> dict[str, tuple[csr_matrix, NDArray[float64]]]:
+    def _calculate_interpolation_matrices(self, x_out: NDArray[float64]) -> None:
         """
         This method should be called previous to a fitting run, where the same
         interpolation matrix will be reused multiple times.
         """
-        cache_key: int = hash(x_out.tobytes())
-        if cache_key not in self._interpolation_cache:
-            interp_matrix_cont = create_interp_matrix(
-                self.continuum_template.x, x_out, left=0, right=0,
+        self._interpolation_matrices['continuum_interpolation_matrix'] \
+            = create_interp_matrix.__wrapped__(
+                self.continuum_template.x, x_out, left=0.0, right=0.0,
             )
-            interp_matrix_series = (
-                interp_matrix_cont 
-                if self.same_xs else 
-                create_interp_matrix(self.series_template.x, x_out, left=0, right=0)
+        self._interpolation_matrices['series_interpolation_matrix'] \
+            = create_interp_matrix.__wrapped__(
+                self.series_template.x, x_out, left=0.0, right=0.0,
             )
-            self._interpolation_cache[cache_key] = dict(
-                continuum_interpolation_matrix=interp_matrix_cont, 
-                series_interpolation_matrix=interp_matrix_series,
-            )
-        return self._interpolation_cache[cache_key]
 
     @validate_call
     def rasterFit(

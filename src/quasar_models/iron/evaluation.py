@@ -34,13 +34,16 @@ def split_fit_deriv(
     *,
     sigma_res: float,
     scale: float,
-    fixed: dict[str, bool] = None,
-) -> list[FloatVector, FloatVector, FloatVector]:
+    fixed: dict[str, bool] | None = None,
+) -> list[FloatVector]:
+    if fixed is None:
+        fixed = {'split': False, 'left': False, 'right': False}
+
     df_dsplit = zeros_like(x, dtype=float64)
     df_dleft  = zeros_like(x, dtype=float64)
     df_dright = zeros_like(x, dtype=float64)
 
-    if fixed is not None and not all(fixed.values()):
+    if not all(fixed.values()):
         _exp_z = exp(clip(log(split / x) / (scale * sigma_res), -5, 5))
         s = 1 / (1 + _exp_z)
 
@@ -78,8 +81,8 @@ def evaluate(
         kwargs['template_fwhm'] = template.fwhm[:1]
         kwargs['template_data'] = template.data[:1] * split_evaluate(
             template.x, split, left, right, 
-            sigma_res=template.info.loading.sigma_res, 
-            scale=template.info.iron.scale,
+            sigma_res=template.sigma_res, 
+            scale=template.scale,
         )[None,:]
 
     return template_evaluation.evaluate(
@@ -155,18 +158,26 @@ def fit_deriv(
     template: BaseTemplate,
     interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
     fixed: dict[str, bool] | None = None,
-) -> list[FloatVector, FloatVector, FloatVector, FloatVector, FloatVector]:
+) -> list[FloatVector]:
     """
     Calculates the partial derivatives of the IronModel with respect to its 
     parameters: 'flux', 'fwhm', 'split', 'left', 'right'.
     """
-    df_dflux  = zeros_like(x, dtype=float64)
-    df_dfwhm  = zeros_like(x, dtype=float64)
+    if fixed is None:
+        fixed = {
+            'flux': False,
+            'fwhm': False,
+            'split': False,
+            'left': False,
+            'right': False,
+        }
+    df_dflux = zeros_like(x, dtype=float64)
+    df_dfwhm = zeros_like(x, dtype=float64)
     df_dsplit = zeros_like(x, dtype=float64)
     df_dleft  = zeros_like(x, dtype=float64)
     df_dright = zeros_like(x, dtype=float64)
 
-    if (fixed is not None) and not all(fixed.values()):
+    if not all(fixed.values()):
         transform = get_template_transform(x, template.x, interpolation_matrix)
 
         if (split < template.x[0]) or (template.x[-1] < split) or (left == right):
@@ -176,8 +187,8 @@ def fit_deriv(
             _fwhm = template.fwhm[:1]
             _data = template.data[:1] * split_evaluate(
                 template.x, split, left, right, 
-                sigma_res=template.info.loading.sigma_res, 
-                scale=template.info.iron.scale,
+                sigma_res=template.sigma_res, 
+                scale=template.scale,
             )[None,:]
 
         fwhm_init, signal = _identify_closest(
@@ -190,7 +201,7 @@ def fit_deriv(
             f = signal
         else:
             fwhm_kernel = (fwhm**2 - fwhm_init**2)**0.5
-            k = kernel(fwhm_kernel, template.info.loading.sigma_res)
+            k = kernel(fwhm_kernel, template.sigma_res)
             f = convolve_signal.__wrapped__(signal, k)
 
         inv_norm = 1 / template.normalisation
@@ -204,7 +215,7 @@ def fit_deriv(
                 if fwhm_kernel == 0 else \
                 convolve_signal.__wrapped__(
                     signal, 
-                    kernel_deriv(fwhm_kernel, template.info.loading.sigma_res),
+                    kernel_deriv(fwhm_kernel, template.sigma_res),
                 )
             )
 
@@ -214,8 +225,8 @@ def fit_deriv(
             ds = _split_fit_deriv(
                 template.x,
                 split, left, right,
-                sigma_res=template.info.loading.sigma_res, 
-                scale=template.info.iron.scale,
+                sigma_res=template.sigma_res, 
+                scale=template.scale,
                 fixed={key: fixed[key] for key in ['split', 'left', 'right']},
             )
 
@@ -251,6 +262,15 @@ def fit_deriv_interp(
     interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
     fixed: dict[str, bool] | None = None,
 ) -> list[FloatVector]:
+    if fixed is None:
+        fixed = {
+            'flux': False,
+            'fwhm': False,
+            'split': False,
+            'left': False,
+            'right': False,
+        }
+
     # Note: other derivatives are zero by definition
     df_dsplit = zeros_like(x, dtype=float64)
     df_dleft  = zeros_like(x, dtype=float64)
@@ -260,7 +280,6 @@ def fit_deriv_interp(
         x, flux, fwhm,
         template=template,
         interpolation_matrix=interpolation_matrix,
-        fixed=fixed,
+        fixed={p: fixed[p] for p in ['flux', 'fwhm']},
     )
-
     return [df_dflux, df_dfwhm, df_dsplit, df_dleft, df_dright]

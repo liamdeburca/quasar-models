@@ -1,10 +1,9 @@
 __all__ = ['BalmerSeriesTemplate']
 
 from typing import Self, ClassVar, Literal
-from numpy import empty, float64, log, searchsorted, array
+from numpy import empty, float64, log, searchsorted, array, array_equal, interp
 from dataclasses import field
 from pydantic.dataclasses import dataclass
-from functools import lru_cache
 
 from quasar_typing.pathlib import AbsoluteDirPath, AbsoluteFITSPath
 from quasar_typing.numpy import SortedFloatVector, FloatVector
@@ -16,20 +15,16 @@ from .io import PATH_TO_CACHE, load, save, save_to_cache, load_from_cache
 
 from ...utils.template import BaseTemplate
 
-@dataclass
+@dataclass(eq=False)
 class BalmerSeriesTemplate(BaseTemplate):
-    waves: SortedFloatVector
-    weights: FloatVector
-    temp: float
-    dens: float
-    n_u_range: tuple[int, int]
+    waves: SortedFloatVector = field(kw_only=True)
+    weights: FloatVector = field(kw_only=True)
+    temp: float = field(kw_only=True)
+    dens: float = field(kw_only=True)
+    n_u_range: tuple[int, int] = field(kw_only=True)
     
     # Only series data from Storey&Hummer1995 is currently supported
     name: Literal['sh1995'] = field(default='sh1995', kw_only=True)
-
-    x_norm: float = field(init=False)
-    fwhm_norm: float | None = field(default=None, kw_only=True)
-    normalisation: float | None = field(default=None, kw_only=True)
 
     PATH_TO_CACHE: ClassVar[AbsoluteDirPath] = PATH_TO_CACHE
 
@@ -44,44 +39,51 @@ class BalmerSeriesTemplate(BaseTemplate):
             )
             raise ValueError(msg)
                 
-        self.x_norm = self.info.balmer.edge
-
-        if self.fwhm_norm is None:
-            self.fwhm_norm = self.info.balmer.fwhm_norm
-
         if self.normalisation is None:
-            self.normalisation = evaluate(
-                self.x_norm,
-                1.0,
-                self.fwhm_norm,
-                sigma_res=self.info.loading.sigma_res,
-                edge=self.x_norm,
-                waves=self.waves,
-                weights=self.weights,
-                normalisation=1.0,
-            )
+            idx = searchsorted(self.fwhm, self.fwhm_norm, side='right') - 1
+            self.normalisation = interp(self.x_norm, self.x, self.data[idx])
+
+    def __eq__(self, other: object) -> bool:
+        return super().__eq__(other) \
+            and array_equal(self.waves, other.waves) \
+            and array_equal(self.weights, other.weights) \
+            and (self.temp == other.temp) \
+            and (self.dens == other.dens) \
+            and (self.n_u_range == other.n_u_range)
+
+    def __getstate__(self) -> dict:
+        state = super().__getstate__()
+        state.update({
+            'waves': self.waves,
+            'weights': self.weights,
+            'temp': self.temp,
+            'dens': self.dens,
+            'n_u_range': self.n_u_range,
+        })
+        return state
 
     def copy(self, with_matrices: bool = False) -> Self:
         with_matrices &= getattr(self, '_alpha_matrix', None) is not None
 
         return BalmerSeriesTemplate(
-            self.fwhm.copy(), 
-            self.x.copy(), 
-            self.data.copy(),
-            self.waves.copy(),
-            self.weights.copy(),
-            self.temp,
-            self.dens,
-            self.n_u_range,
-            info=self.info,
+            fwhm=self.fwhm.copy(), 
+            x=self.x.copy(), 
+            data=self.data.copy(),
             is_logspace=self.is_logspace,
+            sigma_res=self.sigma_res,
             name=self.name,
             path=self.path,
             _alpha_matrix=self._alpha_matrix if with_matrices else None,
             _beta_matrix=self._beta_matrix if with_matrices else None,
             _xn=self._xn if with_matrices else None,
+            x_norm=self.x_norm,
             fwhm_norm=self.fwhm_norm,
             normalisation=self.normalisation,
+            waves=self.waves.copy(),
+            weights=self.weights.copy(),
+            temp=self.temp,
+            dens=self.dens,
+            n_u_range=self.n_u_range,
         )
 
     def crop(self, n_u_range: tuple[int, int]) -> Self:
@@ -130,33 +132,40 @@ class BalmerSeriesTemplate(BaseTemplate):
         dens: float,
         n_u_range: tuple[int, int],
         *,
-        info: Info,
-        fwhm_norm: float | None = None,
+        sigma_res: float,
+        x_norm: float,
+        fwhm_norm: float,
         normalisation: float | None = None,
         is_logspace: bool = False,
         name: Literal['sh1995'] = 'sh1995',
     ) -> Self:
         _data = evaluate(
             x, 1.0, fwhm[0],
-            sigma_res=info.loading.sigma_res,
-            edge=info.balmer.edge,
+            sigma_res=sigma_res,
+            edge=x_norm,
             waves=waves,
             weights=weights,
             normalisation=1.0,
         )
         obj = BalmerSeriesTemplate(
-            fwhm[:1],
-            x,
-            _data[None,:],
-            waves,
-            weights,
-            temp, dens, n_u_range,
-            fwhm_norm=fwhm_norm,
-            normalisation=normalisation,
-            info=info,
+            fwhm=fwhm[:1],
+            x=x,
+            data=_data[None,:],
             is_logspace=is_logspace,
+            sigma_res=sigma_res,
             name=name,
             path=None,
+            _alpha_matrix=None,
+            _beta_matrix=None,
+            _xn=None,
+            x_norm=x_norm,
+            fwhm_norm=fwhm_norm,
+            normalisation=normalisation,
+            waves=waves,
+            weights=weights,
+            temp=temp,
+            dens=dens,
+            n_u_range=n_u_range,
         )
         return obj.upsample(fwhm, inplace=True)
     
@@ -186,7 +195,7 @@ class BalmerSeriesTemplate(BaseTemplate):
                     self.x,
                     flux=1.0,
                     fwhm=fwhm_curr,
-                    sigma_res=self.info.loading.sigma_res,
+                    sigma_res=self.sigma_res,
                     edge=self.x_norm,
                     waves=self.waves,
                     weights=self.weights,
@@ -203,30 +212,48 @@ class BalmerSeriesTemplate(BaseTemplate):
     
     # I/O
     
-    def save(self, path: str | AbsoluteFITSPath) -> AbsoluteFITSPath:
-        return save(self, path)
+    def save(
+        self, 
+        *,
+        path: str | AbsoluteFITSPath,
+        info: Info,
+    ) -> AbsoluteFITSPath:
+        """
+        Saves the BalmerSeriesTemplate to a FITS file.
+        """
+        return save(template=self, path=path, info=info)
 
     @classmethod
-    @lru_cache(maxsize=None)
-    def load(cls, path: str | AbsoluteFITSPath, info: Info) -> Self:
-        args, kwargs = load(path, info)
-        return BalmerSeriesTemplate(*args, **kwargs)
+    def load(
+        cls, 
+        *,
+        path: str | AbsoluteFITSPath, 
+        info: Info,
+    ) -> Self:
+        kwargs = load(path=path, info=info)
+        return BalmerSeriesTemplate(**kwargs)
 
     # I/O from '.cache' directory
 
-    def save_to_cache(self) -> AbsoluteFITSPath:
-        return save_to_cache(self)
+    def save_to_cache(self, info: Info) -> AbsoluteFITSPath:
+        return save_to_cache(template=self, info=info)
 
     @classmethod
     def load_from_cache(
         cls, 
+        *,
         name: Literal['sh1995'],
         temp: float,
         dens: float,
         n_u_range: tuple[int, int],
-        *,
         info: Info,
     ) -> Self:
-        args, kwargs = load_from_cache(name, temp, dens, n_u_range, info=info)
-        obj = BalmerSeriesTemplate(*args, **kwargs)
+        kwargs = load_from_cache(
+            name=name, 
+            temp=temp, 
+            dens=dens, 
+            n_u_range=n_u_range, 
+            info=info,
+        )
+        obj = BalmerSeriesTemplate(**kwargs)
         return obj if obj.n_u_range == n_u_range else obj.crop(n_u_range)

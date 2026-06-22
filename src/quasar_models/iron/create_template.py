@@ -9,14 +9,14 @@ from quasar_utils.setup import Info
 from quasar_models.iron.iron_template import IronTemplate
 from quasar_models.iron.utils import _get_xlog
 
-def plot_template(base_template: IronTemplate, template: IronTemplate) -> None:
+def plot_template(base_template: IronTemplate, template: IronTemplate, info: Info) -> None:
     import matplotlib.pyplot as plt
     from matplotlib.cm import rainbow as cmap
     from matplotlib.colors import Normalize
     from matplotlib.cm import ScalarMappable
 
     def transform(fwhm):
-        return template.info.units.getC(fwhm).to("1e3 km/s").value
+        return info.units.getC(fwhm).to("1e3 km/s").value
 
     norm = Normalize(
         vmin=transform(template.fwhm[0]),
@@ -41,7 +41,7 @@ def plot_template(base_template: IronTemplate, template: IronTemplate) -> None:
         ax.set_ylabel("Flux density (a.u.)")
 
     axes[-1].set_xlabel(
-        f"Rest wavelength ({template.info.units.wavelength_unit.to_string()})",
+        f"Rest wavelength ({info.units.wavelength_unit.to_string()})",
         loc='right',
     )
 
@@ -82,12 +82,15 @@ def main(args: Namespace) -> None:
 
 
     new_template = IronTemplate(
-        new_fwhm,
-        new_x,
-        new_data,
-        info=info,
-        is_logspace=False,
+        fwhm=new_fwhm,
+        x=new_x,
+        data=new_data,
+        is_logspace=base_template.is_logspace,
+        sigma_res=base_template.sigma_res,
         name=args.name,
+        path=None,
+        fwhm_norm=base_template.fwhm_norm,
+        normalisation=None,
     )
 
     x_log = _get_xlog(
@@ -100,9 +103,9 @@ def main(args: Namespace) -> None:
     new_template.mimicLogspace(_template, inplace=True)
 
     if args.save:
-        new_template.save_to_cache()
+        new_template.save_to_cache(info)
 
-    plot_template(base_template, new_template)
+    plot_template(base_template, new_template, info)
 
 if __name__ == "__main__":
 
