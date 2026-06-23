@@ -3,7 +3,7 @@ AstroPy compatible model: HostGalaxyModel.
 """
 from logging import getLogger
 from typing import Self, Literal, ClassVar
-from numpy import isfinite, argmin
+from numpy import isfinite, argmin, stack
 from astropy.modeling import Parameter
 
 from quasar_typing.numpy import FloatVector
@@ -126,6 +126,9 @@ class HostGalaxyModel(TemplateModel):
             **self._interpolation_matrices,
             fixed=self.fixed_dict,
         )
+    
+    def jac(self, x, flux, fwhm):
+        return stack(self.fit_deriv(x, flux, fwhm), axis=0)
     
     # Utilities
 

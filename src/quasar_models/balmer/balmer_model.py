@@ -2,7 +2,7 @@
 AstroPy compatible model: BalmerModel.
 """
 from typing import Self, Literal, ClassVar
-from numpy import array, float64, array_equal, unique, concatenate, nan, nanargmin
+from numpy import array, float64, array_equal, unique, concatenate, nan, nanargmin, stack
 from numpy.typing import NDArray
 from astropy.units import Unit
 from astropy.modeling import Parameter
@@ -244,6 +244,9 @@ class BalmerModel(TemplateModel):
             fixed=self.fixed_dict,
             **self._interpolation_matrices,
         )
+    
+    def jac(self, x, flux, fwhm, ratio):
+        return stack(self.fit_deriv(x, flux, fwhm, ratio), axis=0)
     
     @property
     def sorting_key(self) -> tuple[float, float]:

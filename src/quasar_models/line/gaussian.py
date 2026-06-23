@@ -4,7 +4,7 @@
 from typing import Self, Literal, ClassVar
 from astropy.modeling import Parameter
 from math import hypot
-from numpy import pi, dot, isclose
+from numpy import pi, dot, isclose, stack
 from scipy.stats import norm
 
 from quasar_models.utils.basemodel import BaseModel
@@ -130,6 +130,9 @@ class GaussianModel(BaseModel):
             sigma_res=self.sigma_res, 
             fixed=self.fixed_dict,
         )
+
+    def jac(self, x, strength, sigma_v, v_off):
+        return stack(self.fit_deriv(x, strength, sigma_v, v_off), axis=0)
     
     @staticmethod
     @validate_call

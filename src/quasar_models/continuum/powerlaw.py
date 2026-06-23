@@ -1,7 +1,7 @@
 from logging import getLogger
 from astropy.modeling import Parameter
 from typing import Self, Callable, Literal, ClassVar
-from numpy import log, exp, float64
+from numpy import log, exp, float64, stack
 from numpy.typing import NDArray
 
 from pydantic_core import ValidationError
@@ -84,6 +84,9 @@ class PowerLawModel(BaseModel):
             x0=self.x0, 
             fixed=self.fixed_dict,
         )
+
+    def jac(self, x, flux, alpha):
+        return stack(self.fit_deriv(x, flux, alpha), axis=0)
 
     def inverse(self, y, flux, alpha):
         return evaluation.inverse(

@@ -2,7 +2,7 @@
 AstroPy compatible model: IronModel.
 """
 from logging import getLogger
-from numpy import zeros_like, invert, nan, nanargmin, argmax, float64, array_equal, isfinite
+from numpy import zeros_like, invert, nan, nanargmin, stack, float64, array_equal, isfinite
 from astropy.modeling import Parameter
 from typing import Literal, Self, ClassVar
 
@@ -174,6 +174,9 @@ class IronModel(TemplateModel):
             fixed=self.fixed_dict,
             **self._interpolation_matrices,
         )
+    
+    def jac(self, x, flux, fwhm, split, left, right):
+        return stack(self.fit_deriv(x, flux, fwhm, split, left, right), axis=0)
             
     @property
     def sorting_key(self) -> tuple[float, float]:

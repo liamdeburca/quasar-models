@@ -4,7 +4,7 @@ __all__ = [
 
 from typing import Self, Callable, Iterable, ClassVar, Literal
 from itertools import product
-from numpy import zeros, float64
+from numpy import stack, zeros, float64
 
 from quasar_models.line.gaussian import GaussianModel
 from quasar_models.utils.basemodel import BaseModel
@@ -271,12 +271,7 @@ class _VProfileCopy(BaseModel):
             sigma_res=self.sigma_res,
         )
     
-    def fit_deriv(
-        self,
-        x, 
-        strength_scale,
-        *args,
-    ):
+    def fit_deriv(self, x, strength_scale, *args):
         strengths = tuple(args[3*i] for i in range(self.n_profiles))
         sigma_vs  = tuple(args[3*i + 1] for i in range(self.n_profiles))
         v_offs    = tuple(args[3*i + 2] for i in range(self.n_profiles))
@@ -291,6 +286,9 @@ class _VProfileCopy(BaseModel):
             n_profiles=self.n_profiles,
             fixed = self.fixed,
         )
+
+    def jac(self, x, strength_scale, *args):
+        return stack(self.fit_deriv(x, strength_scale, *args), axis=0)
     
     @property
     def sorting_key(self) -> tuple[float, float]:
