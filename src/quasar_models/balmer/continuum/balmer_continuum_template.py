@@ -10,7 +10,7 @@ from quasar_typing.numpy import SortedFloatVector
 
 from quasar_utils.setup import Info
 
-from .evaluation import evaluate
+from quasar_core.modelling.balmer.continuum import evaluate
 from .io import PATH_TO_CACHE, load, save, save_to_cache, load_from_cache
 
 from ...utils.template import BaseTemplate
@@ -58,6 +58,7 @@ class BalmerContinuumTemplate(BaseTemplate):
             data=self.data.copy(),
             is_logspace=self.is_logspace,
             sigma_res=self.sigma_res,
+            n_scales=self.n_scales,
             name=self.name,
             path=self.path,
             _alpha_matrix=self._alpha_matrix if with_matrices else None,
@@ -81,24 +82,29 @@ class BalmerContinuumTemplate(BaseTemplate):
         tau: float,
         scale: float,
         *,
-        info: Info,
+        sigma_res: float,
+        n_scales: float,
+        edge: float,
+        fwhm_norm: float,
+        boltz: float,
         is_logspace: bool = False,
         name: str = "no_name",
     ) -> Self:
-        sigma_res = info.loading.sigma_res
-        edge = info.balmer.edge
-        boltz = info.units.getBoltzmannFactor()
-
         _data = evaluate(
-            x, 1.0, fwhm[0], temp, tau, scale, 
-            sigma_res=sigma_res, edge=edge, boltz=boltz, normalisation=1.0,
-        )
+            x,
+            1.0, fwhm[0],
+            temp=temp, tau=tau, scale=scale,
+            edge=edge, boltz=boltz,
+            sigma_res=sigma_res, n_scales=n_scales,
+            normalisation=1.0,
+        )[None,:]
         obj = BalmerContinuumTemplate(
             fwhm=fwhm[:1],
             x=x,
-            data=_data[None,:],
+            data=_data,
             is_logspace=is_logspace,
             sigma_res=sigma_res,
+            n_scales=n_scales,
             name=name,
             path=None,
             _alpha_matrix=None,
@@ -108,7 +114,7 @@ class BalmerContinuumTemplate(BaseTemplate):
             tau=tau,
             scale=scale,
             x_norm=edge,
-            fwhm_norm=info.balmer.fwhm_norm,
+            fwhm_norm=fwhm_norm,
             normalisation=None,
             boltz=boltz,
         )

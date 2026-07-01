@@ -138,28 +138,28 @@ def _generate_random_powerlaw_model() -> PowerLawModel:
 
 def _generate_random_gaussian_model() -> GaussianModel:
     strength_bounds = generate_random_bounds(0.0, 100.0)
-    sigma_v_bounds = generate_random_bounds(0.0, 1e-2)
+    fwhm_v_bounds = generate_random_bounds(0.0, 1e-2)
     v_off_bounds = generate_random_bounds(-1e-2, 1e-2)
     
     strength_value = sample_value_from_bounds(strength_bounds)
-    sigma_v_value = sample_value_from_bounds(sigma_v_bounds)
+    fwhm_v_value = sample_value_from_bounds(fwhm_v_bounds)
     v_off_value = sample_value_from_bounds(v_off_bounds)
     
     model = GaussianModel.create(
         wave=np.random.uniform(1000, 10000),
         sigma_res=np.random.uniform(1e-4, 1e-2),
         strength=strength_value,
-        sigma_v=sigma_v_value,
+        fwhm_v=fwhm_v_value,
         v_off=v_off_value,
         n_sigmas=3.0,
         name='gaussian_' + _generate_random_suffix(),
     )
     model.strength.bounds = strength_bounds
-    model.sigma_v.bounds = sigma_v_bounds
+    model.fwhm_v.bounds = fwhm_v_bounds
     model.v_off.bounds = v_off_bounds
     
     model.strength.fixed = bool(np.random.choice([True, False]))
-    model.sigma_v.fixed = bool(np.random.choice([True, False]))
+    model.fwhm_v.fixed = bool(np.random.choice([True, False]))
     model.v_off.fixed = bool(np.random.choice([True, False]))
     
     apply_random_ties(model)

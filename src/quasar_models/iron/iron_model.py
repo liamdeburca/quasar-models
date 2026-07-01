@@ -2,16 +2,21 @@
 AstroPy compatible model: IronModel.
 """
 from logging import getLogger
-from numpy import zeros_like, invert, nan, nanargmin, stack, float64, array_equal, isfinite
+from numpy import zeros_like, invert, nan, nanargmin, float64, array_equal, isfinite
 from astropy.modeling import Parameter
 from typing import Literal, Self, ClassVar
+
+from quasar_core.modelling.iron import (
+    IronEvaluate, IronFitDeriv,
+    choose_evaluate_func, choose_fit_deriv_func,
+    evaluate_exact, fit_deriv_exact_all,
+)
 
 from quasar_typing.numpy import FloatVector
 from quasar_utils.setup import Info
 from quasar_utils.decorators import validate_call
 from quasar_utils.raster import rasterise
 
-from . import evaluation
 from .iron_template import IronTemplate
 from ..utils.template import TemplateModel
 from ..utils.astropy import apply_bounds
@@ -62,6 +67,7 @@ class IronModel(TemplateModel):
         left: float = 1.0,
         right: float = 1.0,
         allow_interp_fitting: bool = False,
+        n_scales: float | None = None,
         name: str | Literal['vw2001', 'v2003', 'bw'] | None = None,
     ) -> Self:
         if template is None:
@@ -73,6 +79,9 @@ class IronModel(TemplateModel):
                 raise ValueError(msg)
             
             template = IronTemplate.load_from_cache(name=name, info=info)
+
+        if n_scales is not None:
+            template.n_scales = n_scales
 
         model = IronModel(
             flux, fwhm,
@@ -96,24 +105,28 @@ class IronModel(TemplateModel):
         return model
     
     @property
-    def template(self) -> IronTemplate: return self.meta['template']
+    def template(self) -> IronTemplate: 
+        return self.meta['template']
 
     @template.setter
     def template(self, value: IronTemplate) -> None:
         self.meta['template'] = value
 
     @property
-    def scale(self) -> float: return self.meta['scale']
+    def n_scales(self) -> float: 
+        return self.template.n_scales
+    
+    @n_scales.setter
+    def n_scales(self, value: float) -> None:
+        self.template.n_scales = value
+
+    @property
+    def scale(self) -> float: 
+        return self.meta['scale']
 
     @scale.setter
     def scale(self, value: float) -> None:
         self.meta['scale'] = value
-    
-    @property
-    def _perform_interp_fitting(self) -> bool:
-        return self.allow_interp_fitting \
-            and (self.left.fixed and self.left.value == 1.0) \
-            and (self.right.fixed and self.right.value == 1.0)
     
     def evaluate(self, x, flux, fwhm, split, left, right):
         flux = float(flux)
@@ -121,63 +134,94 @@ class IronModel(TemplateModel):
         split = float(split)
         left = float(left)
         right = float(right)
-        
-        if self._perform_interp_fitting:
-            return evaluation.evaluate_interp(
-                x,
-                flux, fwhm,
-                template=self.template,
-                **self._interpolation_matrices,
-            )
-        
-        return evaluation.evaluate(
+        return self.evaluate_func(
             x,
             flux, fwhm, split, left, right,
-            template=self.template,
-            **self._interpolation_matrices,
-        )
-    
-    def evaluate_sparse(self, x, flux, fwhm, split, left, right):
-        flux = float(flux)
-        fwhm = float(fwhm)
-        split = float(split)
-        left = float(left)
-        right = float(right)
-        
-        return evaluation.evaluate_sparse(
-            x,
-            flux, fwhm, split, left, right,
-            template=self.template,
-            **self._interpolation_matrices,
-        )
-    
-    def fit_deriv(self, x, flux, fwhm, split, left, right):
-        flux = float(flux)
-        fwhm = float(fwhm)
-        split = float(split)
-        left = float(left)
-        right = float(right)
-
-        if self._perform_interp_fitting:
-            return evaluation.fit_deriv_interp(
-                x,
-                flux, fwhm,
-                template=self.template,
-                fixed=self.fixed_dict,
-                **self._interpolation_matrices,
-            )
-        
-        return evaluation.fit_deriv(
-            x,
-            flux, fwhm, split, left, right,
-            template=self.template,
-            fixed=self.fixed_dict,
-            **self._interpolation_matrices,
+            **self._kwargs, y=None,
         )
     
     def jac(self, x, flux, fwhm, split, left, right):
-        return stack(self.fit_deriv(x, flux, fwhm, split, left, right), axis=0)
-            
+        flux = float(flux)
+        fwhm = float(fwhm)
+        split = float(split)
+        left = float(left)
+        right = float(right)
+        return self.fit_deriv_func(
+            x,
+            flux, fwhm, split, left, right,
+            **self._kwargs, derivs=None,
+        )
+    
+    def fit_deriv(self, x, flux, fwhm, split, left, right):
+        return list(self.jac(x, flux, fwhm, split, left, right))
+    
+    ### Model preparation
+
+    @property
+    def evaluate_func(self) -> IronEvaluate:
+        return self.meta.get('evaluate_func', evaluate_exact)
+    
+    @evaluate_func.setter
+    def evaluate_func(self, value: IronEvaluate) -> None:
+        self.meta['evaluate_func'] = value
+
+    @evaluate_func.deleter
+    def evaluate_func(self) -> None:
+        self.meta.pop('evaluate_func', None)
+    
+    @property
+    def fit_deriv_func(self) -> IronFitDeriv:
+        return self.meta.get('fit_deriv_func', fit_deriv_exact_all)
+    
+    @fit_deriv_func.setter
+    def fit_deriv_func(self, value: IronFitDeriv) -> None:
+        self.meta['fit_deriv_func'] = value
+
+    @fit_deriv_func.deleter
+    def fit_deriv_func(self) -> None:
+        self.meta.pop('fit_deriv_func', None)
+    
+    def _choose_evaluate_func(self) -> None:
+        self.evaluate_func = choose_evaluate_func(
+            self.left.value,
+            self.right.value,
+            self.allow_interp_fitting,
+            self.fixed_dict or self.fixed,
+        )
+    
+    def _choose_fit_deriv_func(self) -> None:
+        self.fit_deriv_func = choose_fit_deriv_func(
+            self.left.value,
+            self.right.value,
+            self.allow_interp_fitting,
+            self.fixed_dict or self.fixed,
+        )
+
+    def _prepare_model(self, x_out: FloatVector, *args) -> None:
+        self.fixed_dict = {
+            'flux': self.flux.fixed,
+            'fwhm': self.fwhm.fixed,
+            'split': self.split.fixed,
+            'left': self.left.fixed,
+            'right': self.right.fixed,
+        }
+        self._choose_evaluate_func()
+        self._choose_fit_deriv_func()
+        self._calculate_interpolation_matrices(x_out)
+
+    @property
+    def _kwargs(self) -> dict:
+        out = {
+            'template_fwhm': self.template.fwhm,
+            'template_x': self.template.x,
+            'template_data': self.template.data / self.template.normalisation,
+            'sigma_res': self.template.sigma_res,
+            'scale': self.scale,
+            'n_scales': self.n_scales,
+        }
+        out.update(self._interpolation_matrices)
+        return out
+
     @property
     def sorting_key(self) -> tuple[float, float]:
         """

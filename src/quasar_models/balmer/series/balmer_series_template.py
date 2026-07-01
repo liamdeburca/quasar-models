@@ -1,7 +1,7 @@
 __all__ = ['BalmerSeriesTemplate']
 
 from typing import Self, ClassVar, Literal
-from numpy import empty, float64, log, searchsorted, array, array_equal, interp
+from numpy import empty, float64, searchsorted, array, array_equal, interp
 from dataclasses import field
 from pydantic.dataclasses import dataclass
 
@@ -10,7 +10,7 @@ from quasar_typing.numpy import SortedFloatVector, FloatVector
 
 from quasar_utils.setup import Info
 
-from .evaluation import evaluate
+from quasar_core.modelling.balmer.series import evaluate
 from .io import PATH_TO_CACHE, load, save, save_to_cache, load_from_cache
 
 from ...utils.template import BaseTemplate
@@ -30,6 +30,7 @@ class BalmerSeriesTemplate(BaseTemplate):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        self.weights /= self.weights.sum()
 
         _ = AbsoluteDirPath._validate(self.PATH_TO_CACHE)
 
@@ -71,6 +72,7 @@ class BalmerSeriesTemplate(BaseTemplate):
             data=self.data.copy(),
             is_logspace=self.is_logspace,
             sigma_res=self.sigma_res,
+            n_scales=self.n_scales,
             name=self.name,
             path=self.path,
             _alpha_matrix=self._alpha_matrix if with_matrices else None,
@@ -107,16 +109,22 @@ class BalmerSeriesTemplate(BaseTemplate):
             waves.append(wave)
             weights.append(weight)
 
+        waves = array(waves, dtype=float64)
+        weights = array(weights, dtype=float64)
+
         return self.instantiate(
             self.fwhm.copy(),
             self.x.copy(),
-            array(waves, dtype=float64),
-            array(weights, dtype=float64) / sum(weights),
+            waves,
+            weights / weights.sum(),
             self.temp,
             self.dens,
             (min(n_us), max(n_us)),
-            info=self.info,
+            sigma_res=self.sigma_res,
+            n_scales=self.n_scales,
+            edge=self.x_norm,
             fwhm_norm=self.fwhm_norm,
+            normalisation=None,
             is_logspace=self.is_logspace,
             name=self.name,
         )
@@ -133,32 +141,36 @@ class BalmerSeriesTemplate(BaseTemplate):
         n_u_range: tuple[int, int],
         *,
         sigma_res: float,
-        x_norm: float,
+        n_scales: float,
+        edge: float,
         fwhm_norm: float,
         normalisation: float | None = None,
         is_logspace: bool = False,
         name: Literal['sh1995'] = 'sh1995',
     ) -> Self:
+        weights /= weights.sum()
+
         _data = evaluate(
             x, 1.0, fwhm[0],
             sigma_res=sigma_res,
-            edge=x_norm,
             waves=waves,
             weights=weights,
+            edge=edge,
             normalisation=1.0,
-        )
+        )[None,:]
         obj = BalmerSeriesTemplate(
             fwhm=fwhm[:1],
             x=x,
-            data=_data[None,:],
+            data=_data,
             is_logspace=is_logspace,
             sigma_res=sigma_res,
+            n_scales=n_scales,
             name=name,
             path=None,
             _alpha_matrix=None,
             _beta_matrix=None,
             _xn=None,
-            x_norm=x_norm,
+            x_norm=edge,
             fwhm_norm=fwhm_norm,
             normalisation=normalisation,
             waves=waves,
@@ -178,11 +190,7 @@ class BalmerSeriesTemplate(BaseTemplate):
         Upsamples the BalmerSeriesTemplate to the specified FWHM values.
         """        
         obj = self if inplace else self.copy(with_matrices=True)
-
-        log_x = log(self.x)
-        log_edge = log(self.x_norm)
-        log_waves = log(self.waves)
-
+        
         data = empty(shape=(fwhm.size, self.x.size), dtype=float64)
         indices = searchsorted(self.fwhm, fwhm)
 
@@ -191,18 +199,16 @@ class BalmerSeriesTemplate(BaseTemplate):
                 and self.fwhm[indices[i]] == fwhm_curr:
                 data[i,:] = self.data[indices[i],:]
             else:
-                data[i,:] = evaluate(
+                evaluate(
                     self.x,
                     flux=1.0,
                     fwhm=fwhm_curr,
                     sigma_res=self.sigma_res,
-                    edge=self.x_norm,
                     waves=self.waves,
                     weights=self.weights,
-                    log_x=log_x,
-                    log_edge=log_edge,
-                    log_waves=log_waves,
+                    edge=self.x_norm,
                     normalisation=1.0,
+                    y=data[i,:],
                 )
 
         obj.fwhm = fwhm

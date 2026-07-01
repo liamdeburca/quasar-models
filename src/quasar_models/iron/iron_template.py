@@ -9,9 +9,9 @@ from quasar_typing.numpy import FloatVector
 from quasar_typing.pathlib import AbsoluteFITSPath, AbsoluteDirPath
 from quasar_utils.setup import Info
 
-from .io import PATH_TO_CACHE, save, load, save_to_cache, load_from_cache
+from quasar_core.modelling.split import evaluate as split_evaluate
 
-from .utils import _split_evaluate
+from .io import PATH_TO_CACHE, save, load, save_to_cache, load_from_cache
 from ..utils.template import BaseTemplate
 
 @dataclass(eq=False)
@@ -50,6 +50,7 @@ class IronTemplate(BaseTemplate):
             data=self.data.copy(),
             is_logspace=self.is_logspace,
             sigma_res=self.sigma_res,
+            n_scales=self.n_scales,
             name=self.name,
             path=self.path,
             _alpha_matrix=self._alpha_matrix if with_matrices else None,
@@ -93,9 +94,10 @@ class IronTemplate(BaseTemplate):
         -----
         This method assumes that the x-array is in logspace (logbinned).
         """
-        return _split_evaluate(
+        return split_evaluate(
             x, split, left, right,
-            sigma_res=self.sigma_res, scale=scale,
+            sigma_res=self.sigma_res,
+            scale=scale,
         )
 
     def save(

@@ -12,7 +12,7 @@ $$
 $$
 
 $$
-\sigma_\text{tot}^2 = \sigma_v^2 + \sigma_\text{res}^2
+\sigma_\text{tot}^2 = \left(\frac{\mathrm{fwhm\_v}}{2\sqrt{2\ln 2}}\right)^2 + \sigma_\text{res}^2
 $$
 
 $$
@@ -33,7 +33,7 @@ $g = 1/\sqrt{2\pi}$ is stored as `gauss_amp`.
 | Symbol | Role | Parameter |
 |--------|------|-----------|
 | $A$ | Line strength (flux integral) | `strength` — **fittable** |
-| $\sigma_v$ | Intrinsic velocity dispersion (in units of $c$) | `sigma_v` — **fittable** |
+| $\mathrm{fwhm\_v}$ | Intrinsic velocity FWHM (in units of $c$) | `fwhm_v` — **fittable** |
 | $v_\text{off}$ | Velocity offset from rest wavelength | `v_off` — **fittable** |
 | $\lambda_0$ | Rest wavelength | `wave` — fixed constant |
 | $\sigma_\text{res}$ | Instrumental velocity resolution | `sigma_res` — fixed constant |
@@ -45,7 +45,7 @@ $g = 1/\sqrt{2\pi}$ is stored as `gauss_amp`.
 ### Shared intermediates
 
 $$
-\sigma_\text{tot}^2 = \sigma_v^2 + \sigma_\text{res}^2, \qquad
+\sigma_\text{tot}^2 = \left(\frac{\mathrm{fwhm\_v}}{2\sqrt{2\ln 2}}\right)^2 + \sigma_\text{res}^2, \qquad
 \sigma = \mu\,\sigma_\text{tot}, \qquad
 z = \frac{x - \mu}{\sigma}, \qquad
 f = \frac{g\,A}{\sigma}\,e^{-z^2/2}
@@ -63,13 +63,14 @@ $$
 
 ---
 
-### With respect to `sigma_v`
+### With respect to `fwhm_v`
 
-We use the chain rule through $\sigma$:
+We use the chain rule through $\sigma$. Let $k = 2\sqrt{2\ln 2}$, so $\sigma_v = \mathrm{fwhm\_v}/k$:
 
 $$
-\frac{\partial \sigma}{\partial \sigma_v} = \mu\,\frac{\sigma_v}{\sigma_\text{tot}}
-= \frac{\sigma\,\sigma_v}{\sigma_\text{tot}^2}
+\frac{\partial \sigma}{\partial \mathrm{fwhm\_v}} = \mu\,\frac{\partial \sigma_\text{tot}}{\partial \mathrm{fwhm\_v}}
+= \mu\,\frac{\mathrm{fwhm\_v}}{k^2 \sigma_\text{tot}}
+= \frac{\sigma\,\mathrm{fwhm\_v}}{k^2 \sigma_\text{tot}^2}
 $$
 
 For the $\sigma$-dependence of $f$ (treating $\mu$ as constant):
@@ -85,10 +86,12 @@ Combining:
 
 $$
 \boxed{
-\frac{\partial f}{\partial \sigma_v}
-= f\,(z^2 - 1)\,\frac{\sigma_v}{\sigma_\text{tot}^2}
+\frac{\partial f}{\partial \mathrm{fwhm\_v}}
+= f\,(z^2 - 1)\,\frac{\mathrm{fwhm\_v}}{k^2 \sigma_\text{tot}^2}
 }
 $$
+
+where $k = 2\sqrt{2\ln 2} \approx 2.3548$.
 
 ---
 
@@ -135,7 +138,8 @@ The `fit_deriv_numba` function in `evaluation.py` computes:
 
 ```python
 # Shared intermediates
-sigma_tot_sq = sigma_v**2 + sigma_res**2
+k_sq = (2 * sqrt(2 * log(2)))**2  # k^2 ≈ 5.545
+sigma_tot_sq = (fwhm_v / sqrt(k_sq))**2 + sigma_res**2
 sigma        = mean * sigma_tot_sq**0.5       # mean = mu
 inv_sigma    = 1.0 / sigma
 z            = (x - mean) * inv_sigma
@@ -144,7 +148,7 @@ _f           = amp * exp(-0.5 * z**2)         # f / strength
 f            = strength * _f                  # f
 
 df_dstrength = _f                             # f/A              ✓
-df_dsigma_v  = f * (z_sq - 1) * sigma_v / sigma_tot_sq    ✓
+df_dfwhm_v   = f * (z_sq - 1) * fwhm_v / (k_sq * sigma_tot_sq)    ✓
 df_dv_off    = f * (z * x * inv_sigma - 1) / (1 + v_off)  ✓
 ```
 

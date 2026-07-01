@@ -2,12 +2,15 @@
     Lorem ipsum.
 """
 
-from math import pi
+from math import pi, log
 from numpy import argwhere, argmax, argmin, invert, dot, float64
 from numpy.typing import NDArray
 from quasar_typing.bounds import AstropyBounds
 
 from ..utils.astropy import apply_bounds
+
+SIGMA_TO_FWHM: float = 2 * (2 * log(2))**0.5
+FWHM_TO_SIGMA: float = 1 / SIGMA_TO_FWHM
 
 def measure_intersection(
     x: NDArray[float64],
@@ -44,7 +47,8 @@ def measure_intersection(
             y1, y2 = y
         case _:
             mask = (y[:-1] >= y_crit) & (y[1:] < y_crit)
-            if not mask.any(): return x[-1]
+            if not mask.any(): 
+                return x[-1]
 
             n = argwhere(mask).min()
 
@@ -104,8 +108,8 @@ def instantiate_model(
     y: NDArray[float64], 
     y_smooth: NDArray[float64] | None = None,
     sigma_res: float = 0,
-    v_off_bounds:    AstropyBounds = (-1, 1),
-    sigma_v_bounds:  AstropyBounds = (0, None),
+    v_off_bounds: AstropyBounds = (-1, 1),
+    fwhm_v_bounds: AstropyBounds = (0, None),
     strength_bounds: AstropyBounds = (0, None)
 ) -> tuple[float, float, float]:
     """
@@ -119,7 +123,7 @@ def instantiate_model(
     y_smooth : 1D numpy.array of floats or None, optional
     sigma_res : float, optional
     v_off_bounds : tuple of floats, optional
-    sigma_v_bounds : tuple of floats, optional
+    fwhm_v_bounds : tuple of floats, optional
     strength_bounds : tuple of floats, optional
 
     Returns
@@ -130,15 +134,15 @@ def instantiate_model(
     -----
     Lorem ipsum.
     """
-    if y_smooth is None: y_smooth = y
+    if y_smooth is None: 
+        y_smooth = y
 
     # Guessing the velocity offset 
     # - Method 4 (lmfit) from thesis (smoothed preferred)
     mask = y_smooth > 0.5 * (y_smooth.min() + y_smooth.max())
     
     _x = x[mask]
-    if _x.size <= 1: _mu = x[argmax(y_smooth)]
-    else:            _mu = _x.mean()
+    _mu = x[argmax(y_smooth)] if _x.size <= 1 else _x.mean()
 
     v_off = apply_bounds((_mu - line) / line, v_off_bounds)
     mu = line * (1 + v_off)
@@ -147,6 +151,7 @@ def instantiate_model(
     # - Method 4 (FWQM) from thesis (smoothed preferred)
     sigma = measure_sigma(mu, x, y_smooth, 0.25)
     sigma_v = max(sigma**2 - sigma_res**2, 0)**0.5
+    fwhm_v = sigma_v * SIGMA_TO_FWHM
 
     # Guessing the line strength
     # - Method 2 (integral) from thesis (raw preferred)
@@ -154,6 +159,6 @@ def instantiate_model(
 
     return (
         apply_bounds(strength, strength_bounds),
-        apply_bounds(sigma_v, sigma_v_bounds),
+        apply_bounds(fwhm_v, fwhm_v_bounds),
         v_off,
     )

@@ -1,39 +1,73 @@
 """
     Lorem ipsum.
 """
-__all__ = ['evaluate', 'evaluate_sparse', 'fit_deriv']
+__all__ = [
+    "evaluate",
+    "fit_deriv",
+    "choose_evaluate_func",
+    "choose_fit_deriv_func",
+]
 
-from math import hypot
-from numpy import exp, pi, float64, zeros
+from typing import Protocol
+from math import hypot, pi, log, sqrt
+from numpy import float64, zeros, zeros_like, stack
 
-from quasar_typing.numpy import FloatVector, BoolVector, FloatMatrix
+from quasar_typing.numpy import FloatVector, FloatMatrix
+from quasar_core.modelling import gaussian
 
-N_SIGMAS:  float = 3.0
-GAUSS_AMP: float = 1 / (2 * pi)**0.5
+N_SIGMAS:       float = 3.0
+GAUSS_AMP:      float = 1 / (2 * pi)**0.5
+SIGMA_TO_FWHM:  float = 2 * sqrt(2 * log(2))  # ≈ 2.3548
+FWHM_TO_SIGMA:  float = 1 / SIGMA_TO_FWHM     # ≈ 0.4247
 
-def evaluate(
-    x: float | FloatVector,
+class EvaluateFunc(Protocol):
+    def __call__(
+        self,
+        x: FloatVector,
+        strength: float,
+        fwhm_v: float,
+        v_off: float,
+        wave: float = 1.0,
+        sigma_res: float = 0.0,
+        y: FloatVector | None = None,
+    ) -> FloatVector:
+        ...
+
+class FitDerivFunc(Protocol):
+    def __call__(
+        self,
+        derivs: FloatMatrix,
+        x: FloatVector,
+        strength: float,
+        fwhm_v: float,
+        v_off: float,
+        wave: float,
+        sigma_res: float,
+    ) -> None:
+        ...
+
+###
+
+def _evaluate(
+    x: FloatVector,
     strength: float,
-    sigma_v: float,
+    fwhm_v: float,
     v_off: float,
     wave: float = 1.0,
-    sigma_res: float = 1.0,
-    gauss_amp: float = GAUSS_AMP,
+    sigma_res: float = 0.0,
+    y: FloatVector | None = None,
 ) -> float | FloatVector:
     """
-    ** NUMBA OPTIMISED FUNCTION (FASTMATH) **
-
     Lorem ipsum.
 
     Parameters
     ----------
     x : float or 1D numpy.array of floats
     strength : float
-    sigma_v : float
+    fwhm_v : float
     v_off : float
     wave : float, optional
     sigma_res : float, optional
-    gauss_amp : float, optional
 
     Returns
     -------
@@ -43,142 +77,81 @@ def evaluate(
     -----
     Lorem ipsum.
     """
-    mean = wave * (1 + v_off)
-    sigma = mean * hypot(sigma_v, sigma_res)
-    inv_sigma = 1.0 / sigma
-    z = (x - mean) * inv_sigma
-    return gauss_amp * strength * exp(-0.5 * z * z) * inv_sigma
+    if y is None:
+        y = zeros_like(x, dtype=float64)
+    return gaussian.evaluate_v(y, x, strength, fwhm_v, v_off, wave, sigma_res)
 
-def evaluate_sparse(
+###
+
+def choose_evaluate_func() -> EvaluateFunc:
+    return _evaluate
+
+def evaluate(
     x: FloatVector,
     strength: float,
-    sigma_v: float,
+    fwhm_v: float,
     v_off: float,
     wave: float = 1.0,
-    sigma_res: float = 1.0,
-    n_sigmas: float = N_SIGMAS,
-    gauss_amp: float = GAUSS_AMP,
-) -> tuple[BoolVector, FloatVector]:
-    """
-    ** NUMBA OPTIMISED FUNCTION (FASTMATH) **
+    sigma_res: float = 0.0,
+    y: FloatVector | None = None,
+    evaluate_func: EvaluateFunc | None = None,
+) -> FloatVector:
+    if evaluate_func is None:
+        evaluate_func = choose_evaluate_func()
+    return evaluate_func(
+        x, 
+        strength, fwhm_v, v_off, 
+        wave=wave, sigma_res=sigma_res,
+        y=y,
+    )
 
-    Lorem ipsum.
+def _does_nothing(*args):
+    pass
 
-    Parameters
-    ----------
-    x : 1D numpy.array of floats
-    strength : float
-    sigma_v : float
-    v_off : float
-    wave : float, optional
-    sigma_res : float, optional
-    n_sigmas : float, optional
-    gauss_amp : float, optional
+def choose_fit_deriv_func(
+    fixed: dict[str, bool] | None,
+) -> FitDerivFunc:
+    if fixed is None:
+        fixed = {'strength': False, 'fwhm_v': False, 'v_off': False}
 
-    Returns
-    -------
-    tuple[1D numpy.array of bools, 1D numpy.array of floats]
 
-    Notes
-    -----
-    Lorem ipsum.
-    """
-    mean = wave * (1 + v_off)
-    sigma = mean * hypot(sigma_v, sigma_res)
-
-    mask = (mean - n_sigmas * sigma <= x) & (x <= mean + n_sigmas * sigma)
-
-    inv_sigma = 1.0 / sigma
-    z = (x[mask] - mean) * inv_sigma
-    y = gauss_amp * strength * exp(-0.5 * z * z) * inv_sigma
-
-    return mask, y
-
-def fit_deriv_numba(
-    x: FloatVector,
-    strength: float,
-    sigma_v: float,
-    v_off: float,
-    wave: float,
-    sigma_res: float,
-    gauss_amp: float = GAUSS_AMP,   
-    fixed_strength: bool = True,
-    fixed_sigma_v: bool = True,
-    fixed_v_off: bool = True,
-) -> list[FloatVector]:
-    """
-    ** NUMBA OPTIMISED FUNCTION (FASTMATH) **
-
-    Lorem ipsum.
-
-    Parameters
-    ----------
-    x : 1D numpy.array of floats
-    strength : float
-    sigma_v : float
-    v_off : float
-    wave : float
-    sigma_res : float
-    gauss_amp : float, optional
-
-    fixed_strength : bool, optional
-    fixed_sigma_v : bool, optional
-    fixed_v_off : bool, optional
-
-    Returns
-    -------
-    list[1D numpy.array of floats]
-
-    Notes
-    -----
-    Lorem ipsum.
-    """
-    df_dstrength = zeros(x.size, dtype=float64)
-    df_dsigma_v = zeros(x.size, dtype=float64)
-    df_dv_off = zeros(x.size, dtype=float64)
-
-    if not (fixed_strength and fixed_sigma_v and fixed_v_off):
-        mean = wave * (1 + v_off)
-        sigma_tot_sq = sigma_v * sigma_v + sigma_res * sigma_res
-        sigma = mean * sigma_tot_sq**0.5
-        inv_sigma = 1.0 / sigma
-        z = (x - mean) * inv_sigma
-        z_sq = z * z
-        amp = gauss_amp * inv_sigma
-        _f = amp * exp(-0.5 * z_sq)
-        f = strength * _f
-
-        if not fixed_strength:
-            df_dstrength[:] = _f
-
-        if not fixed_sigma_v:
-            df_dsigma_v[:] = f * (z_sq - 1) * sigma_v / sigma_tot_sq
-
-        if not fixed_v_off:
-            df_dv_off[:] = f * (z * x * inv_sigma - 1) / (1 + v_off)
-
-    return [df_dstrength, df_dsigma_v, df_dv_off]
+    match tuple(fixed.values()):
+        case (False, False, False):
+            return gaussian.fit_deriv_v_all
+        case (False, False, True):
+            return gaussian.fit_deriv_v_strength_and_fwhm_v
+        case (False, True, False):
+            return gaussian.fit_deriv_v_strength_and_v_off
+        case (True, False, False):
+            return gaussian.fit_deriv_v_fwhm_v_and_v_off
+        case (False, True, True):
+            return gaussian.fit_deriv_v_only_strength
+        case (True, False, True):
+            return gaussian.fit_deriv_v_only_fwhm_v
+        case (True, True, False):
+            return gaussian.fit_deriv_v_only_v_off
+        case (True, True, True):
+            return _does_nothing
 
 def fit_deriv(
     x: FloatVector,
     strength: float,
-    sigma_v: float,
+    fwhm_v: float,
     v_off: float,
     wave: float,
     sigma_res: float,
     fixed: dict[str, bool] | None = None,
-    gauss_amp: float = GAUSS_AMP,   
+    derivs: list[FloatVector] | FloatMatrix | None = None,
+    fit_deriv_func: FitDerivFunc | None = None,
 ) -> list[FloatVector]:
     """
-    ** NUMBA OPTIMISED FUNCTION (FASTMATH) **
-
     Convenience function wrapping fit_deriv_numba.
 
     Parameters
     ----------
     x : 1D numpy.array of floats
     strength : float
-    sigma_v : float
+    fwhm_v : float
     v_off : float
     wave : float
     sigma_res : float
@@ -193,28 +166,24 @@ def fit_deriv(
     -----
     Lorem ipsum.
     """
-    if fixed is None:
-        fixed = {'strength': False, 'sigma_v': False, 'v_off': False}
+    if derivs is None:
+        derivs = zeros((3, x.size), dtype=float64)
+    elif isinstance(derivs, list):
+        derivs = stack(derivs, axis=0)
 
-    return fit_deriv_numba(
-        x,
-        strength,
-        sigma_v,
-        v_off,
-        wave,
-        sigma_res,
-        gauss_amp,
-        fixed_strength=fixed['strength'],
-        fixed_sigma_v=fixed['sigma_v'],
-        fixed_v_off=fixed['v_off'],
-    )
+    if fit_deriv_func is None:
+        fit_deriv_func = choose_fit_deriv_func(fixed)
+
+    fit_deriv_func(derivs, x, strength, fwhm_v, v_off, wave, sigma_res)
+
+    return list(derivs)
 
 ### Derivative w.r.t. x --  useful for numerical optimisation
 
 def prime(
     x: float | FloatVector,
     strength: float,
-    sigma_v: float,
+    fwhm_v: float,
     v_off: float,
     wave: float = 1.0,
     sigma_res: float = 1.0,
@@ -229,7 +198,7 @@ def prime(
     ----------
     x : float or 1D numpy.array of floats
     strength : float
-    sigma_v : float
+    fwhm_v : float
     v_off : float
     wave : float, optional
     sigma_res : float, optional
@@ -243,13 +212,14 @@ def prime(
     -----
     Lorem ipsum.
     """
+    sigma_v = fwhm_v * FWHM_TO_SIGMA
     mean = wave * (1 + v_off)
     sigma = mean * hypot(sigma_v, sigma_res)
     inv_sigma = 1.0 / sigma
     z = (x - mean) * inv_sigma
     return -z * inv_sigma * evaluate(
         x, 
-        strength, sigma_v, v_off, 
+        strength, fwhm_v, v_off, 
         wave=wave, 
         sigma_res=sigma_res, 
         gauss_amp=gauss_amp,

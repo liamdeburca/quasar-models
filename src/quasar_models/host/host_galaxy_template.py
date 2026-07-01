@@ -46,6 +46,7 @@ class HostGalaxyTemplate(BaseTemplate):
             data=self.data.copy(),
             is_logspace=self.is_logspace,
             sigma_res=self.sigma_res,
+            n_scales=self.n_scales,
             name=self.name,
             path=self.path,
             _alpha_matrix=self._alpha_matrix.copy() if with_matrices else None,

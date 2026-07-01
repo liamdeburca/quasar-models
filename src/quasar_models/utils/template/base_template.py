@@ -4,7 +4,7 @@ from typing import Self
 from abc import ABC, abstractmethod
 from numpy import (
     log, isfinite, arange, empty, exp, median, full_like, float64, maximum,
-    stack, searchsorted, array_equal, diff, 
+    stack, searchsorted, array_equal, diff, ascontiguousarray
 )
 from numpy.typing import NDArray
 from pathlib import Path
@@ -17,10 +17,11 @@ from quasar_typing.scipy import csr_matrix_
 from quasar_typing.pathlib import AbsoluteFITSPath
 from quasar_typing.bounds import AstropyBounds
 
+from quasar_core.convolution import convolve_signal, kernel
+
 from quasar_utils.setup import Info
 from quasar_utils.binning import alpha_matrix_sparse, lin_dx
 from quasar_utils.interpolation import create_interp_matrix
-from quasar_utils.convolution import convolve_signal, kernel
 from quasar_utils.raster import rasterise
 from quasar_utils.decorators import validate_call
 
@@ -45,6 +46,7 @@ class BaseTemplate(ABC):
 
     is_logspace: bool = field(kw_only=True)
     sigma_res: float | None = field(default=None, kw_only=True)
+    n_scales: float = field(default=5.0, kw_only=True)
     name: str = field(kw_only=True)
 
     path: AbsoluteFITSPath | None = field(default=None, kw_only=True)
@@ -58,6 +60,10 @@ class BaseTemplate(ABC):
     normalisation: float | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
+        self.x = ascontiguousarray(self.x, dtype=float64)
+        self.fwhm = ascontiguousarray(self.fwhm, dtype=float64)
+        self.data = ascontiguousarray(self.data, dtype=float64)
+        
         if self.is_logspace:
             assert self.sigma_res is not None
         else:
@@ -179,8 +185,9 @@ class BaseTemplate(ABC):
                     k = kernel(
                         (fwhm_curr**2 - fwhm_prev**2)**0.5,
                         self.sigma_res,
+                        self.n_scales,
                     )
-                    data[i,:] = convolve_signal.__wrapped__(data_prev, k)
+                    data[i,:] = convolve_signal(data_prev, k)
 
                 fwhm_prev = fwhm_curr
                 data_prev = data[i,:]

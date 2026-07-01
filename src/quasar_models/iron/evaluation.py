@@ -1,4 +1,12 @@
-from numpy import zeros_like, ones_like, float64, bool_, ones, clip, log, exp
+__all__ = [
+    "evaluate",
+    "fit_deriv",
+    "choose_evaluate_func",
+    "choose_fit_deriv_func",
+]
+
+from typing import Protocol
+from numpy import zeros_like, float64, ones, clip, log, exp
 
 from .utils import _split_fit_deriv
 from ..utils.interpolation import get_template_transform
@@ -8,8 +16,39 @@ from quasar_utils.convolution import (
     kernel, kernel_deriv, convolve_signal, _identify_closest, SIGMA_TO_FWHM
 )
 
-from quasar_typing.numpy import BoolVector, FloatVector
+from quasar_typing.numpy import FloatVector
 from quasar_typing.scipy import csr_matrix_
+
+class EvaluateFunc(Protocol):
+    def __call__(
+        self,
+        x: FloatVector,
+        flux: float,
+        fwhm: float,
+        split: float,
+        left: float,
+        right: float,
+        *,
+        template: BaseTemplate,
+        interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
+    ) -> FloatVector:
+        ...
+
+class FitDerivFunc(Protocol):
+    def __call__(
+        self,
+        x: FloatVector,
+        flux: float,
+        fwhm: float,
+        split: float,
+        left: float,
+        right: float,
+        *,
+        template: BaseTemplate,
+        interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
+        fixed: dict[str, bool] | None = None,     
+    ) -> list[FloatVector]:
+        ...
 
 ### SPLIT ###
 
@@ -60,9 +99,9 @@ def split_fit_deriv(
 
     return [df_dsplit, df_dleft, df_dright]
 
-### EVALUATION ###
+### By CONVOLUTION
 
-def evaluate(
+def evaluate_exact(
     x: FloatVector,
     flux: float,
     fwhm: float,
@@ -91,63 +130,7 @@ def evaluate(
         **kwargs,
     )
 
-def evaluate_interp(
-    x: FloatVector,
-    flux: float,
-    fwhm: float,
-    *,
-    template: BaseTemplate,
-    interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
-) -> FloatVector:
-    
-    if flux == 0:
-        return zeros_like(x, dtype=float64)
-    
-    return template_evaluation.evaluate_interp(
-        x, flux, fwhm,
-        template=template,
-        interpolation_matrix=interpolation_matrix,
-    )
-
-def evaluate_sparse(
-    x: FloatVector,
-    flux: float,
-    fwhm: float,
-    split: float,
-    left: float,
-    right: float,
-    *,
-    template: BaseTemplate,
-    interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
-) -> tuple[BoolVector, FloatVector]:
-    return (
-        ones_like(x, dtype=bool_),
-        evaluate(
-            x, flux, fwhm, split, left, right,
-            template=template,
-            interpolation_matrix=interpolation_matrix,
-        )
-    )
-
-def evaluate_interp_sparse(
-    x: FloatVector,
-    flux: float,
-    fwhm: float,
-    *,
-    template: BaseTemplate,
-    interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
-) -> tuple[BoolVector, FloatVector]:
-    return (
-        ones_like(x, dtype=bool_),
-        evaluate_interp(
-            x, 
-            flux, fwhm, 
-            template=template, 
-            interpolation_matrix=interpolation_matrix,
-        )
-    )
-
-def fit_deriv(
+def fit_deriv_exact(
     x: FloatVector,
     flux: float,
     fwhm: float,
@@ -253,12 +236,35 @@ def fit_deriv(
 
     return [df_dflux, df_dfwhm, df_dsplit, df_dleft, df_dright]
 
-def fit_deriv_interp(
+### By INTERPOLATION
+
+def evaluate_interp(
     x: FloatVector,
     flux: float,
     fwhm: float,
     *,
-    template: BaseTemplate = None,
+    template: BaseTemplate,
+    interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
+) -> FloatVector:
+    
+    if flux == 0:
+        return zeros_like(x, dtype=float64)
+    
+    return template_evaluation.evaluate_interp(
+        x, flux, fwhm,
+        template=template,
+        interpolation_matrix=interpolation_matrix,
+    )
+
+def fit_deriv_interp(
+    x: FloatVector,
+    flux: float,
+    fwhm: float,
+    split: float,
+    left: float,
+    right: float,
+    *,
+    template: BaseTemplate,
     interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
     fixed: dict[str, bool] | None = None,
 ) -> list[FloatVector]:
@@ -283,3 +289,74 @@ def fit_deriv_interp(
         fixed={p: fixed[p] for p in ['flux', 'fwhm']},
     )
     return [df_dflux, df_dfwhm, df_dsplit, df_dleft, df_dright]
+
+###
+
+def choose_evaluate_func(
+    perform_interp_fitting: bool,
+) -> EvaluateFunc:
+    return evaluate_interp if perform_interp_fitting else evaluate_exact
+
+def evaluate(
+    x: FloatVector,
+    flux: float,
+    fwhm: float,
+    split: float,
+    left: float,
+    right: float,
+    *,
+    template: BaseTemplate,
+    interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
+    perform_interp_fitting: bool | None = None,
+    evaluate_func: EvaluateFunc | None = None,
+) -> FloatVector:
+    if evaluate_func is None:
+        assert perform_interp_fitting is not None
+        evaluate_func = choose_evaluate_func(perform_interp_fitting)
+
+    return evaluate_func(
+        x, flux, fwhm, split, left, right,
+        template=template,
+        interpolation_matrix=interpolation_matrix,
+    )
+
+def choose_fit_deriv_func(
+    fixed: dict[str, bool] | None,
+    perform_interp_fitting: bool,
+) -> FitDerivFunc:
+    if fixed is None:
+        fixed = {
+            'flux': False,
+            'fwhm': False,
+            'split': False,
+            'left': False,
+            'right': False,
+        }
+
+    return fit_deriv_interp if perform_interp_fitting else fit_deriv_exact
+
+def fit_deriv(
+    x: FloatVector,
+    flux: float,
+    fwhm: float,
+    split: float,
+    left: float,
+    right: float,
+    *,
+    template: BaseTemplate,
+    perform_interp_fitting: bool | None = None,
+    interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
+    fixed: dict[str, bool] | None = None,
+    fit_deriv_func: FitDerivFunc | None = None,
+) -> list[FloatVector]:
+    if fit_deriv_func is None:
+        assert perform_interp_fitting is not None
+        fit_deriv_func = choose_fit_deriv_func(fixed, perform_interp_fitting)
+
+    return fit_deriv_func(
+        x,
+        flux, fwhm, split, left, right,
+        template=template,
+        interpolation_matrix=interpolation_matrix,
+        fixed=fixed,
+    )

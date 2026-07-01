@@ -37,6 +37,18 @@ class BaseModel(ABC, Fittable1DModel, metaclass=BaseModelMeta):
     def fixed_dict(self) -> None:
         self.meta.pop('fixed_dict', None)
 
+    ### Evaluate func
+
+    @property
+    @abstractmethod
+    def evaluate_func(self): ...
+
+    ### Fit deriv func
+
+    @property
+    @abstractmethod
+    def fit_deriv_func(self): ...
+
     ### Tied parameters
 
     @property
@@ -91,6 +103,24 @@ class BaseModel(ABC, Fittable1DModel, metaclass=BaseModelMeta):
     def fit_deriv(self, *args, **kwargs):
         """
         Calculate the partial derivatives of the fitting function.
+        """
+        pass
+
+    @abstractmethod
+    def jac(self, *args, **kwargs):
+        """
+        Calculate the Jacobian matrix of the fitting function.
+        """
+        pass
+
+    @abstractmethod
+    def _choose_evaluate_func(self) -> None:
+        pass
+
+    @abstractmethod
+    def _choose_fit_deriv_func(self) -> None:
+        """
+        Choose the appropriate fit_deriv function based on fixed parameters.
         """
         pass
 

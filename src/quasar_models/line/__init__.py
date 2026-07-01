@@ -1,7 +1,3 @@
-"""
-    Lorem ipsum.
-"""
-
 __all__ = [
     'GaussianModel',
     'VProfileCopy1G',

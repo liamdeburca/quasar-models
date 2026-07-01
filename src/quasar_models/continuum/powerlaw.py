@@ -6,11 +6,15 @@ from numpy.typing import NDArray
 
 from pydantic_core import ValidationError
 
+from quasar_core.modelling.powerlaw import (
+    PowerLawEvaluate, PowerLawFitDeriv,
+    choose_evaluate_func, choose_fit_deriv_func,
+    evaluate, inverse,
+    fit_deriv_all,
+)
 from quasar_utils.decorators import validate_call
-
 from quasar_typing.numpy import FloatVector, FloatMatrix
 
-from . import evaluation
 from ..utils.basemodel import BaseModel
 from ..utils.linear_regression import linreg
 from ..utils.astropy import apply_bounds
@@ -64,36 +68,64 @@ class PowerLawModel(BaseModel):
         self.meta['y0'] = value
 
     def evaluate(self, x, flux, alpha):
-        return evaluation.evaluate(
-            x, 
-            flux, alpha, 
-            x0=self.x0,
-        )
+        return self.evaluate_func(x, flux, alpha, **self._kwargs, y=None)
     
-    def evaluate_sparse(self, x, flux, alpha):
-        return evaluation.evaluate_sparse(
-            x, 
-            flux, alpha, 
-            x0=self.x0,
-        )
-    
-    def fit_deriv(self, x, flux, alpha):
-        return evaluation.fit_deriv(
-            x, 
-            flux, alpha, 
-            x0=self.x0, 
-            fixed=self.fixed_dict,
-        )
-
     def jac(self, x, flux, alpha):
-        return stack(self.fit_deriv(x, flux, alpha), axis=0)
+        return self.fit_deriv_func(x, flux, alpha, **self._kwargs, derivs=None)
+
+    def fit_deriv(self, x, flux, alpha):
+        return list(self.jac(x, flux, alpha))
 
     def inverse(self, y, flux, alpha):
-        return evaluation.inverse(
-            y, 
-            flux, alpha, 
-            x0=self.x0,
+        return inverse(y, flux, alpha, **self._kwargs, x=None)
+
+    ### Model preparation
+
+    @property
+    def evaluate_func(self) -> PowerLawEvaluate:
+        return self.meta.get('evaluate_func', evaluate)
+    
+    @evaluate_func.setter
+    def evaluate_func(self, value: PowerLawEvaluate) -> None:
+        self.meta['evaluate_func'] = value
+
+    @evaluate_func.deleter
+    def evaluate_func(self) -> None:
+        self.meta.pop('evaluate_func', None)
+    
+    @property
+    def fit_deriv_func(self) -> PowerLawFitDeriv:
+        return self.meta.get('fit_deriv_func', fit_deriv_all)
+    
+    @fit_deriv_func.setter
+    def fit_deriv_func(self, value: PowerLawFitDeriv) -> None:
+        self.meta['fit_deriv_func'] = value
+
+    @fit_deriv_func.deleter
+    def fit_deriv_func(self) -> None:
+        self.meta.pop('fit_deriv_func', None)
+
+    def _choose_evaluate_func(self) -> None:
+        self.evaluate_func = choose_evaluate_func()
+    
+    def _choose_fit_deriv_func(self) -> None:
+        self.fit_deriv_func = choose_fit_deriv_func(
+            self.fixed_dict or self.fixed,
         )
+
+    def _prepare_model(self, *args) -> None:
+        self.fixed_dict = {
+            'flux': self.flux.fixed,
+            'alpha': self.alpha.fixed,
+        }
+        self._choose_evaluate_func()
+        self._choose_fit_deriv_func()
+
+    @property
+    def _kwargs(self) -> dict:
+        return {
+            'x0': self.x0,
+        }
     
     # Utilities
     

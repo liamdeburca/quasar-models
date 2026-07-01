@@ -17,7 +17,7 @@ class VProfileCopy1G(_VProfileCopy):
     strength_scale = Parameter(default=1, bounds=(0, None))
     
     strength_1 = Parameter(default=1, fixed=True)
-    sigma_v_1  = Parameter(default=1e-3, fixed=True)
+    fwhm_v_1   = Parameter(default=1e-3, fixed=True)
     v_off_1    = Parameter(default=0, fixed=True)
     
 class VProfileCopy2G(_VProfileCopy):
@@ -26,11 +26,11 @@ class VProfileCopy2G(_VProfileCopy):
     strength_scale = Parameter(default=1, bounds=(0, None))
     
     strength_1 = Parameter(default=1,    fixed=True)
-    sigma_v_1  = Parameter(default=1e-3, fixed=True)
+    fwhm_v_1   = Parameter(default=1e-3, fixed=True)
     v_off_1    = Parameter(default=0,    fixed=True)
 
     strength_2 = Parameter(default=1,    fixed=True)
-    sigma_v_2  = Parameter(default=1e-3, fixed=True)
+    fwhm_v_2   = Parameter(default=1e-3, fixed=True)
     v_off_2    = Parameter(default=0,    fixed=True)
 
 class VProfileCopy3G(_VProfileCopy):
@@ -39,15 +39,15 @@ class VProfileCopy3G(_VProfileCopy):
     strength_scale = Parameter(default=1, bounds=(0, None))
     
     strength_1 = Parameter(default=1,    fixed=True)
-    sigma_v_1  = Parameter(default=1e-3, fixed=True)
+    fwhm_v_1   = Parameter(default=1e-3, fixed=True)
     v_off_1    = Parameter(default=0,    fixed=True)
 
     strength_2 = Parameter(default=1,    fixed=True)
-    sigma_v_2  = Parameter(default=1e-3, fixed=True)
+    fwhm_v_2   = Parameter(default=1e-3, fixed=True)
     v_off_2    = Parameter(default=0,    fixed=True)
 
     strength_3 = Parameter(default=1,    fixed=True)
-    sigma_v_3  = Parameter(default=1e-3, fixed=True)
+    fwhm_v_3   = Parameter(default=1e-3, fixed=True)
     v_off_3    = Parameter(default=0,    fixed=True)
     
 class VProfileCopy4G(_VProfileCopy):
@@ -56,19 +56,19 @@ class VProfileCopy4G(_VProfileCopy):
     strength_scale = Parameter(default=1, bounds=(0, None))
     
     strength_1 = Parameter(default=1,    fixed=True)
-    sigma_v_1  = Parameter(default=1e-3, fixed=True)
+    fwhm_v_1   = Parameter(default=1e-3, fixed=True)
     v_off_1    = Parameter(default=0,    fixed=True)
 
     strength_2 = Parameter(default=1,    fixed=True)
-    sigma_v_2  = Parameter(default=1e-3, fixed=True)
+    fwhm_v_2   = Parameter(default=1e-3, fixed=True)
     v_off_2    = Parameter(default=0,    fixed=True)
 
     strength_3 = Parameter(default=1,    fixed=True)
-    sigma_v_3  = Parameter(default=1e-3, fixed=True)
+    fwhm_v_3   = Parameter(default=1e-3, fixed=True)
     v_off_3    = Parameter(default=0,    fixed=True)
 
     strength_4 = Parameter(default=1,    fixed=True)
-    sigma_v_4  = Parameter(default=1e-3, fixed=True)
+    fwhm_v_4   = Parameter(default=1e-3, fixed=True)
     v_off_4    = Parameter(default=0,    fixed=True)
     
 class VProfileCopy5G(_VProfileCopy):
@@ -77,21 +77,21 @@ class VProfileCopy5G(_VProfileCopy):
     strength_scale = Parameter(default=1, bounds=(0, None))
     
     strength_1 = Parameter(default=1,    fixed=True)
-    sigma_v_1  = Parameter(default=1e-3, fixed=True)
+    fwhm_v_1   = Parameter(default=1e-3, fixed=True)
     v_off_1    = Parameter(default=0,    fixed=True)
 
     strength_2 = Parameter(default=1,    fixed=True)
-    sigma_v_2  = Parameter(default=1e-3, fixed=True)
+    fwhm_v_2   = Parameter(default=1e-3, fixed=True)
     v_off_2    = Parameter(default=0,    fixed=True)
 
     strength_3 = Parameter(default=1,    fixed=True)
-    sigma_v_3  = Parameter(default=1e-3, fixed=True)
+    fwhm_v_3   = Parameter(default=1e-3, fixed=True)
     v_off_3    = Parameter(default=0,    fixed=True)
 
     strength_4 = Parameter(default=1,    fixed=True)
-    sigma_v_4  = Parameter(default=1e-3, fixed=True)
+    fwhm_v_4   = Parameter(default=1e-3, fixed=True)
     v_off_4    = Parameter(default=0,    fixed=True)
 
     strength_5 = Parameter(default=1,    fixed=True)
-    sigma_v_5  = Parameter(default=1e-3, fixed=True)
+    fwhm_v_5   = Parameter(default=1e-3, fixed=True)
     v_off_5    = Parameter(default=0,    fixed=True)

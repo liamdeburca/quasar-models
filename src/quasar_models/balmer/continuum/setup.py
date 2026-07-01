@@ -50,24 +50,30 @@ class QSFit:
         tau: float,
         scale: float,
     ) -> BalmerContinuumTemplate:
-        return BalmerContinuumTemplate.instantiate(
+        template = BalmerContinuumTemplate.instantiate(
             self.fwhm, 
             self.x,
             temp, 
             tau, 
             scale,
-            info=self.info,
+            sigma_res=self.info.loading.sigma_res,
+            n_scales=self.info.convolution.n_scales,
+            edge=self.info.balmer.edge,
+            fwhm_norm=self.info.balmer.fwhm_norm,
+            boltz=self.info.units.getBoltzmannFactor(),
             is_logspace=True,
             name=self.name,
         )
+        return template.normalise(inplace=True)
 
     def main(self) -> None:
         for temp, tau, scale in product(self.temp_range, self.tau_range, self.scale_range):
-            _ = self.get_template(
+            template = self.get_template(
                 temp=temp, 
                 tau=tau, 
                 scale=scale,
-            ).save_to_cache(self.info)
+            )
+            template.save_to_cache(self.info)
 
 def main():
     QSFit().main()

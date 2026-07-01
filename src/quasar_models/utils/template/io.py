@@ -159,6 +159,7 @@ def _load(
     info: Info,
 ) -> dict:
     kwargs = {
+        'n_scales': info.convolution.n_scales,
         'fwhm': None,
         'x': None,
         'data': None,

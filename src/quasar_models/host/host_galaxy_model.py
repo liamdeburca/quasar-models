@@ -3,8 +3,14 @@ AstroPy compatible model: HostGalaxyModel.
 """
 from logging import getLogger
 from typing import Self, Literal, ClassVar
-from numpy import isfinite, argmin, stack
+from numpy import isfinite, argmin
 from astropy.modeling import Parameter
+
+from quasar_core.modelling.host import (
+    HostGalaxyEvaluate, HostGalaxyFitDeriv,
+    choose_evaluate_func, choose_fit_deriv_func,
+    evaluate_exact, fit_deriv_exact_all,
+)
 
 from quasar_typing.numpy import FloatVector
 
@@ -14,7 +20,6 @@ from quasar_utils.setup import Info
 from .io import convert_params_to_name
 
 from .host_galaxy_template import HostGalaxyTemplate
-from . import evaluation
 from ..utils.astropy import apply_bounds
 from ..utils.template import TemplateModel
 
@@ -42,6 +47,7 @@ class HostGalaxyModel(TemplateModel):
         info: Info | None = None,
         template: HostGalaxyTemplate | None = None,
         allow_interp_fitting: bool = False,
+        n_scales: float = 3.0,
         name: Literal['bc2003'] | None = None,
         age: int | None = None,
     ) -> Self:
@@ -88,47 +94,84 @@ class HostGalaxyModel(TemplateModel):
         self.meta['template'] = value
 
     @property
+    def n_scales(self) -> float:
+        return self.template.n_scales
+    
+    @n_scales.setter
+    def n_scales(self, value: float) -> None:
+        self.template.n_scales = value
+
+    @property
     def sorting_key(self) -> tuple[float, float]:
         return (3.0, self.template.x_norm)
 
     ### 
     
     def evaluate(self, x, flux, fwhm):
-        flux = float(flux)
-        fwhm = float(fwhm)
-
-        if self._perform_interp_fitting:
-            return evaluation.evaluate_interp(
-                x, flux, fwhm,
-                host_galaxy_template=self.template,
-                **self._interpolation_matrices,
-            )
-        return evaluation.evaluate(
-            x, flux, fwhm,
-            host_galaxy_template=self.template,
-            **self._interpolation_matrices,
-        )
-    
-    def fit_deriv(self, x, flux, fwhm):
-        flux = float(flux)
-        fwhm = float(fwhm)
-
-        if self._perform_interp_fitting:
-            return evaluation.fit_deriv_interp(
-                x, flux, fwhm,
-                host_galaxy_template=self.template,
-                fixed=self.fixed_dict,
-                **self._interpolation_matrices,
-            )
-        return evaluation.fit_deriv(
-            x, flux, fwhm,
-            host_galaxy_template=self.template,
-            **self._interpolation_matrices,
-            fixed=self.fixed_dict,
-        )
+        return self.evaluate_func(x, flux, fwhm, **self._kwargs, y=None)
     
     def jac(self, x, flux, fwhm):
-        return stack(self.fit_deriv(x, flux, fwhm), axis=0)
+        return self.fit_deriv_func(x, flux, fwhm, **self._kwargs, derivs=None)
+    
+    def fit_deriv(self, x, flux, fwhm):
+        return list(self.jac(x, flux, fwhm))
+
+    ### Model preparation
+
+    @property
+    def evaluate_func(self) -> HostGalaxyEvaluate:
+        return self.meta.get('evaluate_func', evaluate_exact)
+    
+    @evaluate_func.setter
+    def evaluate_func(self, value: HostGalaxyEvaluate) -> None:
+        self.meta['evaluate_func'] = value
+
+    @evaluate_func.deleter
+    def evaluate_func(self) -> None:
+        self.meta.pop('evaluate_func', None)
+    
+    @property
+    def fit_deriv_func(self) -> HostGalaxyFitDeriv:
+        return self.meta.get('fit_deriv_func', fit_deriv_exact_all)
+    
+    @fit_deriv_func.setter
+    def fit_deriv_func(self, value: HostGalaxyFitDeriv) -> None:
+        self.meta['fit_deriv_func'] = value
+
+    @fit_deriv_func.deleter
+    def fit_deriv_func(self) -> None:
+        self.meta.pop('fit_deriv_func', None)
+    
+    def _choose_evaluate_func(self) -> None:
+        self.evaluate_func = choose_evaluate_func(
+            self.allow_interp_fitting,
+        )
+    
+    def _choose_fit_deriv_func(self) -> None:
+        self.fit_deriv_func = choose_fit_deriv_func(
+            self.allow_interp_fitting,
+            self.fixed_dict or self.fixed,
+        )
+
+    def _prepare_model(self, x_out: FloatVector, *args) -> None:
+        self.fixed_dict = {
+            'flux': self.flux.fixed,
+            'fwhm': self.fwhm.fixed,
+        }
+        self._choose_evaluate_func()
+        self._choose_fit_deriv_func()
+        self._calculate_interpolation_matrices(x_out)
+
+    @property
+    def _kwargs(self) -> dict:
+        t = self.template
+        return {
+            'template_fwhm': t.fwhm,
+            'template_x': t.x,
+            'template_data': t.data / t.normalisation,
+            'sigma_res': t.sigma_res,
+            'n_scales': t.n_scales,
+        }
     
     # Utilities
 

@@ -32,10 +32,6 @@ class TemplateModel(BaseModel, ABC):
     @allow_interp_fitting.setter
     def allow_interp_fitting(self, value: bool) -> None:
         self.meta['allow_interp_fitting'] = value
-
-    @property
-    def _perform_interp_fitting(self) -> bool: 
-        return self.allow_interp_fitting
     
     def _calculate_interpolation_matrices(self, x_out: FloatVector) -> None:
         self._interpolation_matrices['interpolation_matrix'] = \

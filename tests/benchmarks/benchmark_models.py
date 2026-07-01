@@ -28,6 +28,7 @@ from quasar_models.iron import IronTemplate
 from quasar_models.balmer.continuum import BalmerContinuumTemplate
 from quasar_models.balmer.series import BalmerSeriesTemplate
 from quasar_models.host import HostGalaxyTemplate
+from quasar_models.utils.prepare_model import PrepareModel
 
 from quasar_utils.setup import Info
 
@@ -118,37 +119,36 @@ def benchmark_powerlaw(x: np.ndarray) -> BenchmarkResult:
         alpha=-1.0,
         name='powerlaw',
     )
+    with PrepareModel(x=x, model=model):
+        # Benchmark evaluate
+        print(f"  Evaluating on {x.size} wavelengths...")
+        mean_eval, std_eval = benchmark_method(
+            lambda: model.evaluate(x, model.flux.value, model.alpha.value),
+        )
+        result_eval = BenchmarkResult(
+            model_name='PowerLawModel',
+            method_name='evaluate',
+            total_time=mean_eval * N,
+            mean_time=mean_eval,
+            std_time=std_eval,
+        )
+        print(f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs")
 
-    # Benchmark evaluate
-    print(f"  Evaluating on {x.size} wavelengths...")
-    mean_eval, std_eval = benchmark_method(
-        lambda: model.evaluate(x, model.flux.value, model.alpha.value),
-    )
-    result_eval = BenchmarkResult(
-        model_name='PowerLawModel',
-        method_name='evaluate',
-        total_time=mean_eval * N,
-        mean_time=mean_eval,
-        std_time=std_eval,
-    )
-    print(f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs")
-
-    # Benchmark fit_deriv
-    print(f"  Computing fit_deriv on {x.size} wavelengths...")
-    mean_deriv, std_deriv = benchmark_method(
-        lambda: model.fit_deriv(x, model.flux.value, model.alpha.value),
-    )
-    result_deriv = BenchmarkResult(
-        model_name='PowerLawModel',
-        method_name='fit_deriv',
-        total_time=mean_deriv * N,
-        mean_time=mean_deriv,
-        std_time=std_deriv,
-    )
-    print(f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs")
+        # Benchmark fit_deriv
+        print(f"  Computing fit_deriv on {x.size} wavelengths...")
+        mean_deriv, std_deriv = benchmark_method(
+            lambda: model.fit_deriv(x, model.flux.value, model.alpha.value),
+        )
+        result_deriv = BenchmarkResult(
+            model_name='PowerLawModel',
+            method_name='fit_deriv',
+            total_time=mean_deriv * N,
+            mean_time=mean_deriv,
+            std_time=std_deriv,
+        )
+        print(f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs")
 
     return result_eval, result_deriv
-
 
 def benchmark_gaussian(x: np.ndarray) -> BenchmarkResult:
     """Benchmark GaussianModel evaluate and fit_deriv methods."""
@@ -160,38 +160,38 @@ def benchmark_gaussian(x: np.ndarray) -> BenchmarkResult:
         wave=1549.0,
         sigma_res=V_RES,
         strength=1.0,
-        sigma_v=1e-3,
+        fwhm_v=1e-4,
         v_off=0.0,
         name='gaussian',
     )
+    with PrepareModel(x=x, model=model):
+        # Benchmark evaluate
+        print(f"  Evaluating on {x.size} wavelengths...")
+        mean_eval, std_eval = benchmark_method(
+            lambda: model.evaluate(x, model.strength.value, model.fwhm_v.value, model.v_off.value),
+        )
+        result_eval = BenchmarkResult(
+            model_name='GaussianModel',
+            method_name='evaluate',
+            total_time=mean_eval * N,
+            mean_time=mean_eval,
+            std_time=std_eval,
+        )
+        print(f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs")
 
-    # Benchmark evaluate
-    print(f"  Evaluating on {x.size} wavelengths...")
-    mean_eval, std_eval = benchmark_method(
-        lambda: model.evaluate(x, model.strength.value, model.sigma_v.value, model.v_off.value),
-    )
-    result_eval = BenchmarkResult(
-        model_name='GaussianModel',
-        method_name='evaluate',
-        total_time=mean_eval * N,
-        mean_time=mean_eval,
-        std_time=std_eval,
-    )
-    print(f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs")
-
-    # Benchmark fit_deriv
-    print(f"  Computing fit_deriv on {x.size} wavelengths...")
-    mean_deriv, std_deriv = benchmark_method(
-        lambda: model.fit_deriv(x, model.strength.value, model.sigma_v.value, model.v_off.value),
-    )
-    result_deriv = BenchmarkResult(
-        model_name='GaussianModel',
-        method_name='fit_deriv',
-        total_time=mean_deriv * N,
-        mean_time=mean_deriv,
-        std_time=std_deriv,
-    )
-    print(f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs")
+        # Benchmark fit_deriv
+        print(f"  Computing fit_deriv on {x.size} wavelengths...")
+        mean_deriv, std_deriv = benchmark_method(
+            lambda: model.fit_deriv(x, model.strength.value, model.fwhm_v.value, model.v_off.value),
+        )
+        result_deriv = BenchmarkResult(
+            model_name='GaussianModel',
+            method_name='fit_deriv',
+            total_time=mean_deriv * N,
+            mean_time=mean_deriv,
+            std_time=std_deriv,
+        )
+        print(f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs")
 
     return result_eval, result_deriv
 
@@ -214,51 +214,51 @@ def benchmark_iron(x: np.ndarray) -> BenchmarkResult:
         template=template,
         name='iron',
     )
+    with PrepareModel(x=x, model=model):
 
-    # Benchmark evaluate
-    print(f"  Evaluating on {x.size} wavelengths...")
-    mean_eval, std_eval = benchmark_method(
-        lambda: model.evaluate(
-            x,
-            model.flux.value,
-            model.fwhm.value,
-            model.split.value,
-            model.left.value,
-            model.right.value,
-        ),
-    )
-    result_eval = BenchmarkResult(
-        model_name='IronModel',
-        method_name='evaluate',
-        total_time=mean_eval * N,
-        mean_time=mean_eval,
-        std_time=std_eval,
-    )
-    print(f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs")
+        # Benchmark evaluate
+        print(f"  Evaluating on {x.size} wavelengths...")
+        mean_eval, std_eval = benchmark_method(
+            lambda: model.evaluate(
+                x,
+                model.flux.value,
+                model.fwhm.value,
+                model.split.value,
+                model.left.value,
+                model.right.value,
+            ),
+        )
+        result_eval = BenchmarkResult(
+            model_name='IronModel',
+            method_name='evaluate',
+            total_time=mean_eval * N,
+            mean_time=mean_eval,
+            std_time=std_eval,
+        )
+        print(f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs")
 
-    # Benchmark fit_deriv
-    print(f"  Computing fit_deriv on {x.size} wavelengths...")
-    mean_deriv, std_deriv = benchmark_method(
-        lambda: model.fit_deriv(
-            x,
-            model.flux.value,
-            model.fwhm.value,
-            model.split.value,
-            model.left.value,
-            model.right.value,
-        ),
-    )
-    result_deriv = BenchmarkResult(
-        model_name='IronModel',
-        method_name='fit_deriv',
-        total_time=mean_deriv * N,
-        mean_time=mean_deriv,
-        std_time=std_deriv,
-    )
-    print(f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs")
+        # Benchmark fit_deriv
+        print(f"  Computing fit_deriv on {x.size} wavelengths...")
+        mean_deriv, std_deriv = benchmark_method(
+            lambda: model.fit_deriv(
+                x,
+                model.flux.value,
+                model.fwhm.value,
+                model.split.value,
+                model.left.value,
+                model.right.value,
+            ),
+        )
+        result_deriv = BenchmarkResult(
+            model_name='IronModel',
+            method_name='fit_deriv',
+            total_time=mean_deriv * N,
+            mean_time=mean_deriv,
+            std_time=std_deriv,
+        )
+        print(f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs")
 
     return result_eval, result_deriv
-
 
 def benchmark_balmer(x: np.ndarray) -> BenchmarkResult:
     """Benchmark BalmerModel evaluate and fit_deriv methods."""
@@ -290,47 +290,47 @@ def benchmark_balmer(x: np.ndarray) -> BenchmarkResult:
         info=INFO,
         name='sh1995',
     )
+    with PrepareModel(x=x, model=model):
 
-    # Benchmark evaluate
-    print(f"  Evaluating on {x.size} wavelengths...")
-    mean_eval, std_eval = benchmark_method(
-        lambda: model.evaluate(
-            x,
-            model.flux.value,
-            model.fwhm.value,
-            model.ratio.value,
-        ),
-    )
-    result_eval = BenchmarkResult(
-        model_name='BalmerModel',
-        method_name='evaluate',
-        total_time=mean_eval * N,
-        mean_time=mean_eval,
-        std_time=std_eval,
-    )
-    print(f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs")
+        # Benchmark evaluate
+        print(f"  Evaluating on {x.size} wavelengths...")
+        mean_eval, std_eval = benchmark_method(
+            lambda: model.evaluate(
+                x,
+                model.flux.value,
+                model.fwhm.value,
+                model.ratio.value,
+            ),
+        )
+        result_eval = BenchmarkResult(
+            model_name='BalmerModel',
+            method_name='evaluate',
+            total_time=mean_eval * N,
+            mean_time=mean_eval,
+            std_time=std_eval,
+        )
+        print(f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs")
 
-    # Benchmark fit_deriv
-    print(f"  Computing fit_deriv on {x.size} wavelengths...")
-    mean_deriv, std_deriv = benchmark_method(
-        lambda: model.fit_deriv(
-            x,
-            model.flux.value,
-            model.fwhm.value,
-            model.ratio.value,
-        ),
-    )
-    result_deriv = BenchmarkResult(
-        model_name='BalmerModel',
-        method_name='fit_deriv',
-        total_time=mean_deriv * N,
-        mean_time=mean_deriv,
-        std_time=std_deriv,
-    )
-    print(f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs")
+        # Benchmark fit_deriv
+        print(f"  Computing fit_deriv on {x.size} wavelengths...")
+        mean_deriv, std_deriv = benchmark_method(
+            lambda: model.fit_deriv(
+                x,
+                model.flux.value,
+                model.fwhm.value,
+                model.ratio.value,
+            ),
+        )
+        result_deriv = BenchmarkResult(
+            model_name='BalmerModel',
+            method_name='fit_deriv',
+            total_time=mean_deriv * N,
+            mean_time=mean_deriv,
+            std_time=std_deriv,
+        )
+        print(f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs")
 
     return result_eval, result_deriv
-
 
 def benchmark_hostgalaxy(x: np.ndarray) -> BenchmarkResult:
     """Benchmark HostGalaxyModel evaluate and fit_deriv methods."""
@@ -353,34 +353,35 @@ def benchmark_hostgalaxy(x: np.ndarray) -> BenchmarkResult:
         name=INFO.host.sources[0],
         age=INFO.host.ages[0],
     )
+    with PrepareModel(x=x, model=model):
 
-    # Benchmark evaluate
-    print(f"  Evaluating on {x.size} wavelengths...")
-    mean_eval, std_eval = benchmark_method(
-        lambda: model.evaluate(x, model.flux.value, model.fwhm.value),
-    )
-    result_eval = BenchmarkResult(
-        model_name='HostGalaxyModel',
-        method_name='evaluate',
-        total_time=mean_eval * N,
-        mean_time=mean_eval,
-        std_time=std_eval,
-    )
-    print(f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs")
+        # Benchmark evaluate
+        print(f"  Evaluating on {x.size} wavelengths...")
+        mean_eval, std_eval = benchmark_method(
+            lambda: model.evaluate(x, model.flux.value, model.fwhm.value),
+        )
+        result_eval = BenchmarkResult(
+            model_name='HostGalaxyModel',
+            method_name='evaluate',
+            total_time=mean_eval * N,
+            mean_time=mean_eval,
+            std_time=std_eval,
+        )
+        print(f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs")
 
-    # Benchmark fit_deriv
-    print(f"  Computing fit_deriv on {x.size} wavelengths...")
-    mean_deriv, std_deriv = benchmark_method(
-        lambda: model.fit_deriv(x, model.flux.value, model.fwhm.value),
-    )
-    result_deriv = BenchmarkResult(
-        model_name='HostGalaxyModel',
-        method_name='fit_deriv',
-        total_time=mean_deriv * N,
-        mean_time=mean_deriv,
-        std_time=std_deriv,
-    )
-    print(f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs")
+        # Benchmark fit_deriv
+        print(f"  Computing fit_deriv on {x.size} wavelengths...")
+        mean_deriv, std_deriv = benchmark_method(
+            lambda: model.fit_deriv(x, model.flux.value, model.fwhm.value),
+        )
+        result_deriv = BenchmarkResult(
+            model_name='HostGalaxyModel',
+            method_name='fit_deriv',
+            total_time=mean_deriv * N,
+            mean_time=mean_deriv,
+            std_time=std_deriv,
+        )
+        print(f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs")
 
     return result_eval, result_deriv
 
@@ -406,7 +407,7 @@ def print_summary_table(results: list[BenchmarkResult]) -> None:
 
 def main() -> None:
     """Run all benchmarks."""
-    print(f"\nConfiguration:")
+    print("\nConfiguration:")
     print(f"  Velocity resolution (v_res): {V_RES}")
     print(f"  Number of wavelengths: {N_WAVELENGTHS}")
     print(f"  Wavelength range: {1000.0:.1f} - {1000.0 * (1 + V_RES) ** (N_WAVELENGTHS - 1):.1f} Å")
