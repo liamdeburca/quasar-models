@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=45", "wheel"]
+requires = ["setuptools>=45", "wheel", "Cython", "numpy"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -24,7 +24,6 @@ dependencies = [
     "scipy>=1.16",
     "astropy>=7.0",
     "pydantic>=2.12",
-    "quasar-core",
     "quasar-typing",
     "quasar-utils",
 ]
