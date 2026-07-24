@@ -124,6 +124,19 @@ class BaseModel(ABC, Fittable1DModel, metaclass=BaseModelMeta):
         """
         pass
 
+    def _prepare_model(self) -> None:
+        self.fixed_dict = {
+            param_name: getattr(self, param_name).fixed
+            for param_name in self.param_names
+        }
+        self._choose_evaluate_func()
+        self._choose_fit_deriv_func()
+
+    def _unprepare_model(self) -> None:
+        del self.fixed_dict
+        del self.evaluate_func
+        del self.fit_deriv_func
+
     @property
     @abstractmethod
     def sorting_key(self) -> tuple[float, float]:

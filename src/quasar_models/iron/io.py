@@ -10,8 +10,7 @@ from pathlib import Path
 
 from quasar_typing.pathlib import AbsoluteFITSPath
 from quasar_utils.setup import Info
-
-from ..utils.template.io import _save, _load, BaseTemplateProtocol
+from quasar_models.modeling.template.io import _save, _load, BaseTemplateProtocol
 
 _this_file: Path = Path(__file__).resolve()
 PATH_TO_CACHE: Path = _this_file.parent / ".cache"

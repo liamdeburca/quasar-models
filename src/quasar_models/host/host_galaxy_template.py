@@ -1,15 +1,12 @@
 from typing import Self, ClassVar, Literal
-from numpy import interp, searchsorted
 from dataclasses import field
 from pydantic.dataclasses import dataclass
 
 from quasar_typing.pathlib import AbsoluteDirPath, AbsoluteFITSPath
-
 from quasar_utils.setup import Info
+from quasar_models.modeling.template import BaseTemplate
 
 from .io import PATH_TO_CACHE, save, load, save_to_cache, load_from_cache
-from ..utils.template import BaseTemplate
-
 @dataclass(eq=False)
 class HostGalaxyTemplate(BaseTemplate):
     """
@@ -22,12 +19,8 @@ class HostGalaxyTemplate(BaseTemplate):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-
-        _ = AbsoluteDirPath._validate(self.PATH_TO_CACHE)
-
         if self.normalisation is None:
-            idx = searchsorted(self.fwhm, self.fwhm_norm, side='right') - 1
-            self.normalisation = interp(self.x_norm, self.x, self.data[idx])
+            self._calculate_normalisation()
 
     def __eq__(self, other: object) -> bool:
         return super().__eq__(other) \

@@ -4,102 +4,24 @@ __all__ = [
 
 from typing import Self, Callable, Iterable, ClassVar, Literal
 from itertools import product
-from numpy import zeros, float64, zeros_like, array
+from numpy import float64, array
 
-from quasar_core.modelling.vprofilecopy import (
-    VProfileCopyEvaluateV, VProfileCopyFitDerivV,
+from quasar_models.line.gaussian import GaussianModel
+from quasar_models.modeling import BaseModel, LinearTie
+from quasar_models.utils.astropy import apply_bounds
+from quasar_models._core.modeling.vprofilecopy import (
+    VProfileCopyEvaluate, VProfileCopyFitDeriv,
     choose_evaluate_func, choose_fit_deriv_func,
     evaluate_v, fit_deriv_v_all,
 )
 
-from quasar_models.line.gaussian import GaussianModel
-from quasar_models.utils.basemodel import BaseModel
-from quasar_models.utils.astropy import apply_bounds
-from quasar_models.tying import IdenticalTie
-
-from quasar_typing.numpy import FloatVector
 from quasar_typing.astropy import CompoundModel_ 
-
-from .. import evaluation
 
 def get_params_from_args(n_profiles: int, *args) -> tuple:
     return tuple(
         array([float(args[3*i+o]) for i in range(n_profiles)], dtype=float64, order='C')
         for o in range(3)
     )
-
-def _evaluate(
-    x: float | FloatVector,
-    strength_scale: float,
-    strength: tuple[float],
-    fwhm_v: tuple[float],
-    v_off: tuple[float],
-    *,
-    wave: float = None,
-    sigma_res: float = None,
-    y: FloatVector | None = None,
-    evaluate_func: evaluation.EvaluateFunc | None = None,
-) -> float | FloatVector:
-    if y is None:
-        y = zeros_like(x, dtype=float64)
-
-    for args in zip(strength, fwhm_v, v_off):
-        evaluation.evaluate(
-            x,
-            strength_scale, *args,
-            wave=wave, sigma_res=sigma_res,
-            y=y,
-            evaluate_func=evaluate_func,
-        )
-    return y
-
-def _fit_deriv(
-    x: FloatVector,
-    strength_scale: float,
-    strength: tuple[float],
-    fwhm_v: tuple[float],
-    v_off: tuple[float],
-    *,
-    wave: float = None,
-    sigma_res: float = None,
-    n_profiles: int = None,
-    fixed: dict[str, bool] | None = None,
-) -> list[FloatVector]:
-    
-    dfs = zeros((1 + 3 * n_profiles, len(x)), dtype=float64)
-        
-    if fixed is None:
-        fixed = {'strength_scale': False}
-        fixed.update({f'strength_{i}': False for i in range(1, n_profiles+1)})
-        fixed.update({f'fwhm_v_{i}': False for i in range(1, n_profiles+1)})
-        fixed.update({f'v_off_{i}': False for i in range(1, n_profiles+1)})
-        
-    if not all(fixed.values()):
-        if not fixed['strength_scale']:
-            dfs[0,:] = _evaluate(
-                x, 
-                1.0, 
-                strength, fwhm_v, v_off,
-                wave=wave, sigma_res=sigma_res,
-            )
-
-        for i, args in enumerate(zip(strength, fwhm_v, v_off)):
-            _fixed: dict[str, bool] = {
-                'strength': fixed[f"strength_{i+1}"],
-                'fwhm_v':  fixed[f"fwhm_v_{i+1}"],
-                'v_off':    fixed[f"v_off_{i+1}"],
-            }
-            if all(_fixed.values()): 
-                continue
-
-            dfs[3*i+1:3*i+4,:] = strength_scale * evaluation.fit_deriv(
-                x,
-                *args,
-                wave=wave, sigma_res=sigma_res, 
-                fixed=_fixed,
-            )
-
-    return list(dfs)
 
 ###
 
@@ -154,7 +76,7 @@ class _VProfileCopy(BaseModel):
         strength_scale_fixed: bool = False,
 
         sigma_res: float | None = None,
-        master_name: float | None = None,
+        master_name: str | None = None,
         n_sigmas: float | None = None,
 
         adapt: bool = True,
@@ -244,7 +166,7 @@ class _VProfileCopy(BaseModel):
         name: str,
         *gs: GaussianModel,
         sigma_res: float | None = None,
-        master_name: float | None = None,
+        master_name: str | None = None,
         n_sigmas: float | None = None,
     ) -> dict:
         meta = {
@@ -298,11 +220,11 @@ class _VProfileCopy(BaseModel):
     ### Model preparation
 
     @property
-    def evaluate_func(self) -> VProfileCopyEvaluateV:
+    def evaluate_func(self) -> VProfileCopyEvaluate:
         return self.meta.get('evaluate_func', evaluate_v)
     
     @evaluate_func.setter
-    def evaluate_func(self, value: VProfileCopyEvaluateV) -> None:
+    def evaluate_func(self, value: VProfileCopyEvaluate) -> None:
         self.meta['evaluate_func'] = value
 
     @evaluate_func.deleter
@@ -310,11 +232,11 @@ class _VProfileCopy(BaseModel):
         self.meta.pop('evaluate_func', None)
 
     @property
-    def fit_deriv_func(self) -> VProfileCopyFitDerivV:
+    def fit_deriv_func(self) -> VProfileCopyFitDeriv:
         return self.meta.get('fit_deriv_func', fit_deriv_v_all)
     
     @fit_deriv_func.setter
-    def fit_deriv_func(self, value: VProfileCopyFitDerivV) -> None:
+    def fit_deriv_func(self, value: VProfileCopyFitDeriv) -> None:
         self.meta['fit_deriv_func'] = value
 
     @fit_deriv_func.deleter
@@ -328,14 +250,6 @@ class _VProfileCopy(BaseModel):
         self.fit_deriv_func = choose_fit_deriv_func(
             self.fixed_dict or self.fixed,
         )
-
-    def _prepare_model(self, *args) -> None:
-        self.fixed_dict = {
-            p: getattr(self, p).fixed
-            for p in self.param_names
-        }
-        self._choose_evaluate_func()
-        self._choose_fit_deriv_func()
 
     @property
     def _kwargs(self) -> dict:
@@ -386,7 +300,12 @@ class _VProfileCopy(BaseModel):
             attr.bounds = getattr(g, pname).bounds
 
             if tie_vel_profile: 
-                attr.tied = IdenticalTie.from_model(g, pname)
+                attr.tied = LinearTie(
+                    a=1.0,
+                    b=0.0,
+                    model_name=g.name,
+                    parameter_name=pname,
+                )
             
         return model
     

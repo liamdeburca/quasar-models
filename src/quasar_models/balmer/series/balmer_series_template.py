@@ -1,7 +1,7 @@
 __all__ = ['BalmerSeriesTemplate']
 
 from typing import Self, ClassVar, Literal
-from numpy import empty, float64, searchsorted, array, array_equal, interp
+from numpy import zeros, float64, searchsorted, array, array_equal
 from dataclasses import field
 from pydantic.dataclasses import dataclass
 
@@ -10,10 +10,10 @@ from quasar_typing.numpy import SortedFloatVector, FloatVector
 
 from quasar_utils.setup import Info
 
-from quasar_core.modelling.balmer.series import evaluate
-from .io import PATH_TO_CACHE, load, save, save_to_cache, load_from_cache
+from quasar_models.modeling.template import BaseTemplate
+from quasar_models._core.modeling.balmer.series import evaluate
 
-from ...utils.template import BaseTemplate
+from .io import PATH_TO_CACHE, load, save, save_to_cache, load_from_cache
 
 @dataclass(eq=False)
 class BalmerSeriesTemplate(BaseTemplate):
@@ -30,10 +30,8 @@ class BalmerSeriesTemplate(BaseTemplate):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        
         self.weights /= self.weights.sum()
-
-        _ = AbsoluteDirPath._validate(self.PATH_TO_CACHE)
-
         if self.waves.size != self.weights.size:
             msg = "Sizes of 'waves' ({}) and 'weights' ({}) must match.".format(
                 self.waves.size, self.weights.size,
@@ -41,8 +39,7 @@ class BalmerSeriesTemplate(BaseTemplate):
             raise ValueError(msg)
                 
         if self.normalisation is None:
-            idx = searchsorted(self.fwhm, self.fwhm_norm, side='right') - 1
-            self.normalisation = interp(self.x_norm, self.x, self.data[idx])
+            self._calculate_normalisation()
 
     def __eq__(self, other: object) -> bool:
         return super().__eq__(other) \
@@ -191,7 +188,7 @@ class BalmerSeriesTemplate(BaseTemplate):
         """        
         obj = self if inplace else self.copy(with_matrices=True)
         
-        data = empty(shape=(fwhm.size, self.x.size), dtype=float64)
+        data = zeros(shape=(fwhm.size, self.x.size), dtype=float64)
         indices = searchsorted(self.fwhm, fwhm)
 
         for i, fwhm_curr in enumerate(fwhm):

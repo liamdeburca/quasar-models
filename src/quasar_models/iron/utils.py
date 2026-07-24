@@ -1,7 +1,6 @@
 from numpy import clip, log, exp, zeros_like, float64, arange
 from numpy.typing import NDArray
-
-from ..utils.template import BaseTemplate
+from quasar_models.modeling.template import BaseTemplate
 
 def _split_evaluate(
     x: float | NDArray[float64],

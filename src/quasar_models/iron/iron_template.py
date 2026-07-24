@@ -9,10 +9,10 @@ from quasar_typing.numpy import FloatVector
 from quasar_typing.pathlib import AbsoluteFITSPath, AbsoluteDirPath
 from quasar_utils.setup import Info
 
-from quasar_core.modelling.split import evaluate as split_evaluate
+from quasar_models._core.modeling.split import evaluate as split_evaluate
+from quasar_models.modeling.template import BaseTemplate
 
 from .io import PATH_TO_CACHE, save, load, save_to_cache, load_from_cache
-from ..utils.template import BaseTemplate
 
 @dataclass(eq=False)
 class IronTemplate(BaseTemplate):
@@ -27,15 +27,15 @@ class IronTemplate(BaseTemplate):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-
-        _ = AbsoluteDirPath._validate(self.PATH_TO_CACHE)
-
         if (self.x_norm is None) or (self.normalisation is None):
-            idx = searchsorted(self.fwhm, self.fwhm_norm, side='right') - 1
+            self._calculate_normalisation()
 
-            y = self.data[idx]
-            self.x_norm = self.x[y.argmax()]
-            self.normalisation = y.max()
+    def _calculate_normalisation(self) -> float:
+        idx = searchsorted(self.fwhm, self.fwhm_norm, side='right') - 1
+        y = self.data[idx]
+        self.x_norm = self.x[y.argmax()]
+        self.normalisation = y.max()
+        return self.normalisation
         
     def copy(self, with_matrices: bool = False) -> Self:
         """

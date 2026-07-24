@@ -1,23 +1,23 @@
 from logging import getLogger
 from astropy.modeling import Parameter
 from typing import Self, Callable, Literal, ClassVar
-from numpy import log, exp, float64, stack
+from numpy import log, exp, float64
 from numpy.typing import NDArray
 
 from pydantic_core import ValidationError
 
-from quasar_core.modelling.powerlaw import (
+from quasar_models.modeling import BaseModel
+from quasar_models.utils.astropy import apply_bounds
+from quasar_models.utils.linear_regression import linreg
+from quasar_models._core.modeling.powerlaw import (
     PowerLawEvaluate, PowerLawFitDeriv,
     choose_evaluate_func, choose_fit_deriv_func,
     evaluate, inverse,
     fit_deriv_all,
 )
+
 from quasar_utils.decorators import validate_call
 from quasar_typing.numpy import FloatVector, FloatMatrix
-
-from ..utils.basemodel import BaseModel
-from ..utils.linear_regression import linreg
-from ..utils.astropy import apply_bounds
 
 logger = getLogger(__name__)
 
@@ -112,14 +112,6 @@ class PowerLawModel(BaseModel):
         self.fit_deriv_func = choose_fit_deriv_func(
             self.fixed_dict or self.fixed,
         )
-
-    def _prepare_model(self, *args) -> None:
-        self.fixed_dict = {
-            'flux': self.flux.fixed,
-            'alpha': self.alpha.fixed,
-        }
-        self._choose_evaluate_func()
-        self._choose_fit_deriv_func()
 
     @property
     def _kwargs(self) -> dict:

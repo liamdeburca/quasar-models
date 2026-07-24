@@ -6,7 +6,8 @@ from numpy import zeros_like, invert, nan, nanargmin, float64, array_equal, isfi
 from astropy.modeling import Parameter
 from typing import Literal, Self, ClassVar
 
-from quasar_core.modelling.iron import (
+from quasar_models.modeling.template import TemplateModel
+from quasar_models._core.modeling.iron import (
     IronEvaluate, IronFitDeriv,
     choose_evaluate_func, choose_fit_deriv_func,
     evaluate_exact, fit_deriv_exact_all,
@@ -18,7 +19,6 @@ from quasar_utils.decorators import validate_call
 from quasar_utils.raster import rasterise
 
 from .iron_template import IronTemplate
-from ..utils.template import TemplateModel
 from ..utils.astropy import apply_bounds
 
 logger = getLogger(__name__)
@@ -196,18 +196,6 @@ class IronModel(TemplateModel):
             self.allow_interp_fitting,
             self.fixed_dict or self.fixed,
         )
-
-    def _prepare_model(self, x_out: FloatVector, *args) -> None:
-        self.fixed_dict = {
-            'flux': self.flux.fixed,
-            'fwhm': self.fwhm.fixed,
-            'split': self.split.fixed,
-            'left': self.left.fixed,
-            'right': self.right.fixed,
-        }
-        self._choose_evaluate_func()
-        self._choose_fit_deriv_func()
-        self._calculate_interpolation_matrices(x_out)
 
     @property
     def _kwargs(self) -> dict:

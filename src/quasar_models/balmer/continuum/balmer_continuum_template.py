@@ -1,7 +1,6 @@
 __all__ = ['BalmerContinuumTemplate']
 
 from typing import Self, ClassVar
-from numpy import interp, searchsorted
 from dataclasses import field
 from pydantic.dataclasses import dataclass
 
@@ -10,10 +9,10 @@ from quasar_typing.numpy import SortedFloatVector
 
 from quasar_utils.setup import Info
 
-from quasar_core.modelling.balmer.continuum import evaluate
-from .io import PATH_TO_CACHE, load, save, save_to_cache, load_from_cache
+from quasar_models._core.modeling.balmer.continuum import evaluate
+from quasar_models.modeling.template import BaseTemplate
 
-from ...utils.template import BaseTemplate
+from .io import PATH_TO_CACHE, load, save, save_to_cache, load_from_cache
 
 @dataclass(eq=False)
 class BalmerContinuumTemplate(BaseTemplate):
@@ -26,11 +25,8 @@ class BalmerContinuumTemplate(BaseTemplate):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        _ = AbsoluteDirPath._validate(self.PATH_TO_CACHE)
-
         if self.normalisation is None:
-            idx = searchsorted(self.fwhm, self.fwhm_norm, side='right') - 1
-            self.normalisation = interp(self.x_norm, self.x, self.data[idx])
+            self._calculate_normalisation()
 
     def __eq__(self, other: object) -> bool:
         return super().__eq__(other) \

@@ -10,12 +10,11 @@ from pathlib import Path
 from astropy.io import fits
 from astropy.units import Unit
 
+from quasar_models.modeling.template.io import _save, _load, BaseTemplateProtocol
 from quasar_typing.numpy import FloatVector
 from quasar_typing.pathlib import AbsoluteFITSPath, AnyAbsoluteFITSPath
 
 from quasar_utils.setup import Info
-
-from ...utils.template.io import _save, _load, BaseTemplateProtocol
 
 _this_file: Path = Path(__file__).resolve()
 PATH_TO_CACHE: Path = _this_file.parents[1] / ".cache"

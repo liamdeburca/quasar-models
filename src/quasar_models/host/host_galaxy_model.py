@@ -6,7 +6,8 @@ from typing import Self, Literal, ClassVar
 from numpy import isfinite, argmin
 from astropy.modeling import Parameter
 
-from quasar_core.modelling.host import (
+from quasar_models.modeling.template import TemplateModel
+from quasar_models._core.modeling.host import (
     HostGalaxyEvaluate, HostGalaxyFitDeriv,
     choose_evaluate_func, choose_fit_deriv_func,
     evaluate_exact, fit_deriv_exact_all,
@@ -18,10 +19,8 @@ from quasar_utils.decorators import validate_call
 from quasar_utils.setup import Info
 
 from .io import convert_params_to_name
-
 from .host_galaxy_template import HostGalaxyTemplate
 from ..utils.astropy import apply_bounds
-from ..utils.template import TemplateModel
 
 logger = getLogger(__name__)
 
@@ -152,15 +151,6 @@ class HostGalaxyModel(TemplateModel):
             self.allow_interp_fitting,
             self.fixed_dict or self.fixed,
         )
-
-    def _prepare_model(self, x_out: FloatVector, *args) -> None:
-        self.fixed_dict = {
-            'flux': self.flux.fixed,
-            'fwhm': self.fwhm.fixed,
-        }
-        self._choose_evaluate_func()
-        self._choose_fit_deriv_func()
-        self._calculate_interpolation_matrices(x_out)
 
     @property
     def _kwargs(self) -> dict:

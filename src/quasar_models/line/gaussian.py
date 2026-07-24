@@ -4,17 +4,16 @@
 from typing import Self, Literal, ClassVar
 from astropy.modeling import Parameter
 from math import hypot, log, pi
-from numpy import dot, isclose, stack
+from numpy import dot, isclose
 from scipy.stats import norm
 
-from quasar_core.modelling.gaussian import (
-    GaussianEvaluateV, GaussianFitDerivV,
+from quasar_models.modeling import BaseModel
+from quasar_models.utils.astropy import apply_bounds
+from quasar_models._core.modeling.gaussian import (
+    GaussianEvaluate, GaussianFitDeriv,
     choose_evaluate_func, choose_fit_deriv_func,
     evaluate_v, fit_deriv_v_all,
 )
-
-from quasar_models.utils.basemodel import BaseModel
-from quasar_models.utils.astropy import apply_bounds
 
 from quasar_typing.numpy import FittableFloatVector
 from quasar_typing.bounds import AstropyBounds
@@ -133,11 +132,11 @@ class GaussianModel(BaseModel):
     ### Model preparation
 
     @property
-    def evaluate_func(self) -> GaussianEvaluateV:
+    def evaluate_func(self) -> GaussianEvaluate:
         return self.meta.get('evaluate_func', evaluate_v)
     
     @evaluate_func.setter
-    def evaluate_func(self, value: GaussianEvaluateV) -> None:
+    def evaluate_func(self, value: GaussianEvaluate) -> None:
         self.meta['evaluate_func'] = value
 
     @evaluate_func.deleter
@@ -145,11 +144,11 @@ class GaussianModel(BaseModel):
         self.meta.pop('evaluate_func', None)
     
     @property
-    def fit_deriv_func(self) -> GaussianFitDerivV:
+    def fit_deriv_func(self) -> GaussianFitDeriv:
         return self.meta.get('fit_deriv_func', fit_deriv_v_all)
     
     @fit_deriv_func.setter
-    def fit_deriv_func(self, value: GaussianFitDerivV) -> None:
+    def fit_deriv_func(self, value: GaussianFitDeriv) -> None:
         self.meta['fit_deriv_func'] = value
 
     @fit_deriv_func.deleter
@@ -163,15 +162,6 @@ class GaussianModel(BaseModel):
         self.fit_deriv_func = choose_fit_deriv_func(
             self.fixed_dict or self.fixed,
         )
-
-    def _prepare_model(self, *args) -> None:
-        self.fixed_dict = {
-            'strength': self.strength.fixed,
-            'fwhm_v': self.fwhm_v.fixed,
-            'v_off': self.v_off.fixed,
-        }
-        self._choose_evaluate_func()
-        self._choose_fit_deriv_func()
     
     @staticmethod
     @validate_call
@@ -227,6 +217,14 @@ class GaussianModel(BaseModel):
     
     ### Utility functions
 
+    @property
+    def is_narrow(self) -> bool:
+        return self.name.startswith('n')
+    
+    @ property
+    def is_broad(self) -> bool:
+        return not self.is_narrow
+    
     @property
     def mu(self) -> float:
         return self.wave * (1 + self.v_off.value)

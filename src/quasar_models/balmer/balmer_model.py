@@ -7,14 +7,8 @@ from numpy.typing import NDArray
 from astropy.units import Unit
 from astropy.modeling import Parameter
 
-from .continuum import BalmerContinuumTemplate
-from .series import BalmerSeriesTemplate
-
-from ..utils.template import TemplateModel
-from ..utils.astropy import apply_bounds
-from ..continuum import PowerLawModel
-
-from quasar_core.modelling.balmer import (
+from quasar_models.modeling.template import TemplateModel
+from quasar_models._core.modeling.balmer import (
     BalmerEvaluate, BalmerFitDeriv,
     choose_evaluate_func, choose_fit_deriv_func,
     evaluate_exact, fit_deriv_exact_all,
@@ -26,6 +20,11 @@ from quasar_utils.decorators import validate_call
 from quasar_utils.interpolation import create_interp_matrix
 
 from quasar_typing.numpy import FittableFloatVector, FloatVector
+
+from .continuum import BalmerContinuumTemplate
+from .series import BalmerSeriesTemplate
+from ..utils.astropy import apply_bounds
+from ..continuum import PowerLawModel
 
 class BalmerModel(TemplateModel):
     flux = Parameter(
@@ -290,16 +289,6 @@ class BalmerModel(TemplateModel):
             self.allow_interp_fitting,
             self.fixed_dict or self.fixed,
         )
-
-    def _prepare_model(self, x_out: FloatVector, *args) -> None:
-        self.fixed_dict = {
-            'flux': self.flux.fixed,
-            'fwhm': self.fwhm.fixed,
-            'ratio': self.ratio.fixed,
-        }
-        self._choose_evaluate_func()
-        self._choose_fit_deriv_func()
-        self._calculate_interpolation_matrices(x_out)
 
     @property
     def _kwargs(self) -> dict:
