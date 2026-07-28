@@ -1,14 +1,12 @@
+from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
+
 cdef void _evaluate_exact(
     double[::1] y,
     const double flux,
     const double fwhm,
     const double ratio,
-    const double[::1] template_x,
-    const double[::1] continuum_fwhm,
-    const double[:,::1] continuum_data,
-    const double[::1] series_fwhm,
-    const double[:,::1] series_data,
-    const double sigma_res,
+    CyTemplate continuum_cytemplate,
+    CyTemplate series_cytemplate,
     const double n_scales,
 )
 
@@ -17,11 +15,7 @@ cdef void _evaluate_interp(
     const double flux,
     const double fwhm,
     const double ratio,
-    const double[::1] template_x,
-    const double[::1] continuum_fwhm,
-    const double[:,::1] continuum_data,
-    const double[::1] series_fwhm,
-    const double[:,::1] series_data,
-    const double sigma_res,
+    CyTemplate continuum_cytemplate,
+    CyTemplate series_cytemplate,
     const double n_scales,
 )

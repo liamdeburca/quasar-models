@@ -1,16 +1,15 @@
-__all__ = ['drop_nonpos', 'drop_nonfinite', 'get_table_data']
+__all__ = ["drop_nonfinite", "drop_nonpos", "get_table_data"]
 
 from typing import Protocol
-from numpy import isfinite
 
 from astropy.io import fits
-from astropy.units import Unit, Quantity
-
-from quasar_typing.numpy import FloatVector, SortedFloatVector, FloatMatrix
-from quasar_typing.scipy import csr_matrix_
+from astropy.units import Quantity, Unit
+from numpy import isfinite
+from quasar_typing.numpy import FloatMatrix, FloatVector, SortedFloatVector
 from quasar_typing.pathlib import AbsoluteFITSPath
-
+from quasar_typing.scipy import csr_matrix_
 from quasar_utils.setup import Info
+
 
 class BaseTemplateProtocol(Protocol):
     fwhm: SortedFloatVector
@@ -31,11 +30,14 @@ class BaseTemplateProtocol(Protocol):
     fwhm_norm: float
     normalisation: float
 
+
 def drop_nonpos(arr: FloatVector) -> FloatVector:
     return arr[arr > 0]
 
+
 def drop_nonfinite(arr: FloatVector) -> FloatVector:
     return arr[isfinite(arr)]
+
 
 def get_table_data(table: fits.BinTableHDU, cname: str) -> FloatVector | Quantity:
     data = table.data[cname]
@@ -44,12 +46,13 @@ def get_table_data(table: fits.BinTableHDU, cname: str) -> FloatVector | Quantit
     n = col.array.shape[0]
     return data[:n]
 
+
 def _save(
     *,
     template: BaseTemplateProtocol,
     info: Info,
 ) -> fits.HDUList:
-    
+
     v_unit: str = info.units.velocity_unit.to_string()
     x_unit: str = info.units.wavelength_unit.to_string()
     f_unit: str = info.units.getFluxUnit().to_string()
@@ -57,101 +60,108 @@ def _save(
     hdul = fits.HDUList()
 
     hdu: fits.PrimaryHDU = fits.PrimaryHDU(data=template.data)
-    hdu.header['NAME'] = template.name
-    hdu.header['CTYPE1'] = ('fwhm', 'fwhm axis')
-    hdu.header['CTYPE2'] = ('x', 'spectral axis')
-    hdu.header['BUNIT'] = (f_unit, 'flux unit')
+    hdu.header["NAME"] = template.name
+    hdu.header["CTYPE1"] = ("fwhm", "fwhm axis")
+    hdu.header["CTYPE2"] = ("x", "spectral axis")
+    hdu.header["BUNIT"] = (f_unit, "flux unit")
 
     if template.is_logspace:
-        hdu.header['LOGSPACE'] = 'y'
-        hdu.header['V_RES'] = (template.sigma_res, 'velocity resolution in c')
+        hdu.header["LOGSPACE"] = "y"
+        hdu.header["V_RES"] = (template.sigma_res, "velocity resolution in c")
     else:
-        hdu.header['LOGSPACE'] = 'n'
-        hdu.header['V_RES'] = (None, 'velocity resolution in c')
+        hdu.header["LOGSPACE"] = "n"
+        hdu.header["V_RES"] = (None, "velocity resolution in c")
 
     hdul.append(hdu)
 
     col_fwhm: fits.Column = fits.Column(
-        name='fwhm',
-        format='D',
+        name="fwhm",
+        format="D",
         unit=v_unit,
         array=info.units.getC(template.fwhm).to(v_unit).value,
     )
     col_x: fits.Column = fits.Column(
-        name='x',
-        format='D',
+        name="x",
+        format="D",
         unit=x_unit,
         array=template.x,
     )
     hdul.append(fits.BinTableHDU.from_columns([col_fwhm, col_x]))
 
-    if getattr(template, '_alpha_matrix', None) is not None:
+    if getattr(template, "_alpha_matrix", None) is not None:
         col_xn = fits.Column(
-            name='xn',
-            format='D',
+            name="xn",
+            format="D",
             unit=x_unit,
             array=template._xn,
         )
         col_alpha_data = fits.Column(
-            name='alpha_data',
-            format='D',
+            name="alpha_data",
+            format="D",
             array=template._alpha_matrix.data,
         )
         col_alpha_indices = fits.Column(
-            name='alpha_indices',
-            format='K',
+            name="alpha_indices",
+            format="K",
             array=template._alpha_matrix.indices,
         )
         col_alpha_indptr = fits.Column(
-            name='alpha_indptr',
-            format='K',
+            name="alpha_indptr",
+            format="K",
             array=template._alpha_matrix.indptr,
         )
         col_beta_data = fits.Column(
-            name='beta_data',
-            format='D',
+            name="beta_data",
+            format="D",
             array=template._beta_matrix.data,
         )
         col_beta_indices = fits.Column(
-            name='beta_indices',
-            format='K',
+            name="beta_indices",
+            format="K",
             array=template._beta_matrix.indices,
         )
         col_beta_indptr = fits.Column(
-            name='beta_indptr',
-            format='K',
+            name="beta_indptr",
+            format="K",
             array=template._beta_matrix.indptr,
         )
-        hdu: fits.BinTableHDU = fits.BinTableHDU.from_columns([
-            col_xn,
-            col_alpha_data, col_alpha_indices, col_alpha_indptr,
-            col_beta_data, col_beta_indices, col_beta_indptr,
-        ])
+        hdu: fits.BinTableHDU = fits.BinTableHDU.from_columns(
+            [
+                col_xn,
+                col_alpha_data,
+                col_alpha_indices,
+                col_alpha_indptr,
+                col_beta_data,
+                col_beta_indices,
+                col_beta_indptr,
+            ]
+        )
 
         hdr = hdu.header
-        
+
         # no. of _xn values
-        hdr['XN_VAL'] = template._xn.size
+        hdr["XN_VAL"] = template._xn.size
         # Alpha-matrix
-        hdr['ASHAPE'] = "{}/{}".format(*template._alpha_matrix.shape)
+        hdr["ASHAPE"] = "{}/{}".format(*template._alpha_matrix.shape)
         # no. of alpha-matric values
-        hdr['A_VAL'] = template._alpha_matrix.data.size
+        hdr["A_VAL"] = template._alpha_matrix.data.size
         # no. of alpha-matrix indices
-        hdr['A_IND'] = template._alpha_matrix.indices.size
+        hdr["A_IND"] = template._alpha_matrix.indices.size
         # no. of alpha-matrix index pointers
-        hdr['A_PTR'] = template._alpha_matrix.indptr.size
+        hdr["A_PTR"] = template._alpha_matrix.indptr.size
         # Beta-matrix
-        hdr['BSHAPE'] = "{}/{}".format(*template._beta_matrix.shape)
+        hdr["BSHAPE"] = "{}/{}".format(*template._beta_matrix.shape)
         # no. of beta-matrix values
-        hdr['B_VAL'] = template._beta_matrix.data.size
+        hdr["B_VAL"] = template._beta_matrix.data.size
         # no. of beta-matrix indices
-        hdr['B_IND'] = template._beta_matrix.indices.size
+        hdr["B_IND"] = template._beta_matrix.indices.size
         # no. of beta-matrix index pointers
-        hdr['B_PTR'] = template._beta_matrix.indptr.size
+        hdr["B_PTR"] = template._beta_matrix.indptr.size
 
         hdul.append(hdu)
 
     return hdul
+
 
 def _load(
     *,
@@ -159,64 +169,64 @@ def _load(
     info: Info,
 ) -> dict:
     kwargs = {
-        'n_scales': info.convolution.n_scales,
-        'fwhm': None,
-        'x': None,
-        'data': None,
-        'is_logspace': None,
-        'sigma_res': None,
-        'name': None,
-        'path': path,
-        '_alpha_matrix': None,
-        '_beta_matrix': None,
-        '_xn': None,
+        "n_scales": info.convolution.n_scales,
+        "fwhm": None,
+        "x": None,
+        "data": None,
+        "is_logspace": None,
+        "sigma_res": None,
+        "name": None,
+        "path": path,
+        "_alpha_matrix": None,
+        "_beta_matrix": None,
+        "_xn": None,
     }
     with fits.open(path) as hdul:
         v_unit = Unit(hdul[1].columns[0].unit)
         x_unit = Unit(hdul[1].columns[1].unit)
-        f_unit = Unit(hdul[0].header['BUNIT'])
+        f_unit = Unit(hdul[0].header["BUNIT"])
 
         def transform_velocity(arr: FloatVector) -> FloatVector:
             return info.units.getC(arr * v_unit)
-        
+
         def transform_wavelength(arr: FloatVector) -> FloatVector:
             return info.units.getWavelength(arr * x_unit)
-        
+
         def transform_flux(arr: FloatVector) -> FloatVector:
             return info.units.getFlux(arr * f_unit)
-        
-        kwargs['data'] = data = transform_flux(hdul[0].data)
-        kwargs['fwhm'] = transform_velocity(hdul[1].data['fwhm'])[:data.shape[0]]
-        kwargs['x'] = transform_wavelength(hdul[1].data['x'])[:data.shape[1]]
 
-        kwargs['name'] = hdul[0].header['NAME']
-        
-        if hdul[0].header['LOGSPACE'].lower() == 'y':
-            kwargs['is_logspace'] = True
-            kwargs['sigma_res'] = float(hdul[0].header['V_RES'])
+        kwargs["data"] = data = transform_flux(hdul[0].data)
+        kwargs["fwhm"] = transform_velocity(hdul[1].data["fwhm"])[: data.shape[0]]
+        kwargs["x"] = transform_wavelength(hdul[1].data["x"])[: data.shape[1]]
+
+        kwargs["name"] = hdul[0].header["NAME"]
+
+        if hdul[0].header["LOGSPACE"].lower() == "y":
+            kwargs["is_logspace"] = True
+            kwargs["sigma_res"] = float(hdul[0].header["V_RES"])
         else:
-            kwargs['is_logspace'] = False
-            kwargs['sigma_res'] = None
+            kwargs["is_logspace"] = False
+            kwargs["sigma_res"] = None
 
         if len(hdul) > 2:
             hdu2: fits.BinTableHDU = hdul[2]
 
-            kwargs['_xn'] = transform_wavelength(hdu2.data['xn'])
-            kwargs['_alpha_matrix'] = csr_matrix_(
+            kwargs["_xn"] = transform_wavelength(hdu2.data["xn"])
+            kwargs["_alpha_matrix"] = csr_matrix_(
                 (
-                    hdu2.data['alpha_data'], 
-                    hdu2.data['alpha_indices'], 
-                    hdu2.data['alpha_indptr'],
+                    hdu2.data["alpha_data"],
+                    hdu2.data["alpha_indices"],
+                    hdu2.data["alpha_indptr"],
                 ),
-                shape=tuple(map(int, hdu2.header['ASHAPE'].strip().split('/'))),
+                shape=tuple(map(int, hdu2.header["ASHAPE"].strip().split("/"))),
             )
-            kwargs['_beta_matrix'] = csr_matrix_(
+            kwargs["_beta_matrix"] = csr_matrix_(
                 (
-                    hdu2.data['beta_data'], 
-                    hdu2.data['beta_indices'], 
-                    hdu2.data['beta_indptr'],
-                ), 
-                shape=tuple(map(int, hdu2.header['BSHAPE'].strip().split('/'))),
+                    hdu2.data["beta_data"],
+                    hdu2.data["beta_indices"],
+                    hdu2.data["beta_indptr"],
+                ),
+                shape=tuple(map(int, hdu2.header["BSHAPE"].strip().split("/"))),
             )
 
     return kwargs

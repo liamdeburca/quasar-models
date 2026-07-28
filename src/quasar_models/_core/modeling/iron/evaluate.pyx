@@ -12,6 +12,7 @@ from quasar_models._core.modeling.template.evaluate cimport (
 from quasar_models._core.modeling.split.evaluate cimport (
     _evaluate as _split_evaluate,
 )
+from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
 
 ### By CONVOLUTION
 
@@ -22,18 +23,14 @@ cdef inline void _evaluate_exact_no_split(
     const double split,
     const double left,
     const double right,
-    const double[::1] template_fwhm,
-    const double[::1] template_x,
-    const double[:,::1] template_data,
-    const double sigma_res,
+    CyTemplate cytemplate,
     const double scale,
     const double n_scales,
 ):
     _template_evaluate_exact(
         y,
         flux, fwhm, 
-        template_fwhm, template_x, template_data,
-        sigma_res, n_scales,
+        cytemplate, n_scales,
     )
 
 def evaluate_exact_no_split(
@@ -43,18 +40,14 @@ def evaluate_exact_no_split(
     const double split,
     const double left,
     const double right,
-    const double[::1] template_fwhm,
-    const double[::1] template_x,
-    const double[:,::1] template_data,
-    const double sigma_res,
+    CyTemplate cytemplate,
     const double scale,
     const double n_scales,
 ):
     _evaluate_exact_no_split(
         y, 
         flux, fwhm, split, left, right, 
-        template_fwhm, template_x, template_data, 
-        sigma_res, scale, n_scales,
+        cytemplate, scale, n_scales,
     )
 
 cdef inline void _evaluate_exact(
@@ -64,25 +57,15 @@ cdef inline void _evaluate_exact(
     const double split,
     const double left,
     const double right,
-    const double[::1] template_fwhm,
-    const double[::1] template_x,
-    const double[:,::1] template_data,
-    const double sigma_res,
+    CyTemplate cytemplate, 
     const double scale,
     const double n_scales,
 ):
-    # Create modified template data
-    cdef double[:,::1] modified_data = np_zeros((1, template_x.shape[0]), dtype=np_float64)
-    _split_evaluate(modified_data[0, :], template_x, split, left, right, sigma_res, scale)
-    arr_multiply_inplace(modified_data[0, :], template_data[0, :])
-
-    cdef const double[::1] modified_fwhm = template_fwhm[0:1]
-
+    cdef CyTemplate split_template = cytemplate.split(split, left, right, scale)
     _template_evaluate_exact(
         y,
-        flux, fwhm, 
-        modified_fwhm, template_x, modified_data,
-        sigma_res, n_scales,
+        flux, fwhm,
+        split_template, n_scales,
     )
 
 def evaluate_exact(
@@ -92,18 +75,14 @@ def evaluate_exact(
     const double split,
     const double left,
     const double right,
-    const double[::1] template_fwhm,
-    const double[::1] template_x,
-    const double[:,::1] template_data,
-    const double sigma_res,
+    CyTemplate cytemplate,
     const double scale,
     const double n_scales,
 ):
     _evaluate_exact(
         y, 
         flux, fwhm, split, left, right, 
-        template_fwhm, template_x, template_data, 
-        sigma_res, scale, n_scales,
+        cytemplate, scale, n_scales,
     )
 
 ### By INTERPOLATION // No split possible
@@ -115,18 +94,14 @@ cdef inline void _evaluate_interp(
     const double split,
     const double left,
     const double right,
-    const double[::1] template_fwhm,
-    const double[::1] template_x,
-    const double[:,::1] template_data,
-    const double sigma_res,
+    CyTemplate cytemplate,
     const double scale,
     const double n_scales,
 ):
     _template_evaluate_interp(
         y,
         flux, fwhm, 
-        template_fwhm, template_x, template_data,
-        sigma_res, n_scales,
+        cytemplate, n_scales,
     )
 
 def evaluate_interp(
@@ -136,16 +111,12 @@ def evaluate_interp(
     const double split,
     const double left,
     const double right,
-    const double[::1] template_fwhm,
-    const double[::1] template_x,
-    const double[:,::1] template_data,
-    const double sigma_res,
+    CyTemplate cytemplate,
     const double scale,
     const double n_scales,
 ):
     _evaluate_interp(
         y, 
         flux, fwhm, split, left, right, 
-        template_fwhm, template_x, template_data, 
-        sigma_res, scale, n_scales,
+        cytemplate, scale, n_scales,
     )

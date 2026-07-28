@@ -1,25 +1,27 @@
-__all__ = ['IronTemplate']
+__all__ = ["IronTemplate"]
 
-from typing import Self, ClassVar, Literal
 from dataclasses import field
+from typing import ClassVar, Literal, Self
+
 from numpy import searchsorted
 from pydantic.dataclasses import dataclass
-
 from quasar_typing.numpy import FloatVector
-from quasar_typing.pathlib import AbsoluteFITSPath, AbsoluteDirPath
+from quasar_typing.pathlib import AbsoluteDirPath, AbsoluteFITSPath
 from quasar_utils.setup import Info
 
 from quasar_models._core.modeling.split import evaluate as split_evaluate
 from quasar_models.modeling.template import BaseTemplate
 
-from .io import PATH_TO_CACHE, save, load, save_to_cache, load_from_cache
+from .io import PATH_TO_CACHE, load, load_from_cache, save, save_to_cache
+
 
 @dataclass(eq=False)
 class IronTemplate(BaseTemplate):
     """
     Template class specifically designed for Iron pseudo-continua.
     """
-    name: Literal['vw2001', 'v2003', 'bw'] | str = field(default='vw2001', kw_only=True)
+
+    name: Literal["vw2001", "v2003", "bw"] | str = field(default="vw2001", kw_only=True)
 
     x_norm: float | None = field(default=None, kw_only=True)
 
@@ -31,19 +33,19 @@ class IronTemplate(BaseTemplate):
             self._calculate_normalisation()
 
     def _calculate_normalisation(self) -> float:
-        idx = searchsorted(self.fwhm, self.fwhm_norm, side='right') - 1
+        idx = searchsorted(self.fwhm, self.fwhm_norm, side="right") - 1
         y = self.data[idx]
         self.x_norm = self.x[y.argmax()]
         self.normalisation = y.max()
         return self.normalisation
-        
+
     def copy(self, with_matrices: bool = False) -> Self:
         """
         Creates a copy of the current IronTemplate instance. If `with_matrices`
-        is True, the logspace-transformation matrices are also copied, if 
+        is True, the logspace-transformation matrices are also copied, if
         available.
         """
-        with_matrices &= getattr(self, '_alpha_matrix', None) is not None
+        with_matrices &= getattr(self, "_alpha_matrix", None) is not None
         return IronTemplate(
             fwhm=self.fwhm.copy(),
             x=self.x.copy(),
@@ -74,11 +76,15 @@ class IronTemplate(BaseTemplate):
         obj = self if inplace else self.copy(with_matrices=True)
 
         obj.data *= self._get_split_weight(
-            obj.x, split, left, right, scale,
-        )[None,:]
+            obj.x,
+            split,
+            left,
+            right,
+            scale,
+        )[None, :]
 
         return obj
-    
+
     def _get_split_weight(
         self,
         x: FloatVector,
@@ -95,13 +101,16 @@ class IronTemplate(BaseTemplate):
         This method assumes that the x-array is in logspace (logbinned).
         """
         return split_evaluate(
-            x, split, left, right,
+            x,
+            split,
+            left,
+            right,
             sigma_res=self.sigma_res,
             scale=scale,
         )
 
     def save(
-        self, 
+        self,
         *,
         path: str | AbsoluteFITSPath,
         info: Info,
@@ -110,25 +119,25 @@ class IronTemplate(BaseTemplate):
         Saves the IronTemplate to a FITS file.
         """
         return save(template=self, path=path, info=info)
-    
+
     @classmethod
     def load(
-        cls, 
+        cls,
         *,
-        path: str | AbsoluteFITSPath, 
+        path: str | AbsoluteFITSPath,
         info: Info,
     ) -> Self:
         kwargs = load(path=path, info=info)
         return IronTemplate(**kwargs)
-    
+
     def save_to_cache(self, info: Info) -> AbsoluteFITSPath:
         return save_to_cache(template=self, info=info)
-    
+
     @classmethod
     def load_from_cache(
-        cls, 
-        *, 
-        name: Literal['vw2001', 'v2003', 'bw'] | str, 
+        cls,
+        *,
+        name: Literal["vw2001", "v2003", "bw"] | str,
         info: Info,
     ) -> Self:
         kwargs = load_from_cache(name=name, info=info)

@@ -2,26 +2,28 @@
 This script contains utilities for setting up various Balmer series templates.
 
 It currently supports data from the following:
-- Storey & Hummer (1995), a.k.a. 'sh1995'. 
+- Storey & Hummer (1995), a.k.a. 'sh1995'.
 """
-__all__ = ['SH1995']
 
-from pathlib import Path
-from pandas import DataFrame, read_csv
-from numpy import arange, log, unique, isin
-from astropy.units import Unit
-from astropy.constants import c
+__all__ = ["SH1995"]
+
 from itertools import product
+from pathlib import Path
 
-from quasar_utils.setup import Info
+from astropy.constants import c
+from astropy.units import Unit
+from numpy import arange, isin, log, unique
+from pandas import DataFrame, read_csv
 from quasar_typing.numpy import FloatVector
+from quasar_utils.setup import Info
 
-from quasar_models.balmer.series.io import PATH_TO_DATA, PATH_TO_CACHE
 from quasar_models.balmer.series.balmer_series_template import BalmerSeriesTemplate
+from quasar_models.balmer.series.io import PATH_TO_CACHE, PATH_TO_DATA
+
 
 class SH1995:
-    name: str = 'sh1995'
-    path_to_csv: Path = PATH_TO_DATA / 'sh1995.csv'
+    name: str = "sh1995"
+    path_to_csv: Path = PATH_TO_DATA / "sh1995.csv"
 
     temp_range: list[float] = [
         10_000.0,
@@ -37,19 +39,19 @@ class SH1995:
     def __init__(self):
         self.data: DataFrame = read_csv(self.path_to_csv)
         self.n_u_range: tuple[int, int] = (
-            self.data['n_u'].min(), 
-            self.data['n_u'].max(),
+            self.data["n_u"].min(),
+            self.data["n_u"].max(),
         )
         self.info: Info = Info()
 
-        self.fwhm: FloatVector = arange(1000, 20_000+1, 250) / c.to("km/s").value
+        self.fwhm: FloatVector = arange(1000, 20_000 + 1, 250) / c.to("km/s").value
 
-        x0, x1 = self.info.units.getWavelength([1000, 4500] * Unit('angstrom'))
+        x0, x1 = self.info.units.getWavelength([1000, 4500] * Unit("angstrom"))
         n = int(log(x1 / x0) / log(1 + self.info.loading.sigma_res)) + 1
-        self.x: FloatVector = x0 * (1 + self.info.loading.sigma_res)**arange(n+1)
+        self.x: FloatVector = x0 * (1 + self.info.loading.sigma_res) ** arange(n + 1)
 
-        self._temp: FloatVector = unique(self.data['temp'])
-        self._dens: FloatVector = unique(self.data['dens'])
+        self._temp: FloatVector = unique(self.data["temp"])
+        self._dens: FloatVector = unique(self.data["dens"])
 
         self.__post_init__()
 
@@ -61,19 +63,21 @@ class SH1995:
 
     def get_waves_and_weights(
         self,
-        *, 
-        temp: float, dens: float, n_u_range: tuple[int, int],
+        *,
+        temp: float,
+        dens: float,
+        n_u_range: tuple[int, int],
     ) -> tuple[FloatVector, FloatVector]:
         mask = (
-            (self.data['temp'] == temp) &
-            (self.data['dens'] == dens) &
-            (self.data['n_u'] >= n_u_range[0]) &
-            (self.data['n_u'] <= n_u_range[1])
+            (self.data["temp"] == temp)
+            & (self.data["dens"] == dens)
+            & (self.data["n_u"] >= n_u_range[0])
+            & (self.data["n_u"] <= n_u_range[1])
         )
         waves = self.info.units.getWavelength(
-            self.data.loc[mask,'wave'].values * Unit('angstrom')
+            self.data.loc[mask, "wave"].values * Unit("angstrom")
         )
-        weights = self.data.loc[mask,'val'].values
+        weights = self.data.loc[mask, "val"].values
         weights /= weights.sum()
 
         return waves, weights
@@ -81,17 +85,23 @@ class SH1995:
     def get_template(
         self,
         *,
-        temp: float, dens: float, n_u_range: tuple[int, int],
+        temp: float,
+        dens: float,
+        n_u_range: tuple[int, int],
     ) -> BalmerSeriesTemplate:
         waves, weights = self.get_waves_and_weights(
-            temp=temp, 
-            dens=dens, 
+            temp=temp,
+            dens=dens,
             n_u_range=n_u_range,
         )
         template = BalmerSeriesTemplate.instantiate(
-            self.fwhm, self.x,
-            waves, weights, 
-            temp, dens, n_u_range,
+            self.fwhm,
+            self.x,
+            waves,
+            weights,
+            temp,
+            dens,
+            n_u_range,
             is_logspace=True,
             sigma_res=self.info.loading.sigma_res,
             n_scales=self.info.convolution.n_scales,
@@ -101,35 +111,33 @@ class SH1995:
             name=self.name,
         )
         return template.normalise(inplace=True)
-    
+
     def main(self) -> None:
         for temp, dens in product(self.temp_range, self.dens_range):
             _ = self.get_template(
-                temp=temp, 
-                dens=dens, 
+                temp=temp,
+                dens=dens,
                 n_u_range=self.n_u_range,
             ).save_to_cache(self.info)
+
 
 def main() -> None:
     SH1995().main()
 
+
 def plot() -> None:
     import matplotlib.pyplot as plt
+    from matplotlib.cm import ScalarMappable
     from matplotlib.cm import rainbow as cmap
     from matplotlib.colors import Normalize
-    from matplotlib.cm import ScalarMappable
-
 
     sh1995 = SH1995()
     info = sh1995.info
-    
+
     def transform(fwhm):
-        return info.units.getC(fwhm).to('km/s').value / 1e3
-    
-    norm = Normalize(
-        vmin=transform(sh1995.fwhm[0]), 
-        vmax=transform(sh1995.fwhm[-1])
-    )
+        return info.units.getC(fwhm).to("km/s").value / 1e3
+
+    norm = Normalize(vmin=transform(sh1995.fwhm[0]), vmax=transform(sh1995.fwhm[-1]))
     scalmap = ScalarMappable(norm=norm, cmap=cmap)
     sel = slice(None, None, 10)
 
@@ -137,21 +145,24 @@ def plot() -> None:
         template = BalmerSeriesTemplate.load(path=path, info=info)
 
         fig, ax = plt.subplots(dpi=300, figsize=(8, 4))
-        ax.set_title(path.stem, loc='left')
+        ax.set_title(path.stem, loc="left")
 
         for y, fwhm in zip(template.data[sel], template.fwhm[sel]):
             ax.fill_between(
-                template.x, 
-                y, template.data[-1], 
-                step='mid', 
+                template.x,
+                y,
+                template.data[-1],
+                step="mid",
                 color=scalmap.to_rgba(transform(fwhm)),
             )
 
         ax.set_xlabel(
-            r"$\lambda_{\mathrm{rest}}$ (" + info.units.wavelength_unit.to_string() + ")",
-            loc='right',
+            r"$\lambda_{\mathrm{rest}}$ ("
+            + info.units.wavelength_unit.to_string()
+            + ")",
+            loc="right",
         )
-        ax.set_ylabel('Flux density (a.u.)')
+        ax.set_ylabel("Flux density (a.u.)")
         ax.set_ylim(0)
 
         cbar = plt.colorbar(scalmap, ax=ax)
@@ -160,12 +171,14 @@ def plot() -> None:
 
         plt.show()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--plot', action='store_true',
+        "--plot",
+        action="store_true",
         help="Whether to plot the generated templates.",
     )
     args = parser.parse_args()

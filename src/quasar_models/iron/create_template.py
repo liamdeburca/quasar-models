@@ -1,19 +1,21 @@
 from argparse import ArgumentParser, Namespace
-from typing import Literal
-import numpy as np
-import matplotlib.pyplot as plt
-from astropy.units import Unit
-from astropy.constants import c
 
+import matplotlib.pyplot as plt
+import numpy as np
+from astropy.constants import c
+from astropy.units import Unit
 from quasar_utils.setup import Info
+
 from quasar_models.iron.iron_template import IronTemplate
 from quasar_models.iron.utils import _get_xlog
 
-def plot_template(base_template: IronTemplate, template: IronTemplate, info: Info) -> None:
-    import matplotlib.pyplot as plt
+
+def plot_template(
+    base_template: IronTemplate, template: IronTemplate, info: Info
+) -> None:
+    from matplotlib.cm import ScalarMappable
     from matplotlib.cm import rainbow as cmap
     from matplotlib.colors import Normalize
-    from matplotlib.cm import ScalarMappable
 
     def transform(fwhm):
         return info.units.getC(fwhm).to("1e3 km/s").value
@@ -27,7 +29,9 @@ def plot_template(base_template: IronTemplate, template: IronTemplate, info: Inf
     sel = slice(None, None, 5)
 
     fig, axes = plt.subplots(2, 1, figsize=(8, 4), dpi=300, sharex=True, sharey=True)
-    axes[0].set_title(f"Iron template: {template.name} from {base_template.name}", loc='left')
+    axes[0].set_title(
+        f"Iron template: {template.name} from {base_template.name}", loc="left"
+    )
 
     for ax, temp in zip(axes, (base_template, template)):
         for y, fwhm in zip(temp.data[sel], transform(temp.fwhm[sel])):
@@ -35,14 +39,14 @@ def plot_template(base_template: IronTemplate, template: IronTemplate, info: Inf
                 temp.x,
                 y / temp.normalisation,
                 temp.data[-1] / temp.normalisation,
-                step='mid',
+                step="mid",
                 color=scalmap.to_rgba(fwhm),
             )
         ax.set_ylabel("Flux density (a.u.)")
 
     axes[-1].set_xlabel(
         f"Rest wavelength ({info.units.wavelength_unit.to_string()})",
-        loc='right',
+        loc="right",
     )
 
     axes[0].set_ylim(0)
@@ -51,6 +55,7 @@ def plot_template(base_template: IronTemplate, template: IronTemplate, info: Inf
     cbar.set_ticks([1, 5, 10, 15, 20])
 
     plt.show()
+
 
 def main(args: Namespace) -> None:
     # COnfigure Info instance
@@ -62,9 +67,8 @@ def main(args: Namespace) -> None:
 
     assert info.loading.sigma_res == args.v_res / c.to("km/s").value
 
-
     base_template = IronTemplate.load_from_cache(
-        args.base, 
+        args.base,
         info=info,
     )
     lb = args.lb or base_template.x[0]
@@ -72,14 +76,13 @@ def main(args: Namespace) -> None:
 
     lb_max = max(base_template.x[0], 0.8 * lb)
     ub_min = min(base_template.x[-1], 1.2 * ub)
-    
+
     mask = (lb <= base_template.x) & (base_template.x <= ub)
     max_mask = (lb_max <= base_template.x) & (base_template.x <= ub_min)
 
     new_fwhm = base_template.fwhm[:1].copy()
     new_x = base_template.x[max_mask].copy()
-    new_data = np.where(mask, base_template.data[0], 0.0)[max_mask][None,:].copy()
-
+    new_data = np.where(mask, base_template.data[0], 0.0)[max_mask][None, :].copy()
 
     new_template = IronTemplate(
         fwhm=new_fwhm,
@@ -107,8 +110,8 @@ def main(args: Namespace) -> None:
 
     plot_template(base_template, new_template, info)
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     parser = ArgumentParser(description="Create a custom Iron template.")
     parser.add_argument(
         "base",
@@ -121,26 +124,29 @@ if __name__ == "__main__":
         help="Name of the new template (without .fits extension).",
     )
     parser.add_argument(
-        "-r", "--v_res",
+        "-r",
+        "--v_res",
         type=float,
         help="Velocity resolution (km/s).",
         default=69.0,
     )
     parser.add_argument(
-        "-l", "--lb",
+        "-l",
+        "--lb",
         type=float,
         help="Lower bound of the wavelength range (Angstroms).",
         default=0.0,
     )
     parser.add_argument(
-        "-u", "--ub",
+        "-u",
+        "--ub",
         type=float,
         help="Upper bound of the wavelength range (Angstroms).",
         default=0.0,
     )
     parser.add_argument(
         "--save",
-        action='store_true',
+        action="store_true",
     )
     args = parser.parse_args()
 

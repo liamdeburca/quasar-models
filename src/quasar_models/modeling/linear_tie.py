@@ -1,6 +1,8 @@
-from typing import Literal
 from dataclasses import field
+from typing import Literal
+
 from pydantic.dataclasses import dataclass
+
 
 @dataclass(kw_only=True)
 class LinearTie:

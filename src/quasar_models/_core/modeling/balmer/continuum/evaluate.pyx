@@ -7,6 +7,7 @@ from numpy import (
     float64 as np_float64,
     copy as np_copy,
 )
+from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
 
 from quasar_models._core.modeling.template.evaluate cimport (
     _evaluate_exact as _template_evaluate_exact,
@@ -75,10 +76,11 @@ cdef inline void _evaluate(
     const double boltz,
     const double sigma_res,
     const double n_scales,
-) noexcept nogil:
+) noexcept:
     cdef double xi, ai, k = -tau * math_pow(edge, -scale), l = boltz / temp
     cdef const double[::1] template_fwhm
     cdef const double[:,::1] template_data
+    cdef CyTemplate cytemplate
 
     cdef Py_ssize_t i, n = x.shape[0]
 
@@ -90,16 +92,15 @@ cdef inline void _evaluate(
                 y[i] += ai * flux / (math_pow(xi, 5) * math_expm1(l / xi))
 
     if fwhm > 0.0:
-        with gil:
-            template_fwhm = np_array([0.0], dtype=np_float64)
-            template_data = np_copy(y)[None, :]
+        template_fwhm = np_array([0.0], dtype=np_float64)
+        template_data = np_copy(y)[None, :]
+        cytemplate = CyTemplate(template_fwhm, x, template_data, sigma_res)
 
-            _template_evaluate_exact(
-                y, 
-                1.0, fwhm,
-                template_fwhm, x, template_data,
-                sigma_res, n_scales,
-            )
+        _template_evaluate_exact(
+            y,
+            1.0, fwhm,
+            cytemplate, n_scales,
+        )
 
 def evaluate(
     double[::1] y,

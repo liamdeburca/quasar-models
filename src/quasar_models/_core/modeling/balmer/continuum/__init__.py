@@ -1,11 +1,16 @@
-from numpy import float64, zeros, diff, allclose, array
+from numpy import allclose, array, diff, float64, zeros
 from numpy.typing import NDArray
 
 from .evaluate import (
     attenuation as _attenuation,
+)
+from .evaluate import (
     continuum as _continuum,
+)
+from .evaluate import (
     evaluate as _evaluate,
 )
+
 
 def attenuation(
     x: NDArray[float64],
@@ -20,6 +25,7 @@ def attenuation(
     _attenuation(y, x, tau, scale, edge)
     return y
 
+
 def continuum(
     x: NDArray[float64],
     flux: float,
@@ -33,6 +39,7 @@ def continuum(
         y = zeros(x.shape, dtype=float64)
     _continuum(y, x, flux, temp, edge, boltz)
     return y
+
 
 def evaluate(
     x: NDArray[float64],
@@ -64,9 +71,16 @@ def evaluate(
     if y is None:
         y = zeros(x.shape, dtype=float64)
     _evaluate(
-        y, x, 
-        flux / normalisation, fwhm, 
-        temp, tau, scale, edge, boltz, 
-        sigma_res, n_scales,
+        y,
+        x,
+        flux / normalisation,
+        fwhm,
+        temp,
+        tau,
+        scale,
+        edge,
+        boltz,
+        sigma_res,
+        n_scales,
     )
     return y

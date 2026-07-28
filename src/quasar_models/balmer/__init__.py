@@ -1,7 +1,8 @@
 __all__ = [
-    'BalmerModel',
-    'BalmerSeriesTemplate', 'BalmerContinuumTemplate',
+    "BalmerContinuumTemplate",
+    "BalmerModel",
+    "BalmerSeriesTemplate",
 ]
 from .balmer_model import BalmerModel
-from .series import BalmerSeriesTemplate
 from .continuum import BalmerContinuumTemplate
+from .series import BalmerSeriesTemplate

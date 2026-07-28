@@ -1,20 +1,21 @@
 __all__ = [
-    'apply_bounds',
-    'order_submodels',
-    'separate_submodels',
-    'get_configuration',
+    "apply_bounds",
+    "get_configuration",
+    "order_submodels",
+    "separate_submodels",
 ]
 
-from typing import Iterable
-from collections import defaultdict, Counter
-from numpy import clip, inf
-from astropy.modeling.core import Fittable1DModel
-from pydantic import validate_call
+from collections import Counter, defaultdict
+from collections.abc import Iterable
 
-from quasar_typing.numpy import FloatArray
+from astropy.modeling.core import Fittable1DModel
+from numpy import clip, inf
+from pydantic import validate_call
+from quasar_typing.astropy import CompoundModel_, Fittable1DModel_, Model_
 from quasar_typing.bounds import AstropyBounds
-from quasar_typing.astropy import Model_, CompoundModel_, Fittable1DModel_
 from quasar_typing.misc.literals import FluxComponent
+from quasar_typing.numpy import FloatArray
+
 
 @validate_call
 def apply_bounds(
@@ -26,9 +27,10 @@ def apply_bounds(
     """
     return clip(
         val,
-        a_min = bounds[0] if (bounds[0] is not None) else -inf,
-        a_max = bounds[1] if (bounds[1] is not None) else inf,
+        a_min=bounds[0] if (bounds[0] is not None) else -inf,
+        a_max=bounds[1] if (bounds[1] is not None) else inf,
     )
+
 
 @validate_call
 def order_submodels(
@@ -40,9 +42,10 @@ def order_submodels(
     """
     if isinstance(submodels, Fittable1DModel):
         return submodels if combine else [submodels]
-    
+
     ms = sorted(submodels, key=lambda m: m.sorting_key)
     return sum(ms[1:], start=ms[0]) if combine else ms
+
 
 @validate_call
 def separate_submodels(
@@ -52,7 +55,7 @@ def separate_submodels(
     """
     ** PYDANTIC VALIDATED FUNCTION **
 
-    Separates a collection of Astropy models based on their respective 
+    Separates a collection of Astropy models based on their respective
     model_type properties:
     - 'pl': Power-law component
     - 'fe': Iron pseudo-continuum component
@@ -71,6 +74,7 @@ def separate_submodels(
 
     return out
 
+
 @validate_call
 def get_configuration(
     model: Model_,
@@ -81,10 +85,13 @@ def get_configuration(
     Retrieves the configuration of a given Astropy model, defined as the count
     of submodels corresponding to each unique wavelength parameter value.
     """
-    if model.n_submodels == 1: submodels = [model]
-    else:                      submodels = model
-    
+    if model.n_submodels == 1:
+        submodels = [model]
+    else:
+        submodels = model
+
     return Counter(m.wave.value for m in submodels)
+
 
 @validate_call
 def get_model_parts(
@@ -94,28 +101,28 @@ def get_model_parts(
     ** PYDANTIC VALIDATED FUNCTION **
     """
     parts = dict(
-        pl = None,
-        fe = None,
-        ba = None,
-        hg = None,
-        em = None,
+        pl=None,
+        fe=None,
+        ba=None,
+        hg=None,
+        em=None,
     )
     submodels = model if (model.n_submodels > 1) else [model]
 
     for submodel in submodels:
         key = submodel.model_type
 
-        if parts[key] == None: parts[key] = submodel
-        else:                  parts[key] += submodel
+        if parts[key] == None:
+            parts[key] = submodel
+        else:
+            parts[key] += submodel
 
     return parts
+
 
 @validate_call
 def get_free_params(model: Model_) -> dict[str, bool]:
     """
     ** PYDANTIC VALIDATED FUNCTION **
     """
-    return dict([
-        (p, not (model.fixed[p] or model.tied[p])) \
-        for p in model.param_names
-    ])
+    return dict([(p, not (model.fixed[p] or model.tied[p])) for p in model.param_names])

@@ -1,19 +1,19 @@
-__all__ = ['BalmerSeriesTemplate']
+__all__ = ["BalmerSeriesTemplate"]
 
-from typing import Self, ClassVar, Literal
-from numpy import zeros, float64, searchsorted, array, array_equal
 from dataclasses import field
+from typing import ClassVar, Literal, Self
+
+from numpy import array, array_equal, float64, searchsorted, zeros
 from pydantic.dataclasses import dataclass
-
+from quasar_typing.numpy import FloatVector, SortedFloatVector
 from quasar_typing.pathlib import AbsoluteDirPath, AbsoluteFITSPath
-from quasar_typing.numpy import SortedFloatVector, FloatVector
-
 from quasar_utils.setup import Info
 
-from quasar_models.modeling.template import BaseTemplate
 from quasar_models._core.modeling.balmer.series import evaluate
+from quasar_models.modeling.template import BaseTemplate
 
-from .io import PATH_TO_CACHE, load, save, save_to_cache, load_from_cache
+from .io import PATH_TO_CACHE, load, load_from_cache, save, save_to_cache
+
 
 @dataclass(eq=False)
 class BalmerSeriesTemplate(BaseTemplate):
@@ -22,50 +22,52 @@ class BalmerSeriesTemplate(BaseTemplate):
     temp: float = field(kw_only=True)
     dens: float = field(kw_only=True)
     n_u_range: tuple[int, int] = field(kw_only=True)
-    
+
     # Only series data from Storey&Hummer1995 is currently supported
-    name: Literal['sh1995'] = field(default='sh1995', kw_only=True)
+    name: Literal["sh1995"] = field(default="sh1995", kw_only=True)
 
     PATH_TO_CACHE: ClassVar[AbsoluteDirPath] = PATH_TO_CACHE
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        
+
         self.weights /= self.weights.sum()
         if self.waves.size != self.weights.size:
-            msg = "Sizes of 'waves' ({}) and 'weights' ({}) must match.".format(
-                self.waves.size, self.weights.size,
-            )
+            msg = f"Sizes of 'waves' ({self.waves.size}) and 'weights' ({self.weights.size}) must match."
             raise ValueError(msg)
-                
+
         if self.normalisation is None:
             self._calculate_normalisation()
 
     def __eq__(self, other: object) -> bool:
-        return super().__eq__(other) \
-            and array_equal(self.waves, other.waves) \
-            and array_equal(self.weights, other.weights) \
-            and (self.temp == other.temp) \
-            and (self.dens == other.dens) \
+        return (
+            super().__eq__(other)
+            and array_equal(self.waves, other.waves)
+            and array_equal(self.weights, other.weights)
+            and (self.temp == other.temp)
+            and (self.dens == other.dens)
             and (self.n_u_range == other.n_u_range)
+        )
 
     def __getstate__(self) -> dict:
         state = super().__getstate__()
-        state.update({
-            'waves': self.waves,
-            'weights': self.weights,
-            'temp': self.temp,
-            'dens': self.dens,
-            'n_u_range': self.n_u_range,
-        })
+        state.update(
+            {
+                "waves": self.waves,
+                "weights": self.weights,
+                "temp": self.temp,
+                "dens": self.dens,
+                "n_u_range": self.n_u_range,
+            }
+        )
         return state
 
     def copy(self, with_matrices: bool = False) -> Self:
-        with_matrices &= getattr(self, '_alpha_matrix', None) is not None
+        with_matrices &= getattr(self, "_alpha_matrix", None) is not None
 
         return BalmerSeriesTemplate(
-            fwhm=self.fwhm.copy(), 
-            x=self.x.copy(), 
+            fwhm=self.fwhm.copy(),
+            x=self.x.copy(),
             data=self.data.copy(),
             is_logspace=self.is_logspace,
             sigma_res=self.sigma_res,
@@ -87,7 +89,7 @@ class BalmerSeriesTemplate(BaseTemplate):
 
     def crop(self, n_u_range: tuple[int, int]) -> Self:
         """
-        Creates a new BalmerSeriesTemplate with a subset of the upper level 
+        Creates a new BalmerSeriesTemplate with a subset of the upper level
         ('n_u') range.
         """
         n_u_lower = n_u_range[0] or 2
@@ -125,7 +127,7 @@ class BalmerSeriesTemplate(BaseTemplate):
             is_logspace=self.is_logspace,
             name=self.name,
         )
-    
+
     @classmethod
     def instantiate(
         cls,
@@ -143,18 +145,20 @@ class BalmerSeriesTemplate(BaseTemplate):
         fwhm_norm: float,
         normalisation: float | None = None,
         is_logspace: bool = False,
-        name: Literal['sh1995'] = 'sh1995',
+        name: Literal["sh1995"] = "sh1995",
     ) -> Self:
         weights /= weights.sum()
 
         _data = evaluate(
-            x, 1.0, fwhm[0],
+            x,
+            1.0,
+            fwhm[0],
             sigma_res=sigma_res,
             waves=waves,
             weights=weights,
             edge=edge,
             normalisation=1.0,
-        )[None,:]
+        )[None, :]
         obj = BalmerSeriesTemplate(
             fwhm=fwhm[:1],
             x=x,
@@ -177,7 +181,7 @@ class BalmerSeriesTemplate(BaseTemplate):
             n_u_range=n_u_range,
         )
         return obj.upsample(fwhm, inplace=True)
-    
+
     def upsample(
         self,
         fwhm: SortedFloatVector,
@@ -185,16 +189,15 @@ class BalmerSeriesTemplate(BaseTemplate):
     ) -> Self:
         """
         Upsamples the BalmerSeriesTemplate to the specified FWHM values.
-        """        
+        """
         obj = self if inplace else self.copy(with_matrices=True)
-        
+
         data = zeros(shape=(fwhm.size, self.x.size), dtype=float64)
         indices = searchsorted(self.fwhm, fwhm)
 
         for i, fwhm_curr in enumerate(fwhm):
-            if indices[i] < self.fwhm.size \
-                and self.fwhm[indices[i]] == fwhm_curr:
-                data[i,:] = self.data[indices[i],:]
+            if indices[i] < self.fwhm.size and self.fwhm[indices[i]] == fwhm_curr:
+                data[i, :] = self.data[indices[i], :]
             else:
                 evaluate(
                     self.x,
@@ -205,18 +208,18 @@ class BalmerSeriesTemplate(BaseTemplate):
                     weights=self.weights,
                     edge=self.x_norm,
                     normalisation=1.0,
-                    y=data[i,:],
+                    y=data[i, :],
                 )
 
         obj.fwhm = fwhm
         obj.data = data
 
         return obj
-    
+
     # I/O
-    
+
     def save(
-        self, 
+        self,
         *,
         path: str | AbsoluteFITSPath,
         info: Info,
@@ -228,9 +231,9 @@ class BalmerSeriesTemplate(BaseTemplate):
 
     @classmethod
     def load(
-        cls, 
+        cls,
         *,
-        path: str | AbsoluteFITSPath, 
+        path: str | AbsoluteFITSPath,
         info: Info,
     ) -> Self:
         kwargs = load(path=path, info=info)
@@ -243,19 +246,19 @@ class BalmerSeriesTemplate(BaseTemplate):
 
     @classmethod
     def load_from_cache(
-        cls, 
+        cls,
         *,
-        name: Literal['sh1995'],
+        name: Literal["sh1995"],
         temp: float,
         dens: float,
         n_u_range: tuple[int, int],
         info: Info,
     ) -> Self:
         kwargs = load_from_cache(
-            name=name, 
-            temp=temp, 
-            dens=dens, 
-            n_u_range=n_u_range, 
+            name=name,
+            temp=temp,
+            dens=dens,
+            n_u_range=n_u_range,
             info=info,
         )
         obj = BalmerSeriesTemplate(**kwargs)

@@ -1,6 +1,7 @@
 __all__ = [
-    "BalmerSeriesTemplate", 
-    'PATH_TO_CACHE', 'PATH_TO_DATA',
+    "PATH_TO_CACHE",
+    "PATH_TO_DATA",
+    "BalmerSeriesTemplate",
 ]
 
 from .balmer_series_template import BalmerSeriesTemplate

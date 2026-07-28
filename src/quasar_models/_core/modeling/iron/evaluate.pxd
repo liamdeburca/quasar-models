@@ -1,3 +1,5 @@
+from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
+
 cdef void _evaluate_exact_no_split(
     double[::1] y,
     const double flux,
@@ -5,10 +7,7 @@ cdef void _evaluate_exact_no_split(
     const double split,
     const double left,
     const double right,
-    const double[::1] template_fwhm,
-    const double[::1] template_x,
-    const double[:,::1] template_data,
-    const double sigma_res,
+    CyTemplate cytemplate,
     const double scale,
     const double n_scales,
 )
@@ -20,10 +19,7 @@ cdef void _evaluate_exact(
     const double split,
     const double left,
     const double right,
-    const double[::1] template_fwhm,
-    const double[::1] template_x,
-    const double[:,::1] template_data,
-    const double sigma_res,
+    CyTemplate cytemplate,
     const double scale,
     const double n_scales,
 )
@@ -35,10 +31,7 @@ cdef void _evaluate_interp(
     const double split,
     const double left,
     const double right,
-    const double[::1] template_fwhm,
-    const double[::1] template_x,
-    const double[:,::1] template_data,
-    const double sigma_res,
+    CyTemplate cytemplate,
     const double scale,
     const double n_scales,
 )

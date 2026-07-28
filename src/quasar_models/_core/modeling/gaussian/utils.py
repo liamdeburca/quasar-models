@@ -1,7 +1,10 @@
-from typing import Callable
+from collections.abc import Callable
+
 from numpy import float64, zeros
 from numpy.typing import NDArray
+
 from . import evaluate, fit_deriv
+
 
 class _GaussianBase:
     @classmethod
@@ -17,14 +20,16 @@ class _GaussianBase:
 
     def __getstate__(self) -> dict:
         return {
-            'func_name': self.func_name,
+            "func_name": self.func_name,
         }
-    
+
     def __setstate__(self, state: dict) -> None:
-        self.func_name = state['func_name']
+        self.func_name = state["func_name"]
         self.__wrapped__ = self._get_wrapped(self.func_name)
 
+
 ###
+
 
 class GaussianEvaluate(_GaussianBase):
     @classmethod
@@ -48,11 +53,12 @@ class GaussianEvaluate(_GaussianBase):
             self.__wrapped__(y, x, strength, fwhm_v, v_off, wave, sigma_res)
         return y
 
+
 class GaussianFitDeriv(_GaussianBase):
     @classmethod
     def _get_wrapped(cls, func_name: str | None) -> Callable | None:
         return getattr(fit_deriv, func_name) if func_name else None
-    
+
     def __call__(
         self,
         x: NDArray[float64],

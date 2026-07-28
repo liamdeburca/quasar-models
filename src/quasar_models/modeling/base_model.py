@@ -1,11 +1,13 @@
-from typing import Self, Callable, Iterator
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterator
+from typing import Self
+
+from astropy.modeling import Fittable1DModel
 from numpy import float64
 from numpy.typing import NDArray
-from astropy.modeling import Fittable1DModel
-
 from pydantic_core import PydanticCustomError
 from pydantic_core.core_schema import no_info_plain_validator_function
+
 
 class BaseModel(ABC, Fittable1DModel):
     def __iter__(self) -> Iterator[Self]:
@@ -21,19 +23,18 @@ class BaseModel(ABC, Fittable1DModel):
         """
         Return a tuple used for sorting models.
         """
-        pass
 
     # Evaluation
 
-    @abstractmethod
     @property
+    @abstractmethod
     def evaluate_func(self) -> Callable[..., NDArray[float64]]: ...
 
     @abstractmethod
     def _choose_evaluate_func(self) -> None: ...
 
-    @abstractmethod
     @property
+    @abstractmethod
     def fit_deriv_func(self) -> Callable[..., NDArray[float64]]: ...
 
     @abstractmethod
@@ -41,24 +42,24 @@ class BaseModel(ABC, Fittable1DModel):
 
     @abstractmethod
     def evaluate(
-        self, 
-        x: NDArray[float64], 
-        *params, 
+        self,
+        x: NDArray[float64],
+        *params,
         y: NDArray[float64] | None = None,
     ) -> NDArray[float64]: ...
 
     @abstractmethod
     def fit_deriv(
-        self, 
-        x: NDArray[float64], 
+        self,
+        x: NDArray[float64],
         *args,
         derivs: NDArray[float64] | None = None,
     ) -> list[NDArray[float64]]: ...
 
     @abstractmethod
     def partial_deriv(
-        self, 
-        x: NDArray[float64], 
+        self,
+        x: NDArray[float64],
         *args,
         derivs: NDArray[float64] | None = None,
     ) -> NDArray[float64]: ...
@@ -66,7 +67,7 @@ class BaseModel(ABC, Fittable1DModel):
     # Instance evaluation
 
     def instance_evaluate(
-        self, 
+        self,
         x: NDArray[float64],
         y: NDArray[float64] | None = None,
     ) -> NDArray[float64]:
@@ -100,7 +101,7 @@ class BaseModel(ABC, Fittable1DModel):
 
     # Model preparation
 
-    def prepare_model(self) -> None: 
+    def prepare_model(self) -> None:
         self._choose_evaluate_func()
         self._choose_fit_deriv_func()
 
@@ -113,9 +114,8 @@ class BaseModel(ABC, Fittable1DModel):
     @classmethod
     def _validate(cls, value: object) -> Self:
         if not isinstance(value, cls):
-            msg = "Expected {} instance, got {} instead.".format(
-                cls.__name__,
-                type(value).__name__,
+            msg = (
+                f"Expected {cls.__name__} instance, got {type(value).__name__} instead."
             )
             raise PydanticCustomError("validation_error", msg)
         return value

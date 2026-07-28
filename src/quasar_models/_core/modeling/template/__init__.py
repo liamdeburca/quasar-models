@@ -1,16 +1,14 @@
 __all__ = [
-    "TemplateEvaluate", "TemplateFitDeriv",
-
+    "TemplateEvaluate",
+    "TemplateFitDeriv",
     "evaluate_exact",
     "evaluate_interp",
-
+    "fit_deriv_exact_all",
     "fit_deriv_exact_only_flux",
     "fit_deriv_exact_only_fwhm",
-    "fit_deriv_exact_all",
-
+    "fit_deriv_interp_all",
     "fit_deriv_interp_only_flux",
     "fit_deriv_interp_only_fwhm",
-    "fit_deriv_interp_all",
 ]
 
 from .utils import TemplateEvaluate, TemplateFitDeriv

@@ -1,3 +1,3 @@
-__all__ = ['PowerLawModel']
+__all__ = ["PowerLawModel"]
 
 from .powerlaw import PowerLawModel

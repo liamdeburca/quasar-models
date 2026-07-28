@@ -1,69 +1,53 @@
+from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
+
 ### By CONVOLUTION
 
-cdef _fit_deriv_exact_only_flux(
+cdef void _fit_deriv_exact_only_flux(
     double[:,::1] derivs,
     const double flux,
     const double fwhm,
-    const double[::1] template_fwhm,
-    const double[::1] template_x,
-    const double[:,::1] template_data,
-    const double sigma_res,
+    CyTemplate cytemplate,
     const double n_scales,
 )
 
-cdef _fit_deriv_exact_only_fwhm(
+cdef void _fit_deriv_exact_only_fwhm(
     double[:,::1] derivs,
     const double flux,
     const double fwhm,
-    const double[::1] template_fwhm,
-    const double[::1] template_x,
-    const double[:,::1] template_data,
-    const double sigma_res,
+    CyTemplate cytemplate,
     const double n_scales,
 )
 
-cdef _fit_deriv_exact_all(
+cdef void _fit_deriv_exact_all(
     double[:,::1] derivs,
     const double flux,
     const double fwhm,
-    const double[::1] template_fwhm,
-    const double[::1] template_x,
-    const double[:,::1] template_data,
-    const double sigma_res,
+    CyTemplate cytemplate,
     const double n_scales,
 )
 
 ### By INTERPOLATION
 
-cdef _fit_deriv_interp_only_flux(
+cdef void _fit_deriv_interp_only_flux(
     double[:,::1] derivs,
     const double flux,
     const double fwhm,
-    const double[::1] template_fwhm,
-    const double[::1] template_x,
-    const double[:,::1] template_data,
-    const double sigma_res,
+    CyTemplate cytemplate,
     const double n_scales,
 )
 
-cdef _fit_deriv_interp_only_fwhm(
+cdef void _fit_deriv_interp_only_fwhm(
     double[:,::1] derivs,
     const double flux,
     const double fwhm,
-    const double[::1] template_fwhm,
-    const double[::1] template_x,
-    const double[:,::1] template_data,
-    const double sigma_res,
+    CyTemplate cytemplate,
     const double n_scales,
 )
 
-cdef _fit_deriv_interp_all(
+cdef void _fit_deriv_interp_all(
     double[:,::1] derivs,
     const double flux,
     const double fwhm,
-    const double[::1] template_fwhm,
-    const double[::1] template_x,
-    const double[:,::1] template_data,
-    const double sigma_res,
+    CyTemplate cytemplate,
     const double n_scales,
 )

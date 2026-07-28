@@ -1,6 +1,6 @@
 __all__ = [
+    "DogBoxLSQFitter",
     "LMLSQFitter",
     "TRFLSQFitter",
-    "DogBoxLSQFitter",
 ]
-from .fitter import LMLSQFitter, TRFLSQFitter, DogBoxLSQFitter
+from .fitter import DogBoxLSQFitter, LMLSQFitter, TRFLSQFitter

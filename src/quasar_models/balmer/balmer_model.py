@@ -1,46 +1,69 @@
 """
 AstroPy compatible model: BalmerModel.
 """
-from typing import Self, Literal, ClassVar
-from numpy import array, float64, array_equal, unique, concatenate, nan, nanargmin
-from numpy.typing import NDArray
-from astropy.units import Unit
+
+from typing import Any, ClassVar, Literal, Self
+
 from astropy.modeling import Parameter
-
-from quasar_models.modeling.template import TemplateModel
-from quasar_models._core.modeling.balmer import (
-    BalmerEvaluate, BalmerFitDeriv,
-    choose_evaluate_func, choose_fit_deriv_func,
-    evaluate_exact, fit_deriv_exact_all,
+from astropy.units import Unit
+from numpy import (
+    array,
+    array_equal,
+    concatenate,
+    float64,
+    nan,
+    nanargmin,
+    unique,
 )
-
-from quasar_utils.setup import Info
-from quasar_utils.raster import rasterise
+from numpy.typing import NDArray
+from quasar_typing.numpy import FittableFloatVector, FloatMatrix, FloatVector
 from quasar_utils.decorators import validate_call
 from quasar_utils.interpolation import create_interp_matrix
+from quasar_utils.raster import rasterise
+from quasar_utils.setup import Info
 
-from quasar_typing.numpy import FittableFloatVector, FloatVector
+from quasar_models._core.modeling.balmer import (
+    BalmerEvaluate,
+    BalmerFitDeriv,
+    choose_evaluate_func,
+    choose_fit_deriv_func,
+    evaluate_exact,
+    fit_deriv_exact_all,
+)
+from quasar_models.modeling.template import TemplateModel
 
+from ..continuum import PowerLawModel
+from ..utils.astropy import apply_bounds
 from .continuum import BalmerContinuumTemplate
 from .series import BalmerSeriesTemplate
-from ..utils.astropy import apply_bounds
-from ..continuum import PowerLawModel
+
 
 class BalmerModel(TemplateModel):
     flux = Parameter(
-        default=1.0, 
+        default=1.0,
         min=0.0,
     )
     fwhm = Parameter(
-        default=0,   
+        default=0,
         min=0.0,
     )
     ratio = Parameter(
-        default=1.0, 
+        default=1.0,
         min=0.0,
     )
 
-    model_type: ClassVar[Literal['ba']] = 'ba'
+    model_type: ClassVar[Literal["ba"]] = "ba"
+
+    TEMPLATE_KEYS: ClassVar[tuple[Literal["continuum_template", "series_template"]]] = (
+        "continuum_template",
+        "series_template",
+    )
+    CYTEMPLATE_KEYS: ClassVar[
+        tuple[Literal["continuum_cytemplate", "series_cytemplate"]]
+    ] = (
+        "continuum_cytemplate",
+        "series_cytemplate",
+    )
 
     @classmethod
     def create(
@@ -50,11 +73,9 @@ class BalmerModel(TemplateModel):
         ratio: float,
         *,
         edge: float,
-
         continuum_template: BalmerContinuumTemplate | None = None,
         series_template: BalmerSeriesTemplate | None = None,
         info: Info | None = None,
-
         temp: float | None = None,
         tau: float | None = None,
         scale: float | None = None,
@@ -62,7 +83,7 @@ class BalmerModel(TemplateModel):
         n_u_range: tuple[int, int] | None = None,
         allow_interp_fitting: bool = False,
         n_scales: float | None = None,
-        name: str | Literal['SH1995'] | None = None,
+        name: str | Literal["SH1995"] | None = None,
     ) -> Self:
         if continuum_template is None:
             if info is None:
@@ -77,11 +98,11 @@ class BalmerModel(TemplateModel):
             if scale is None:
                 msg = "'scale' cannot be None if 'continuum_template' is not provided."
                 raise ValueError(msg)
-            
+
             continuum_template = BalmerContinuumTemplate.load_from_cache(
-                temp=temp, 
-                tau=tau, 
-                scale=scale, 
+                temp=temp,
+                tau=tau,
+                scale=scale,
                 info=info,
             )
 
@@ -101,43 +122,40 @@ class BalmerModel(TemplateModel):
             if n_u_range is None:
                 msg = "'n_u_range' cannot be None if 'series_template' is not provided."
                 raise ValueError(msg)
-            
+
             series_template = BalmerSeriesTemplate.load_from_cache(
-                name=name, 
-                temp=temp, 
-                dens=dens, 
-                n_u_range=n_u_range, 
+                name=name,
+                temp=temp,
+                dens=dens,
+                n_u_range=n_u_range,
                 info=info,
             )
 
         if not array_equal(continuum_template.x, series_template.x):
-            msg = "The continuum and series templates do not have "\
-                "the same x arrays!"
+            msg = "The continuum and series templates do not have the same x arrays!"
             raise ValueError(msg)
 
-        if not continuum_template.temp == series_template.temp:
-            msg = "The continuum ({}) and series ({}) template do not have " \
-                "the same temperatures!".format(
-                    continuum_template.temp, 
-                    series_template.temp,
-                )
+        if continuum_template.temp != series_template.temp:
+            msg = (
+                f"The continuum ({continuum_template.temp}) and series ({series_template.temp}) template do not have "
+                "the same temperatures!"
+            )
             raise ValueError(msg)
-        
+
         if n_scales is not None:
             continuum_template.n_scales = n_scales
             series_template.n_scales = n_scales
-        elif not continuum_template.n_scales == series_template.n_scales:
-            msg = "The continuum ({}) and series ({}) template do not have " \
-                "the same 'n_scales' values! Setting according to maximum "\
-                "value.".format(
-                    continuum_template.n_scales, 
-                    series_template.n_scales,
-                )
+        elif continuum_template.n_scales != series_template.n_scales:
+            msg = (
+                f"The continuum ({continuum_template.n_scales}) and series ({series_template.n_scales}) template do not have "
+                "the same 'n_scales' values! Setting according to maximum "
+                "value."
+            )
             # logger.info(msg)
             n_scales = max(continuum_template.n_scales, series_template.n_scales)
             continuum_template.n_scales = n_scales
             series_template.n_scales = n_scales
-        
+
         if not array_equal(continuum_template.fwhm, series_template.fwhm):
             fwhms = unique(
                 concatenate([continuum_template.fwhm, series_template.fwhm]),
@@ -146,44 +164,59 @@ class BalmerModel(TemplateModel):
             series_template.upsample(fwhms, inplace=True)
 
         model = BalmerModel(
-            flux, fwhm, ratio,
-            name=name or 'balmer',
+            flux,
+            fwhm,
+            ratio,
+            name=name or "balmer",
             meta={
-                'continuum_template': continuum_template,
-                'series_template': series_template,
-                'allow_interp_fitting': allow_interp_fitting,
-                'edge': edge,
-                '_interpolation_matrices': {},
-            }
+                "continuum_template": continuum_template,
+                "series_template": series_template,
+                "allow_interp_fitting": allow_interp_fitting,
+                "edge": edge,
+            },
         )
         model.fwhm.bounds = (continuum_template.fwhm[0], continuum_template.fwhm[-1])
         model.fwhm.value = apply_bounds.__wrapped__(
-            model.fwhm.value, 
+            model.fwhm.value,
             model.fwhm.bounds,
         )
 
         return model
-    
+
+    # Continuum Template
+
     @property
-    def continuum_template(self) -> BalmerContinuumTemplate:
-        return self.meta['continuum_template']
-    
+    def continuum_template(self) -> BalmerContinuumTemplate | None:
+        return self.meta.get("continuum_template", None)
+
     @continuum_template.setter
     def continuum_template(self, value: BalmerContinuumTemplate) -> None:
-        self.meta['continuum_template'] = value
+        self.meta["continuum_template"] = value
+
+    @continuum_template.deleter
+    def continuum_template(self) -> None:
+        self.meta.pop("continuum_template", None)
+
+    # Series Template
 
     @property
-    def series_template(self) -> BalmerSeriesTemplate:
-        return self.meta['series_template']
-    
+    def series_template(self) -> BalmerSeriesTemplate | None:
+        return self.meta.get("series_template", None)
+
     @series_template.setter
     def series_template(self, value: BalmerSeriesTemplate) -> None:
-        self.meta['series_template'] = value
+        self.meta["series_template"] = value
 
-    @property 
+    @series_template.deleter
+    def series_template(self) -> None:
+        self.meta.pop("series_template", None)
+
+    # Other Properties
+
+    @property
     def n_scales(self) -> float:
         return self.continuum_template.n_scales
-    
+
     @n_scales.setter
     def n_scales(self, value: float) -> None:
         self.continuum_template.n_scales = value
@@ -191,133 +224,158 @@ class BalmerModel(TemplateModel):
 
     @property
     def edge(self) -> float:
-        return self.meta['edge']
-    
+        return self.meta["edge"]
+
     @edge.setter
     def edge(self, value: float) -> None:
-        self.meta['edge'] = value
+        self.meta["edge"] = value
 
     @property
     def waves(self) -> FloatVector:
         return self.series_template.waves
-    
+
     @property
     def weights(self) -> FloatVector:
         return self.series_template.weights
-    
+
     @property
     def temp(self) -> float:
         return self.series_template.temp
-    
+
     @property
     def dens(self) -> float:
         return self.series_template.dens
-    
+
     @property
     def n_u_range(self) -> tuple[int, int]:
         return self.series_template.n_u_range
-    
+
     @property
     def source(self) -> str:
         return self.series_template.name
-    
+
     @property
     def tau(self) -> float:
         return self.continuum_template.tau
-    
+
     @property
     def scale(self) -> float:
         return self.continuum_template.scale
-    
-    def evaluate(self, x, flux, fwhm, ratio):
+
+    def evaluate(
+        self,
+        x: float | FloatVector,
+        flux: float,
+        fwhm: float,
+        ratio: float,
+        y: FloatVector | None = None,
+    ) -> float | FloatVector:
         flux = float(flux)
         fwhm = float(fwhm)
         ratio = float(ratio)
         return self.evaluate_func(
             x,
-            flux, fwhm, ratio,
+            flux,
+            fwhm,
+            ratio,
             **self._kwargs,
-            y=None,
+            y=y,
         )
 
-    def jac(self, x, flux, fwhm, ratio):
+    def partial_deriv(
+        self,
+        x: FloatVector,
+        flux: float,
+        fwhm: float,
+        ratio: float,
+        derivs: FloatMatrix | None = None,
+    ) -> FloatMatrix:
         flux = float(flux)
         fwhm = float(fwhm)
         ratio = float(ratio)
         return self.fit_deriv_func(
-            x, 
-            flux, fwhm, ratio, 
-            **self._kwargs, derivs=None,
+            x,
+            flux,
+            fwhm,
+            ratio,
+            **self._kwargs,
+            derivs=derivs,
         )
-    
-    def fit_deriv(self, x, flux, fwhm, ratio):
-        return list(self.jac(x, flux, fwhm, ratio))
-    
+
+    def fit_deriv(
+        self,
+        x: FloatVector,
+        flux: float,
+        fwhm: float,
+        ratio: float,
+        derivs: FloatMatrix | None = None,
+    ) -> list[FloatVector]:
+        return list(self.partial_deriv(x, flux, fwhm, ratio, derivs=derivs))
+
+    @property
+    def _kwargs(self) -> dict[str, Any]:
+        cytemplates = self.cytemplates
+        return {
+            "continuum_template": self.continuum_template,
+            "series_template": self.series_template,
+            "continuum_cytemplate": cytemplates["continuum_cytemplate"],
+            "series_cytemplate": cytemplates["series_cytemplate"],
+            "n_scales": self.n_scales,
+            "interpolation_matrix": self.interpolation_matrix,
+        }
+
     ### Model preparation
 
     @property
     def evaluate_func(self) -> BalmerEvaluate:
-        return self.meta.get('evaluate_func', evaluate_exact)
-    
+        return self.meta.get("evaluate_func", evaluate_exact)
+
     @evaluate_func.setter
     def evaluate_func(self, value: BalmerEvaluate) -> None:
-        self.meta['evaluate_func'] = value
+        self.meta["evaluate_func"] = value
 
     @evaluate_func.deleter
     def evaluate_func(self) -> None:
-        self.meta.pop('evaluate_func', None)
-    
+        self.meta.pop("evaluate_func", None)
+
     @property
     def fit_deriv_func(self) -> BalmerFitDeriv:
-        return self.meta.get('fit_deriv_func', fit_deriv_exact_all)
-    
+        return self.meta.get("fit_deriv_func", fit_deriv_exact_all)
+
     @fit_deriv_func.setter
     def fit_deriv_func(self, value: BalmerFitDeriv) -> None:
-        self.meta['fit_deriv_func'] = value
+        self.meta["fit_deriv_func"] = value
 
     @fit_deriv_func.deleter
     def fit_deriv_func(self) -> None:
-        self.meta.pop('fit_deriv_func', None)
+        self.meta.pop("fit_deriv_func", None)
 
     def _choose_evaluate_func(self) -> None:
         self.evaluate_func = choose_evaluate_func(
             self.allow_interp_fitting,
         )
-    
+
     def _choose_fit_deriv_func(self) -> None:
         self.fit_deriv_func = choose_fit_deriv_func(
             self.allow_interp_fitting,
-            self.fixed_dict or self.fixed,
+            self.fixed,
         )
 
-    @property
-    def _kwargs(self) -> dict:
-        c = self.continuum_template
-        s = self.series_template
-        out = {
-            'template_x': c.x,
-            'continuum_fwhm': c.fwhm,
-            'continuum_data': c.data / c.normalisation,
-            'series_fwhm': s.fwhm,
-            'series_data': s.data / s.normalisation,
-            'sigma_res': c.sigma_res,
-            'n_scales': c.n_scales,
-        }
-        out.update(self._interpolation_matrices)
-        return out
-    
     @property
     def sorting_key(self) -> tuple[float, float]:
         """
         Return a tuple used for sorting models.
         """
         return (2.0, 0.0)
-    
+
     def _calculate_interpolation_matrices(self, x_out: NDArray[float64]) -> None:
-        self._interpolation_matrices['interpolation_matrix'] = \
+        self._interpolation_matrices["interpolation_matrix"] = (
             create_interp_matrix.__wrapped__(
-                self.continuum_template.x, x_out,
-                left=0.0, right=0.0,
+                self.continuum_template.x,
+                x_out,
+                left=0.0,
+                right=0.0,
+            )
         )
 
     @validate_call
@@ -334,25 +392,22 @@ class BalmerModel(TemplateModel):
 
         Notes
         -----
-        'ratio' parameter is held fixed at the current value. 
+        'ratio' parameter is held fixed at the current value.
         """
         assert not (self.flux.fixed and self.fwhm.fixed)
 
         if self.fwhm.fixed:
             fwhm = array([self.fwhm.value], dtype=float64)
+            _kwargs = self._kwargs
+            _kwargs["interpolation_matrix"] = None
             data = evaluate_exact(
                 x,
-                1.0, self.fwhm.value, self.ratio.value,
-                template_x=self.continuum_template.x,
-                continuum_fwhm=self.continuum_template.fwhm,
-                continuum_data=self.continuum_template.data / self.continuum_template.normalisation,
-                series_fwhm=self.series_template.fwhm,
-                series_data=self.series_template.data / self.series_template.normalisation,
-                sigma_res=self.continuum_template.sigma_res,
-                n_scales=self.n_scales,
-                interpolation_matrix=None,
+                1.0,
+                self.fwhm.value,
+                self.ratio.value,
+                **_kwargs,
                 y=None,
-            )[None,:]
+            )[None, :]
         else:
             if array_equal(self.continuum_template.x, x):
                 ctemp = self.continuum_template
@@ -370,13 +425,14 @@ class BalmerModel(TemplateModel):
             flux_bounds = self.flux.bounds
 
         chi2s, fluxs = rasterise.__wrapped__(
-            y, dy,
+            y,
+            dy,
             fwhm,
             data,
             flux_bounds=flux_bounds,
             fwhm_bounds=self.fwhm.bounds,
         )
-        
+
         obj = self if inplace else self.copy()
         if (chi2s == 0).all():
             #! Raise warning
@@ -391,7 +447,7 @@ class BalmerModel(TemplateModel):
             obj.fwhm.value = apply_bounds(fwhm[idx], self.fwhm.bounds)
 
         return obj
-    
+
     @validate_call
     def adjustFromPowerLaw(
         self,
@@ -410,26 +466,29 @@ class BalmerModel(TemplateModel):
         Parameters
         ----------
         a_qsfit : float
-            The flux density of the Balmer continuum relative to the power law 
+            The flux density of the Balmer continuum relative to the power law
             flux densityat 3000 Å. Calderone et al. (2017) use '0.1'.
         model : PowerLawModel
             The power law model used to estimate the flux density at 3000 Å.
         info : Info
-            Instance of Info class used to convert 3000 Å to unitless 
+            Instance of Info class used to convert 3000 Å to unitless
             wavelengths.
         inplace: bool, optional
             If True, modifies this instance in-place. Otherwise, returns a copy.
             Default is False.
         """
-        wave = info.units.getWavelength(3000 * Unit('angstrom'))
+        wave = info.units.getWavelength(3000 * Unit("angstrom"))
         y_pl = model(wave)
 
         y_ba = evaluate_exact(
             array([wave], dtype=float64),
-            1.0, self.fwhm.value, self.ratio.value,
+            1.0,
+            self.fwhm.value,
+            self.ratio.value,
             template_x=self.continuum_template.x,
             continuum_fwhm=self.continuum_template.fwhm,
-            continuum_data=self.continuum_template.data / self.continuum_template.normalisation,
+            continuum_data=self.continuum_template.data
+            / self.continuum_template.normalisation,
             series_fwhm=self.series_template.fwhm,
             series_data=self.series_template.data / self.series_template.normalisation,
             sigma_res=self.continuum_template.sigma_res,

@@ -1,6 +1,6 @@
 __all__ = [
-    'BaseTemplate',
-    'TemplateModel',
+    "BaseTemplate",
+    "TemplateModel",
 ]
 
 from .base_template import BaseTemplate

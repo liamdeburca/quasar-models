@@ -1,7 +1,9 @@
-from typing import Callable
-from numpy import array_equal, interp, float64
+from collections.abc import Callable
+
+from numpy import array_equal, float64, interp
 from numpy.typing import NDArray
 from scipy.sparse import csr_matrix
+
 
 def get_template_transform(
     x: NDArray[float64],

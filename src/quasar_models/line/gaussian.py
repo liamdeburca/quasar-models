@@ -1,32 +1,36 @@
 """
-    Lorem ipsum.
+Lorem ipsum.
 """
-from typing import Self, Literal, ClassVar
-from astropy.modeling import Parameter
+
 from math import hypot, log, pi
+from typing import ClassVar, Literal, Self
+
+from astropy.modeling import Parameter
 from numpy import dot, isclose
-from scipy.stats import norm
-
-from quasar_models.modeling import BaseModel
-from quasar_models.utils.astropy import apply_bounds
-from quasar_models._core.modeling.gaussian import (
-    GaussianEvaluate, GaussianFitDeriv,
-    choose_evaluate_func, choose_fit_deriv_func,
-    evaluate_v, fit_deriv_v_all,
-)
-
-from quasar_typing.numpy import FittableFloatVector
 from quasar_typing.bounds import AstropyBounds
 from quasar_typing.logging import Logger_
-
+from quasar_typing.numpy import FittableFloatVector, FloatMatrix, FloatVector
 from quasar_utils.decorators import validate_call
+from scipy.stats import norm
+
+from quasar_models._core.modeling.gaussian import (
+    GaussianEvaluate,
+    GaussianFitDeriv,
+    choose_evaluate_func,
+    choose_fit_deriv_func,
+    evaluate_v,
+    fit_deriv_v_all,
+)
+from quasar_models.modeling import BaseModel
+from quasar_models.utils.astropy import apply_bounds
 
 from .utils import instantiate_model
 
-N_SIGMAS:  float = 3.0
-GAUSS_AMP: float = 1 / (2 * pi)**0.5
-SIGMA_TO_FWHM: float = 2 * (2 * log(2))**0.5
+N_SIGMAS: float = 3.0
+GAUSS_AMP: float = 1 / (2 * pi) ** 0.5
+SIGMA_TO_FWHM: float = 2 * (2 * log(2)) ** 0.5
 FWHM_TO_SIGMA: float = 1 / SIGMA_TO_FWHM
+
 
 class GaussianModel(BaseModel):
     """
@@ -37,7 +41,7 @@ class GaussianModel(BaseModel):
     strength : Parameter
         Line strength (flux integral). Defaults to 1 with positive bounds.
     fwhm_v : Parameter
-        Full width at half maximum in velocity units. Defaults to 1e-3 with positive 
+        Full width at half maximum in velocity units. Defaults to 1e-3 with positive
         bounds.
     v_off : Parameter
         Velocity offset relative to rest wavelength. Defaults to 0 with bounds
@@ -47,26 +51,27 @@ class GaussianModel(BaseModel):
     sigma_res : float
         Velocity resolution of the spectrum in units of $c$.
     n_sigmas : float
-        Number of Gaussian sigmas to include in sparse evaluation. Defaults to 
+        Number of Gaussian sigmas to include in sparse evaluation. Defaults to
         3.0.
     """
+
     strength = Parameter(
-        default=1.0, 
+        default=1.0,
         bounds=(0.0, None),
         fixed=False,
     )
     fwhm_v = Parameter(
-        default=1e-3, 
+        default=1e-3,
         bounds=(0.0, None),
         fixed=False,
     )
     v_off = Parameter(
-        default=0.0, 
+        default=0.0,
         bounds=(-1.0, 1.0),
         fixed=False,
     )
 
-    model_type: ClassVar[Literal['em']] = 'em'
+    model_type: ClassVar[Literal["em"]] = "em"
 
     @classmethod
     def create(
@@ -81,88 +86,123 @@ class GaussianModel(BaseModel):
         **kwargs,
     ) -> Self:
         return GaussianModel(
-            strength, fwhm_v, v_off,
-            meta={'wave': wave, 'sigma_res': sigma_res, 'n_sigmas': n_sigmas},
+            strength,
+            fwhm_v,
+            v_off,
+            meta={"wave": wave, "sigma_res": sigma_res, "n_sigmas": n_sigmas},
             **kwargs,
         )
-    
+
     @property
-    def wave(self) -> float: 
-        return self.meta['wave']
+    def wave(self) -> float:
+        return self.meta["wave"]
 
     @wave.setter
     def wave(self, value: float) -> None:
-        self.meta['wave'] = value
+        self.meta["wave"] = value
 
     @property
-    def sigma_res(self) -> float: 
-        return self.meta['sigma_res']
+    def sigma_res(self) -> float:
+        return self.meta["sigma_res"]
 
     @sigma_res.setter
     def sigma_res(self, value: float) -> None:
-        self.meta['sigma_res'] = value
+        self.meta["sigma_res"] = value
 
     @property
-    def n_sigmas(self) -> float: 
-        return self.meta['n_sigmas']
+    def n_sigmas(self) -> float:
+        return self.meta["n_sigmas"]
 
     @n_sigmas.setter
     def n_sigmas(self, value: float) -> None:
-        self.meta['n_sigmas'] = value
-    
-    def evaluate(self, x, strength, fwhm_v, v_off):
+        self.meta["n_sigmas"] = value
+
+    def evaluate(
+        self,
+        x: float | FloatVector,
+        strength: float,
+        fwhm_v: float,
+        v_off: float,
+        y: FloatVector | None = None,
+    ) -> float | FloatVector:
         return self.evaluate_func(
             x,
-            strength, fwhm_v, v_off,
-            wave=self.wave, sigma_res=self.sigma_res,
-            y=None,
+            strength,
+            fwhm_v,
+            v_off,
+            wave=self.wave,
+            sigma_res=self.sigma_res,
+            y=y,
         )
-    
-    def jac(self, x, strength, fwhm_v, v_off):
-        return self.fit_deriv_func.__call__(
+
+    def partial_deriv(
+        self,
+        x: FloatVector,
+        strength: float,
+        fwhm_v: float,
+        v_off: float,
+        derivs: FloatMatrix | None = None,
+    ) -> FloatMatrix:
+        return self.fit_deriv_func(
             x,
-            strength, fwhm_v, v_off,
-            wave=self.wave, sigma_res=self.sigma_res,
-            derivs=None,
+            strength,
+            fwhm_v,
+            v_off,
+            wave=self.wave,
+            sigma_res=self.sigma_res,
+            derivs=derivs,
         )
-    
-    def fit_deriv(self, x, strength, fwhm_v, v_off):
-        return list(self.jac(x, strength, fwhm_v, v_off))
-    
+
+    def fit_deriv(
+        self,
+        x: FloatVector,
+        strength: float,
+        fwhm_v: float,
+        v_off: float,
+        derivs: FloatMatrix | None = None,
+    ) -> list[FloatVector]:
+        return list(
+            self.partial_deriv(
+                x,
+                strength,
+                fwhm_v,
+                v_off,
+                derivs=derivs,
+            )
+        )
+
     ### Model preparation
 
     @property
     def evaluate_func(self) -> GaussianEvaluate:
-        return self.meta.get('evaluate_func', evaluate_v)
-    
+        return self.meta.get("evaluate_func", evaluate_v)
+
     @evaluate_func.setter
     def evaluate_func(self, value: GaussianEvaluate) -> None:
-        self.meta['evaluate_func'] = value
+        self.meta["evaluate_func"] = value
 
     @evaluate_func.deleter
     def evaluate_func(self) -> None:
-        self.meta.pop('evaluate_func', None)
-    
+        self.meta.pop("evaluate_func", None)
+
     @property
     def fit_deriv_func(self) -> GaussianFitDeriv:
-        return self.meta.get('fit_deriv_func', fit_deriv_v_all)
-    
+        return self.meta.get("fit_deriv_func", fit_deriv_v_all)
+
     @fit_deriv_func.setter
     def fit_deriv_func(self, value: GaussianFitDeriv) -> None:
-        self.meta['fit_deriv_func'] = value
+        self.meta["fit_deriv_func"] = value
 
     @fit_deriv_func.deleter
     def fit_deriv_func(self) -> None:
-        self.meta.pop('fit_deriv_func', None)
-    
+        self.meta.pop("fit_deriv_func", None)
+
     def _choose_evaluate_func(self) -> None:
         self.evaluate_func = choose_evaluate_func()
-    
+
     def _choose_fit_deriv_func(self) -> None:
-        self.fit_deriv_func = choose_fit_deriv_func(
-            self.fixed_dict or self.fixed,
-        )
-    
+        self.fit_deriv_func = choose_fit_deriv_func(self.fixed)
+
     @staticmethod
     @validate_call
     def instantiate(
@@ -177,11 +217,11 @@ class GaussianModel(BaseModel):
         fwhm_v_bounds: AstropyBounds | None = None,
         sigma_res: float | None = None,
         logger: Logger_ | None = None,
-    ) -> Self:        
+    ) -> Self:
         strength, fwhm_v, v_off = instantiate_model(
-            wave, 
-            x, 
-            y, 
+            wave,
+            x,
+            y,
             y_smooth=y_smooth,
             sigma_res=sigma_res,
             strength_bounds=strength_bounds,
@@ -189,12 +229,12 @@ class GaussianModel(BaseModel):
             fwhm_v_bounds=fwhm_v_bounds,
         )
         model = GaussianModel.create(
-            wave, 
-            sigma_res, 
-            strength=strength, 
+            wave,
+            sigma_res,
+            strength=strength,
             fwhm_v=fwhm_v,
             v_off=v_off,
-            name=name or 'model',
+            name=name or "model",
         )
         model.strength.bounds = strength_bounds
         model.fwhm_v.bounds = fwhm_v_bounds
@@ -202,53 +242,47 @@ class GaussianModel(BaseModel):
 
         if logger is not None:
             msg = "Instantiated GaussianModel with parameters: "
-            msg += "('strength') {:.1e} < {:.1e} < {:.1e}, ".format(
-                strength_bounds[0], strength, strength_bounds[1],
-            )
-            msg += "('fwhm_v') {:.1e} < {:.1e} < {:.1e}, ".format(
-                fwhm_v_bounds[0], fwhm_v, fwhm_v_bounds[1],
-            )
-            msg += "('v_off') {:.1e} < {:.1e} < {:.1e}.".format(
-                v_off_bounds[0], v_off, v_off_bounds[1],
-            )
+            msg += f"('strength') {strength_bounds[0]:.1e} < {strength:.1e} < {strength_bounds[1]:.1e}, "
+            msg += f"('fwhm_v') {fwhm_v_bounds[0]:.1e} < {fwhm_v:.1e} < {fwhm_v_bounds[1]:.1e}, "
+            msg += f"('v_off') {v_off_bounds[0]:.1e} < {v_off:.1e} < {v_off_bounds[1]:.1e}."
             logger.debug(msg)
-        
+
         return model
-    
+
     ### Utility functions
 
     @property
     def is_narrow(self) -> bool:
-        return self.name.startswith('n')
-    
-    @ property
+        return self.name.startswith("n")
+
+    @property
     def is_broad(self) -> bool:
         return not self.is_narrow
-    
+
     @property
     def mu(self) -> float:
         return self.wave * (1 + self.v_off.value)
-    
+
     @property
     def sigma_v(self) -> float:
         return self.fwhm_v.value * FWHM_TO_SIGMA
-    
+
     @property
     def sigma(self) -> float:
         return self.mu * hypot(self.sigma_v, self.sigma_res)
-    
+
     @property
     def fwhm(self) -> float:
         return self.sigma * SIGMA_TO_FWHM
 
     @property
     def peak(self) -> float:
-        return self.strength.value / (self.sigma * (2 * pi)**0.5)
-    
+        return self.strength.value / (self.sigma * (2 * pi) ** 0.5)
+
     @property
     def sorting_key(self) -> tuple[float, float]:
         return (4.0, self.mu)
-    
+
     ###
 
     def getPeakSNR(self, obj: object) -> float:
@@ -268,9 +302,9 @@ class GaussianModel(BaseModel):
         Lorem ipsum.
         """
         x, _, dy, _ = obj.getMaskedCoords(without_absorption=True)
-        p = norm.pdf(x, self.mu, self.sigma) * (x * self.sigma_res)        
+        p = norm.pdf(x, self.mu, self.sigma) * (x * self.sigma_res)
         return self.peak / dot(p, dy)
-    
+
     def getFluxSNR(self, obj: object) -> float:
         """
         Lorem ipsum.
@@ -288,9 +322,9 @@ class GaussianModel(BaseModel):
         Lorem ipsum.
         """
         x, y, dy, _ = obj.getMaskedCoords(without_absorption=True)
-        p = norm.pdf(x, self.mu, self.sigma) * (x * self.sigma_res)        
+        p = norm.pdf(x, self.mu, self.sigma) * (x * self.sigma_res)
         return dot(p, y) / dot(p, dy)
-    
+
     def getLineSNR(self, obj: object) -> float:
         """
         Lorem ipsum.
@@ -308,9 +342,9 @@ class GaussianModel(BaseModel):
         Lorem ipsum.
         """
         x, _, dy, _ = obj.getMaskedCoords(without_absorption=True)
-        p = norm.pdf(x, self.mu, self.sigma) * (x * self.sigma_res)        
+        p = norm.pdf(x, self.mu, self.sigma) * (x * self.sigma_res)
         return self.strength.value / dot(p, dy)
-    
+
     def getWeightedAbsorption(self, obj: object) -> float:
         """
         Lorem ipsum.
@@ -326,15 +360,15 @@ class GaussianModel(BaseModel):
         Notes
         -----
         Lorem ipsum.
-        """        
+        """
         x, _, _, _, is_absorbed = obj.getMaskedCoords(without_absorption=False)
         p = norm.pdf(x, self.mu, self.sigma) * (x * self.sigma_res)
         return dot(p, is_absorbed)
-    
+
     @validate_call
     def makeCopy(
-        self, 
-        x: FittableFloatVector, 
+        self,
+        x: FittableFloatVector,
         dy: FittableFloatVector,
         z: FittableFloatVector,
     ) -> Self:
@@ -354,43 +388,38 @@ class GaussianModel(BaseModel):
         Notes
         -----
         Lorem ipsum.
-        """        
+        """
         new = self.copy()
         if not (new.strength.fixed or new.strength.tied):
             new.strength.value = apply_bounds(
-                dot(z * dy, x * new.sigma_res),
-                new.strength.bounds
+                dot(z * dy, x * new.sigma_res), new.strength.bounds
             )
 
         if not (new.fwhm_v.fixed or new.fwhm_v.tied):
             new.fwhm_v.value = apply_bounds(
-                0.5 * (new.fwhm_v.value + new.fwhm_v.bounds[0]),
-                new.fwhm_v.bounds
+                0.5 * (new.fwhm_v.value + new.fwhm_v.bounds[0]), new.fwhm_v.bounds
             )
 
         if not (new.v_off.fixed or new.v_off.tied):
-            new.v_off.value = apply_bounds(
-                0.5 * new.v_off.value,
-                new.v_off.bounds
-            )
+            new.v_off.value = apply_bounds(0.5 * new.v_off.value, new.v_off.bounds)
 
         return new
-    
+
     def isTouchingBounds(self) -> bool:
         if self.has_bounds:
-            for attr in ['strength', 'fwhm_v', 'v_off']:
+            for attr in ["strength", "fwhm_v", "v_off"]:
                 param = getattr(self, attr)
 
-                if param.fixed: 
+                if param.fixed:
                     continue
 
                 val: float = param.value
                 lb: float | None = param.bounds[0]
                 ub: float | None = param.bounds[1]
 
-                if lb is not None and isclose(val, lb): 
+                if lb is not None and isclose(val, lb):
                     return True
-                if ub is not None and isclose(val, ub): 
+                if ub is not None and isclose(val, ub):
                     return True
 
         return False

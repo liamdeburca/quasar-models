@@ -13,34 +13,37 @@ with v_res=2.3e-4 (as per QSO spectroscopy standards).
 """
 
 import timeit
+from collections.abc import Callable
+from typing import NamedTuple
+
 import numpy as np
-from typing import Callable, NamedTuple
+from quasar_utils.setup import Info
 from tqdm import tqdm
 
 from quasar_models import (
-    PowerLawModel,
-    GaussianModel,
-    IronModel,
     BalmerModel,
+    GaussianModel,
     HostGalaxyModel,
+    IronModel,
+    PowerLawModel,
 )
-from quasar_models.iron import IronTemplate
 from quasar_models.balmer.continuum import BalmerContinuumTemplate
 from quasar_models.balmer.series import BalmerSeriesTemplate
 from quasar_models.host import HostGalaxyTemplate
-from quasar_models.utils.prepare_model import PrepareModel
-
-from quasar_utils.setup import Info
-
+from quasar_models.iron import IronTemplate
+from quasar_models.modeling import PrepareModel
 
 # Configuration
 V_RES = 2.3e-4
 N_WAVELENGTHS = 10_000
 N: int = 10_000
+FASTEST_FRACTION: float = 0.1  # Fraction of fastest samples to include in statistics
 INFO = Info()
+
 
 class BenchmarkResult(NamedTuple):
     """Container for benchmark results."""
+
     model_name: str
     method_name: str
     total_time: float
@@ -98,12 +101,15 @@ def benchmark_method(method: Callable) -> tuple[float, float]:
         (total_time, standard_deviation) in seconds.
     """
     times = []
-    for _ in tqdm(range(N), desc='Benchmarking', leave=False):
+    for _ in tqdm(range(N), desc="Benchmarking", leave=False):
         t = timeit.timeit(method, number=1)
         times.append(t)
 
     times = np.array(times)
-    return times.mean(), times.std()
+    # Keep only the fastest FASTEST_FRACTION of samples
+    cutoff = np.quantile(times, FASTEST_FRACTION)
+    times_fastest = times[times <= cutoff]
+    return times_fastest.mean(), times_fastest.std()
 
 
 def benchmark_powerlaw(x: np.ndarray) -> BenchmarkResult:
@@ -117,22 +123,27 @@ def benchmark_powerlaw(x: np.ndarray) -> BenchmarkResult:
         y0=1.0,
         flux=1.0,
         alpha=-1.0,
-        name='powerlaw',
+        name="powerlaw",
     )
     with PrepareModel(x=x, model=model):
+        print("evaluate_func: ", model.evaluate_func.__wrapped__)
+        print("fit_deriv_func:", model.fit_deriv_func.__wrapped__)
+
         # Benchmark evaluate
         print(f"  Evaluating on {x.size} wavelengths...")
         mean_eval, std_eval = benchmark_method(
             lambda: model.evaluate(x, model.flux.value, model.alpha.value),
         )
         result_eval = BenchmarkResult(
-            model_name='PowerLawModel',
-            method_name='evaluate',
+            model_name="PowerLawModel",
+            method_name="evaluate",
             total_time=mean_eval * N,
             mean_time=mean_eval,
             std_time=std_eval,
         )
-        print(f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs")
+        print(
+            f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs"
+        )
 
         # Benchmark fit_deriv
         print(f"  Computing fit_deriv on {x.size} wavelengths...")
@@ -140,15 +151,18 @@ def benchmark_powerlaw(x: np.ndarray) -> BenchmarkResult:
             lambda: model.fit_deriv(x, model.flux.value, model.alpha.value),
         )
         result_deriv = BenchmarkResult(
-            model_name='PowerLawModel',
-            method_name='fit_deriv',
+            model_name="PowerLawModel",
+            method_name="fit_deriv",
             total_time=mean_deriv * N,
             mean_time=mean_deriv,
             std_time=std_deriv,
         )
-        print(f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs")
+        print(
+            f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs"
+        )
 
     return result_eval, result_deriv
+
 
 def benchmark_gaussian(x: np.ndarray) -> BenchmarkResult:
     """Benchmark GaussianModel evaluate and fit_deriv methods."""
@@ -162,59 +176,78 @@ def benchmark_gaussian(x: np.ndarray) -> BenchmarkResult:
         strength=1.0,
         fwhm_v=1e-4,
         v_off=0.0,
-        name='gaussian',
+        name="gaussian",
     )
     with PrepareModel(x=x, model=model):
+        print("evaluate_func: ", model.evaluate_func.__wrapped__)
+        print("fit_deriv_func:", model.fit_deriv_func.__wrapped__)
+
         # Benchmark evaluate
         print(f"  Evaluating on {x.size} wavelengths...")
         mean_eval, std_eval = benchmark_method(
-            lambda: model.evaluate(x, model.strength.value, model.fwhm_v.value, model.v_off.value),
+            lambda: model.evaluate(
+                x, model.strength.value, model.fwhm_v.value, model.v_off.value
+            ),
         )
         result_eval = BenchmarkResult(
-            model_name='GaussianModel',
-            method_name='evaluate',
+            model_name="GaussianModel",
+            method_name="evaluate",
             total_time=mean_eval * N,
             mean_time=mean_eval,
             std_time=std_eval,
         )
-        print(f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs")
+        print(
+            f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs"
+        )
 
         # Benchmark fit_deriv
         print(f"  Computing fit_deriv on {x.size} wavelengths...")
         mean_deriv, std_deriv = benchmark_method(
-            lambda: model.fit_deriv(x, model.strength.value, model.fwhm_v.value, model.v_off.value),
+            lambda: model.fit_deriv(
+                x, model.strength.value, model.fwhm_v.value, model.v_off.value
+            ),
         )
         result_deriv = BenchmarkResult(
-            model_name='GaussianModel',
-            method_name='fit_deriv',
+            model_name="GaussianModel",
+            method_name="fit_deriv",
             total_time=mean_deriv * N,
             mean_time=mean_deriv,
             std_time=std_deriv,
         )
-        print(f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs")
+        print(
+            f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs"
+        )
 
     return result_eval, result_deriv
 
 
-def benchmark_iron(x: np.ndarray) -> BenchmarkResult:
+def benchmark_iron(
+    x: np.ndarray, allow_interp_fitting: bool = False
+) -> BenchmarkResult:
     """Benchmark IronModel evaluate and fit_deriv methods."""
     print("\n" + "=" * 70)
-    print("Benchmarking IronModel")
+    if allow_interp_fitting:
+        print("Benchmarking IronModel // INTERP")
+    else:
+        print("Benchmarking IronModel // EXACT")
     print("=" * 70)
 
     # Load and adapt template
-    _template = IronTemplate.load(path='vw2001', info=INFO)
+    _template = IronTemplate.load(path="vw2001", info=INFO)
     template = _template.createLogspace(sigma_res=V_RES, xr=x, keep_x=True)
 
-    scale = INFO.iron['scale']
+    scale = INFO.iron["scale"]
     model = IronModel.create(
         flux=1.0,
         fwhm=template.fwhm[10],  # Use a mid-range FWHM
         scale=scale,
         template=template,
-        name='iron',
+        name="iron",
+        allow_interp_fitting=allow_interp_fitting,
     )
     with PrepareModel(x=x, model=model):
+        print("evaluate_func: ", model.evaluate_func.__wrapped__)
+        print("fit_deriv_func:", model.fit_deriv_func.__wrapped__)
 
         # Benchmark evaluate
         print(f"  Evaluating on {x.size} wavelengths...")
@@ -229,13 +262,15 @@ def benchmark_iron(x: np.ndarray) -> BenchmarkResult:
             ),
         )
         result_eval = BenchmarkResult(
-            model_name='IronModel',
-            method_name='evaluate',
+            model_name="IronModel",
+            method_name="evaluate",
             total_time=mean_eval * N,
             mean_time=mean_eval,
             std_time=std_eval,
         )
-        print(f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs")
+        print(
+            f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs"
+        )
 
         # Benchmark fit_deriv
         print(f"  Computing fit_deriv on {x.size} wavelengths...")
@@ -250,20 +285,28 @@ def benchmark_iron(x: np.ndarray) -> BenchmarkResult:
             ),
         )
         result_deriv = BenchmarkResult(
-            model_name='IronModel',
-            method_name='fit_deriv',
+            model_name="IronModel",
+            method_name="fit_deriv",
             total_time=mean_deriv * N,
             mean_time=mean_deriv,
             std_time=std_deriv,
         )
-        print(f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs")
+        print(
+            f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs"
+        )
 
     return result_eval, result_deriv
 
-def benchmark_balmer(x: np.ndarray) -> BenchmarkResult:
+
+def benchmark_balmer(
+    x: np.ndarray, allow_interp_fitting: bool = False
+) -> BenchmarkResult:
     """Benchmark BalmerModel evaluate and fit_deriv methods."""
     print("\n" + "=" * 70)
-    print("Benchmarking BalmerModel")
+    if allow_interp_fitting:
+        print("Benchmarking BalmerModel // INTERP")
+    else:
+        print("Benchmarking BalmerModel // EXACT")
     print("=" * 70)
 
     # Load templates
@@ -274,7 +317,7 @@ def benchmark_balmer(x: np.ndarray) -> BenchmarkResult:
         info=INFO,
     )
     series_template = BalmerSeriesTemplate.load_from_cache(
-        name='sh1995',
+        name="sh1995",
         temp=INFO.balmer.temp,
         dens=INFO.balmer.dens,
         n_u_range=(INFO.balmer.n_u_min, INFO.balmer.n_u_max),
@@ -288,9 +331,12 @@ def benchmark_balmer(x: np.ndarray) -> BenchmarkResult:
         continuum_template=continuum_template,
         series_template=series_template,
         info=INFO,
-        name='sh1995',
+        name="sh1995",
+        allow_interp_fitting=allow_interp_fitting,
     )
     with PrepareModel(x=x, model=model):
+        print("evaluate_func: ", model.evaluate_func.__wrapped__)
+        print("fit_deriv_func:", model.fit_deriv_func.__wrapped__)
 
         # Benchmark evaluate
         print(f"  Evaluating on {x.size} wavelengths...")
@@ -303,13 +349,15 @@ def benchmark_balmer(x: np.ndarray) -> BenchmarkResult:
             ),
         )
         result_eval = BenchmarkResult(
-            model_name='BalmerModel',
-            method_name='evaluate',
+            model_name="BalmerModel",
+            method_name="evaluate",
             total_time=mean_eval * N,
             mean_time=mean_eval,
             std_time=std_eval,
         )
-        print(f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs")
+        print(
+            f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs"
+        )
 
         # Benchmark fit_deriv
         print(f"  Computing fit_deriv on {x.size} wavelengths...")
@@ -322,28 +370,37 @@ def benchmark_balmer(x: np.ndarray) -> BenchmarkResult:
             ),
         )
         result_deriv = BenchmarkResult(
-            model_name='BalmerModel',
-            method_name='fit_deriv',
+            model_name="BalmerModel",
+            method_name="fit_deriv",
             total_time=mean_deriv * N,
             mean_time=mean_deriv,
             std_time=std_deriv,
         )
-        print(f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs")
+        print(
+            f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs"
+        )
 
     return result_eval, result_deriv
 
-def benchmark_hostgalaxy(x: np.ndarray) -> BenchmarkResult:
+
+def benchmark_hostgalaxy(
+    x: np.ndarray, allow_interp_fitting: bool = False
+) -> BenchmarkResult:
     """Benchmark HostGalaxyModel evaluate and fit_deriv methods."""
     print("\n" + "=" * 70)
-    print("Benchmarking HostGalaxyModel")
+    if allow_interp_fitting:
+        print("Benchmarking HostGalaxyModel // INTERP")
+    else:
+        print("Benchmarking HostGalaxyModel // EXACT")
     print("=" * 70)
 
     # Load template
-    template = HostGalaxyTemplate.load_from_cache(
+    _template = HostGalaxyTemplate.load_from_cache(
         name=INFO.host.sources[0],
         age=INFO.host.ages[0],
         info=INFO,
     )
+    template = _template.createLogspace(sigma_res=V_RES, xr=x, keep_x=True)
 
     model = HostGalaxyModel.create(
         flux=INFO.host.flux,
@@ -352,8 +409,11 @@ def benchmark_hostgalaxy(x: np.ndarray) -> BenchmarkResult:
         info=INFO,
         name=INFO.host.sources[0],
         age=INFO.host.ages[0],
+        allow_interp_fitting=allow_interp_fitting,
     )
     with PrepareModel(x=x, model=model):
+        print("evaluate_func: ", model.evaluate_func.__wrapped__)
+        print("fit_deriv_func:", model.fit_deriv_func.__wrapped__)
 
         # Benchmark evaluate
         print(f"  Evaluating on {x.size} wavelengths...")
@@ -361,13 +421,15 @@ def benchmark_hostgalaxy(x: np.ndarray) -> BenchmarkResult:
             lambda: model.evaluate(x, model.flux.value, model.fwhm.value),
         )
         result_eval = BenchmarkResult(
-            model_name='HostGalaxyModel',
-            method_name='evaluate',
+            model_name="HostGalaxyModel",
+            method_name="evaluate",
             total_time=mean_eval * N,
             mean_time=mean_eval,
             std_time=std_eval,
         )
-        print(f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs")
+        print(
+            f"    Mean: {result_eval.mean_time_us:.0f} ± {result_eval.std_time_us:.0f} µs"
+        )
 
         # Benchmark fit_deriv
         print(f"  Computing fit_deriv on {x.size} wavelengths...")
@@ -375,13 +437,15 @@ def benchmark_hostgalaxy(x: np.ndarray) -> BenchmarkResult:
             lambda: model.fit_deriv(x, model.flux.value, model.fwhm.value),
         )
         result_deriv = BenchmarkResult(
-            model_name='HostGalaxyModel',
-            method_name='fit_deriv',
+            model_name="HostGalaxyModel",
+            method_name="fit_deriv",
             total_time=mean_deriv * N,
             mean_time=mean_deriv,
             std_time=std_deriv,
         )
-        print(f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs")
+        print(
+            f"    Mean: {result_deriv.mean_time_us:.0f} ± {result_deriv.std_time_us:.0f} µs"
+        )
 
     return result_eval, result_deriv
 
@@ -391,9 +455,7 @@ def print_summary_table(results: list[BenchmarkResult]) -> None:
     print("\n" + "=" * 90)
     print("BENCHMARK SUMMARY")
     print("=" * 90)
-    print(
-        f"{'Model':<20} {'Method':<15} {'Mean (µs)':<15} {'Std (µs)':<15}"
-    )
+    print(f"{'Model':<20} {'Method':<15} {'Mean (µs)':<15} {'Std (µs)':<15}")
     print("-" * 90)
 
     for result in results:
@@ -410,7 +472,9 @@ def main() -> None:
     print("\nConfiguration:")
     print(f"  Velocity resolution (v_res): {V_RES}")
     print(f"  Number of wavelengths: {N_WAVELENGTHS}")
-    print(f"  Wavelength range: {1000.0:.1f} - {1000.0 * (1 + V_RES) ** (N_WAVELENGTHS - 1):.1f} Å")
+    print(
+        f"  Wavelength range: {1000.0:.1f} - {1000.0 * (1 + V_RES) ** (N_WAVELENGTHS - 1):.1f} Å"
+    )
 
     # Create wavelength grid
     x = create_wavelength_grid(v_res=V_RES, n_wavelengths=N_WAVELENGTHS)
@@ -438,5 +502,5 @@ def main() -> None:
     print_summary_table(results)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

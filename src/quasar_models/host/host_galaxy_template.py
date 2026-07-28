@@ -1,18 +1,22 @@
-from typing import Self, ClassVar, Literal
 from dataclasses import field
-from pydantic.dataclasses import dataclass
+from typing import ClassVar, Literal, Self
 
+from pydantic.dataclasses import dataclass
 from quasar_typing.pathlib import AbsoluteDirPath, AbsoluteFITSPath
 from quasar_utils.setup import Info
+
 from quasar_models.modeling.template import BaseTemplate
 
-from .io import PATH_TO_CACHE, save, load, save_to_cache, load_from_cache
+from .io import PATH_TO_CACHE, load, load_from_cache, save, save_to_cache
+
+
 @dataclass(eq=False)
 class HostGalaxyTemplate(BaseTemplate):
     """
     Template class specifically designed for Host Galaxy templates.
     """
-    name: Literal['bc2003'] = field(default='bc2003', kw_only=True)
+
+    name: Literal["bc2003"] = field(default="bc2003", kw_only=True)
     age: int = field(default=0, kw_only=True)
 
     PATH_TO_CACHE: ClassVar[AbsoluteDirPath] = PATH_TO_CACHE
@@ -23,19 +27,18 @@ class HostGalaxyTemplate(BaseTemplate):
             self._calculate_normalisation()
 
     def __eq__(self, other: object) -> bool:
-        return super().__eq__(other) \
-            and self.age == other.age
+        return super().__eq__(other) and self.age == other.age
 
     def __getstate__(self) -> dict:
         state = super().__getstate__()
-        state['age'] = self.age
+        state["age"] = self.age
         return state
-    
+
     def copy(self, with_matrices: bool = False) -> Self:
-        with_matrices &= getattr(self, '_alpha_matrix', None) is not None
+        with_matrices &= getattr(self, "_alpha_matrix", None) is not None
         return HostGalaxyTemplate(
-            fwhm=self.fwhm.copy(), 
-            x=self.x.copy(), 
+            fwhm=self.fwhm.copy(),
+            x=self.x.copy(),
             data=self.data.copy(),
             is_logspace=self.is_logspace,
             sigma_res=self.sigma_res,
@@ -52,9 +55,9 @@ class HostGalaxyTemplate(BaseTemplate):
         )
 
     # I/O
-    
+
     def save(
-        self, 
+        self,
         *,
         path: str | AbsoluteFITSPath,
         info: Info,
@@ -63,9 +66,9 @@ class HostGalaxyTemplate(BaseTemplate):
 
     @classmethod
     def load(
-        cls, 
+        cls,
         *,
-        path: str | AbsoluteFITSPath, 
+        path: str | AbsoluteFITSPath,
         info: Info,
     ) -> Self:
         kwargs = load(path=path, info=info)
@@ -78,9 +81,9 @@ class HostGalaxyTemplate(BaseTemplate):
 
     @classmethod
     def load_from_cache(
-        cls, 
+        cls,
         *,
-        name: str, 
+        name: str,
         age: int,
         info: Info,
     ) -> Self:

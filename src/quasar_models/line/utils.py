@@ -1,16 +1,18 @@
 """
-    Lorem ipsum.
+Lorem ipsum.
 """
 
-from math import pi, log
-from numpy import argwhere, argmax, argmin, invert, dot, float64
+from math import log, pi
+
+from numpy import argmax, argmin, argwhere, dot, float64, invert
 from numpy.typing import NDArray
 from quasar_typing.bounds import AstropyBounds
 
 from ..utils.astropy import apply_bounds
 
-SIGMA_TO_FWHM: float = 2 * (2 * log(2))**0.5
+SIGMA_TO_FWHM: float = 2 * (2 * log(2)) ** 0.5
 FWHM_TO_SIGMA: float = 1 / SIGMA_TO_FWHM
+
 
 def measure_intersection(
     x: NDArray[float64],
@@ -47,16 +49,17 @@ def measure_intersection(
             y1, y2 = y
         case _:
             mask = (y[:-1] >= y_crit) & (y[1:] < y_crit)
-            if not mask.any(): 
+            if not mask.any():
                 return x[-1]
 
             n = argwhere(mask).min()
 
             # print(x.size, x[0], x[-1], n, x[n:n+2])
-            x1, x2 = x[n:n+2]
-            y1, y2 = y[n:n+2]
+            x1, x2 = x[n : n + 2]
+            y1, y2 = y[n : n + 2]
 
     return (x2 - x1) / (y2 - y1) * (y_crit - y1) + x1
+
 
 def measure_sigma(
     wave: float,
@@ -84,33 +87,34 @@ def measure_sigma(
     """
     y_crit: float = r * y[argmin(abs(x - wave))]
 
-    is_left = (x < wave)
+    is_left = x < wave
     if is_left.any():
-        x_left  = x[is_left][::-1]
-        y_left  = y[is_left][::-1]
+        x_left = x[is_left][::-1]
+        y_left = y[is_left][::-1]
         x1 = measure_intersection(x_left, y_left, y_crit)
     else:
         x1 = x[0]
 
     is_right = invert(is_left)
     if is_right.any():
-        x_right  = x[is_right]
-        y_right  = y[is_right]
+        x_right = x[is_right]
+        y_right = y[is_right]
         x2 = measure_intersection(x_right, y_right, y_crit)
     else:
         x2 = x[-1]
 
-    return (x2 - x1) / wave / (2 * (-2 * pi * r)**0.5)
+    return (x2 - x1) / wave / (2 * (-2 * pi * r) ** 0.5)
+
 
 def instantiate_model(
-    line: float, 
-    x: NDArray[float64], 
-    y: NDArray[float64], 
+    line: float,
+    x: NDArray[float64],
+    y: NDArray[float64],
     y_smooth: NDArray[float64] | None = None,
     sigma_res: float = 0,
     v_off_bounds: AstropyBounds = (-1, 1),
     fwhm_v_bounds: AstropyBounds = (0, None),
-    strength_bounds: AstropyBounds = (0, None)
+    strength_bounds: AstropyBounds = (0, None),
 ) -> tuple[float, float, float]:
     """
     Lorem ipsum.
@@ -134,13 +138,13 @@ def instantiate_model(
     -----
     Lorem ipsum.
     """
-    if y_smooth is None: 
+    if y_smooth is None:
         y_smooth = y
 
-    # Guessing the velocity offset 
+    # Guessing the velocity offset
     # - Method 4 (lmfit) from thesis (smoothed preferred)
     mask = y_smooth > 0.5 * (y_smooth.min() + y_smooth.max())
-    
+
     _x = x[mask]
     _mu = x[argmax(y_smooth)] if _x.size <= 1 else _x.mean()
 
@@ -150,7 +154,7 @@ def instantiate_model(
     # Guessing the velocity dispersion
     # - Method 4 (FWQM) from thesis (smoothed preferred)
     sigma = measure_sigma(mu, x, y_smooth, 0.25)
-    sigma_v = max(sigma**2 - sigma_res**2, 0)**0.5
+    sigma_v = max(sigma**2 - sigma_res**2, 0) ** 0.5
     fwhm_v = sigma_v * SIGMA_TO_FWHM
 
     # Guessing the line strength

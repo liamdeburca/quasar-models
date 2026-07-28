@@ -1,6 +1,8 @@
-from numpy import clip, log, exp, zeros_like, float64, arange
+from numpy import arange, clip, exp, float64, log, zeros_like
 from numpy.typing import NDArray
+
 from quasar_models.modeling.template import BaseTemplate
+
 
 def _split_evaluate(
     x: float | NDArray[float64],
@@ -13,14 +15,15 @@ def _split_evaluate(
 ) -> float | NDArray[float64]:
     """
     Calculates the split weight at the given x values.
-    """  
+    """
     assert sigma_res is not None, "sigma_res must be provided"
     assert scale is not None, "scale must be provided"
-    
+
     z = clip(log(split / x) / (scale * sigma_res), -5, 5)
     s = 1 / (1 + exp(z))
 
     return (right - left) * s + left
+
 
 def _split_fit_deriv(
     x: NDArray[float64],
@@ -37,31 +40,32 @@ def _split_fit_deriv(
     parameters: 'split', 'left', 'right'.
     """
     if fixed is None:
-        fixed = {'split': False, 'left': False, 'right': False}
-    
+        fixed = {"split": False, "left": False, "right": False}
+
     assert sigma_res is not None, "sigma_res must be provided"
     assert scale is not None, "scale must be provided"
 
     df_dsplit = zeros_like(x, dtype=float64)
-    df_dleft  = zeros_like(x, dtype=float64)
+    df_dleft = zeros_like(x, dtype=float64)
     df_dright = zeros_like(x, dtype=float64)
 
     if not all(fixed.values()):
         _exp_z = exp(clip(log(split / x) / (scale * sigma_res), -5, 5))
         s = 1 / (1 + _exp_z)
 
-        if not fixed['split']:
-            ds_dz = -s**2 * _exp_z
+        if not fixed["split"]:
+            ds_dz = -(s**2) * _exp_z
             dz_dsplit = 1 / (scale * sigma_res * split)
             df_dsplit[:] = (right - left) * ds_dz * dz_dsplit
 
-        if not fixed['left']:
+        if not fixed["left"]:
             df_dleft[:] = -s + 1
 
-        if not fixed['right']:
+        if not fixed["right"]:
             df_dright[:] = s
 
     return [df_dsplit, df_dleft, df_dright]
+
 
 def prepare_data_for_split(
     template: BaseTemplate,
@@ -74,30 +78,35 @@ def prepare_data_for_split(
 ) -> tuple[NDArray[float64], NDArray[float64]]:
     """
     Convenience function preparing the fwhm and data arrays of a template for
-    cases where applying a split is relevant. 
+    cases where applying a split is relevant.
 
-    If a split is relevant: 
+    If a split is relevant:
     - The template's original fwhm and data arrays are returned
 
     If a split is applied:
     - The template's original fwhm and data arrays are cropped s.t. only the
-      smallest FWHM and the corresponding data array are saved. 
-    - The cropped data array is then multiplied by a split weight function. 
+      smallest FWHM and the corresponding data array are saved.
+    - The cropped data array is then multiplied by a split weight function.
 
-    This approach ensures that convolved signals are as correct as possible. 
+    This approach ensures that convolved signals are as correct as possible.
     """
-    if left == right == 1.0: 
+    if left == right == 1.0:
         return template.fwhm, template.data
-    
+
     _fwhm = template.fwhm[:1]
     _data = template.data[:1] * _split_evaluate(
         template.x,
-        split, left, right,
-        scale=scale, sigma_res=sigma_res,
+        split,
+        left,
+        right,
+        scale=scale,
+        sigma_res=sigma_res,
     )
     return _fwhm, _data
 
+
 # For loading/parsing Fe templates
+
 
 def _get_xlog(
     x_bounds: tuple[float, float],
@@ -105,4 +114,4 @@ def _get_xlog(
 ) -> NDArray[float64]:
     x0, x1 = x_bounds
     n = log(x1 / x0) // log(1 + sigma_res) + 1
-    return x0 * (1 + sigma_res)**arange(n)
+    return x0 * (1 + sigma_res) ** arange(n)

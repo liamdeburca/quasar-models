@@ -1,12 +1,15 @@
-from typing import TypeVar, Iterable, Optional
-from quasar_typing.numpy import FloatVector
-from quasar_typing.astropy import Model_
+from collections.abc import Iterable
+from typing import TypeVar
 
-from .sequential_model import SequentialModel
+from quasar_typing.astropy import Model_
+from quasar_typing.numpy import FloatVector
+
 from .base_model import BaseModel
+from .sequential_model import SequentialModel
 from .template.template_model import TemplateModel
 
-M = TypeVar('M', bound=Model_)
+M = TypeVar("M", bound=Model_)
+
 
 class PrepareModel:
     def __init__(
@@ -17,9 +20,7 @@ class PrepareModel:
         copy: bool = False,
     ) -> None:
         self.x: FloatVector = x
-        self.model: SequentialModel = SequentialModel(
-            model.copy() if copy else model
-        )
+        self.model: SequentialModel = SequentialModel(model.copy() if copy else model)
         self.copy: bool = copy
 
     @classmethod
@@ -30,9 +31,9 @@ class PrepareModel:
     ) -> None:
         for submodel in submodels:
             if isinstance(submodel, TemplateModel):
-                submodel._prepare_model(x)
+                submodel.prepare_model(x)
             else:
-                submodel._prepare_model()
+                submodel.prepare_model()
 
     @classmethod
     def prepare_model(
@@ -42,24 +43,24 @@ class PrepareModel:
     ) -> None:
         submodels = (model,) if model.n_submodels == 1 else model
         cls.prepare_submodels(x, submodels)
-    
+
     @classmethod
     def unprepare_submodels(
-        cls, 
+        cls,
         submodels: Iterable[BaseModel],
     ) -> None:
         for submodel in submodels:
-            submodel._unprepare_model()
+            submodel.unprepare_model()
 
     @classmethod
     def unprepare_model(
-        cls, 
+        cls,
         model: M,
     ) -> None:
         submodels = (model,) if model.n_submodels == 1 else model
         cls.unprepare_submodels(submodels)
 
-    def __enter__(self) -> Optional[SequentialModel]:
+    def __enter__(self) -> SequentialModel | None:
         self.prepare_submodels(self.x, self.model.submodels)
         if self.copy:
             return self.model

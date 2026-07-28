@@ -1,11 +1,11 @@
 from logging import getLogger
-from numpy import full_like, nan, einsum, zeros_like, float64
 
+from numpy import einsum, float64, full_like, nan, zeros_like
+from quasar_typing.numpy import FittableFloatMatrix, FittableFloatVector, FloatVector
 from quasar_utils.decorators import validate_call
-from quasar_typing.numpy import FloatVector, FittableFloatVector, \
-    FittableFloatMatrix
 
 logger = getLogger(__name__)
+
 
 @validate_call
 def linreg(
@@ -14,39 +14,41 @@ def linreg(
     dy: FittableFloatVector | FittableFloatMatrix,
 ) -> tuple[float, float] | tuple[FloatVector, FloatVector]:
     """
-    Performs weighted least-squares regression efficiently. 
+    Performs weighted least-squares regression efficiently.
 
     Parameters
     ----------
     x : numpy.array
-        Array of coordinates along the first axis. 
+        Array of coordinates along the first axis.
     y : numpy.array
-        Array of coordinates along the second axis. 
+        Array of coordinates along the second axis.
     dy : numpy.array
-        Array of coordinate uncertainties along the second axis. 
+        Array of coordinate uncertainties along the second axis.
 
     Returns
     -------
     intercept : float
-        The 0th polynomial coefficient, equivalent to the y-intercept of the 
-        fitted line. 
+        The 0th polynomial coefficient, equivalent to the y-intercept of the
+        fitted line.
     gradient : float
-        The 1st polynomial coefficient, equivalent to the gradient of the 
-        fitted line. 
+        The 1st polynomial coefficient, equivalent to the gradient of the
+        fitted line.
     """
     assert x.shape == y.shape == dy.shape
-    
+
     if x.shape[-1] == 0:
         msg = "Cannot perform linear regression on empty arrays."
         logger.critical(msg)
         raise ValueError(msg)
     elif x.shape[-1] == 1:
-        msg = "Cannot perform linear regression on single-element arrays. " \
+        msg = (
+            "Cannot perform linear regression on single-element arrays. "
             "Defaulting to: intercept=y[0], gradient=0."
+        )
         logger.warning(msg)
         return y[0], zeros_like(y[0], dtype=float64)
 
-    a = (1 / dy)**2
+    a = (1 / dy) ** 2
     b = x * a
     c = x * b
 
@@ -60,18 +62,17 @@ def linreg(
 
     if x.ndim != 1:
         intercept = full_like(det, fill_value=nan, dtype=float64)
-        gradient  = full_like(det, fill_value=nan, dtype=float64)
+        gradient = full_like(det, fill_value=nan, dtype=float64)
 
-        mask = (det != 0)
+        mask = det != 0
         intercept[mask] = (C[mask] * ya[mask] - B[mask] * yb[mask]) / det[mask]
-        gradient[mask]  = (A[mask] * yb[mask] - B[mask] * ya[mask]) / det[mask]
+        gradient[mask] = (A[mask] * yb[mask] - B[mask] * ya[mask]) / det[mask]
 
         return intercept, gradient
-        
+
     if det == 0:
-        msg = "Determinant is zero. Defaulting to: " \
-            "intercept=y.mean(), gradient=0."
+        msg = "Determinant is zero. Defaulting to: intercept=y.mean(), gradient=0."
         logger.warning(msg)
         return y.mean(), 0
-    
+
     return (C * ya - B * yb) / det, (A * yb - B * ya) / det
