@@ -1,16 +1,15 @@
 from collections import Counter
 from collections.abc import Iterable
-from functools import cached_property
+from dataclasses import dataclass, field
 from typing import Union
 from warnings import warn
 
 from astropy.modeling import CompoundModel, Parameter
 from numpy import (
-    arange,
+    array,
     einsum,
     empty,
     float64,
-    fromiter,
     inf,
     int_,
     isfinite,
@@ -85,7 +84,40 @@ def _validate_unique_submodel_names(submodels: Iterable[BaseModel]) -> None:
         raise ValueError(msg)
 
 
+@dataclass(init=False, repr=False)
 class SequentialModel:
+    _model: Union[BaseModel, CompoundModel]
+
+    n_submodels: int = field(init=False)
+    submodels: tuple[BaseModel, ...] = field(init=False)
+
+    _initial_values: NDArray[float64] = field(init=False)
+
+    _parameters: tuple[Parameter, ...] = field(init=False)
+    _n: int = field(init=False)
+    _parameters_dict: dict[str, dict[str, tuple[int, Parameter]]] = field(init=False)
+
+    # Free parameters
+    _free_indices: NDArray[int_] = field(init=False)
+    _free_parameters: tuple[Parameter, ...] = field(init=False)
+    _n_free: int = field(init=False)
+
+    # Tied parameters
+    _tied_indices: NDArray[int_] = field(init=False)
+    _tied_to_indices: NDArray[int_] = field(init=False)
+    _tied_as: NDArray[float64] = field(init=False)
+    _tied_bs: NDArray[float64] = field(init=False)
+    _tied_parameters: tuple[Parameter, ...] = field(init=False)
+    _n_tied: int = field(init=False)
+
+    # Fixed parameters
+    _fixed_indices: NDArray[int_] = field(init=False)
+    _fixed_parameters: tuple[Parameter, ...] = field(init=False)
+    _n_fixed: int = field(init=False)
+
+    # Start/Stop
+    _start_stop_indices: NDArray[int_] = field(init=False)
+
     def __init__(
         self,
         model: Union[BaseModel, CompoundModel],
@@ -93,19 +125,48 @@ class SequentialModel:
         if isinstance(model, CompoundModel):
             _validate_compound_model(model)
 
-        self._model: Union[BaseModel, CompoundModel] = model
-        self._initial_values: NDArray[float64] = self._model.parameters.copy()
-        self._validate_params()
+        self._model = model
+        self._initial_values = self._model.parameters.copy()
+        self.n_submodels = self._model.n_submodels
+        self.submodels = (
+            (self._model,) if self.n_submodels == 1 else tuple(self._model)
+        )
+        self._validate_submodels(self.submodels)
+
+        # Parameters
+
+        self._parameters = tuple(
+            getattr(submodel, param_name)
+            for submodel in self.submodels
+            for param_name in submodel.param_names
+        )
+        self._validate_params(self._parameters)
+        self._n = len(self._parameters)
+
+        count: int = 0
+        self._parameters_dict = {}
+        for submodel in self.submodels:
+            field = {}
+            for param_name in submodel.param_names:
+                param = getattr(submodel, param_name)
+
+                field[param_name] = (count, param)
+                count += 1
+
+            self._parameters_dict[submodel.name] = field
 
         # Preparation
+        self._prepare_free()
+        self._prepare_tied()
+        self._prepare_fixed()
         self._calculate_start_stop_indices()
-        self._calculate_free_indices()
-        self._calculate_tied_indices()
 
-    def _validate_submodels(self) -> None:
-        _validate_unique_submodel_names(self.submodels)
+    @staticmethod
+    def _validate_submodels(submodels: tuple[BaseModel, ...]) -> None:
+        _validate_unique_submodel_names(submodels)
 
-    def _validate_params(self) -> None:
+    @staticmethod
+    def _validate_params(parameters: tuple[Parameter, ...]) -> None:
         """
         Validates the following:
         1.  All parameters' initial values are finite, and lie within any given
@@ -114,8 +175,8 @@ class SequentialModel:
             instance of 'LinearTie'. If a 'tied' parameter is fixed, a warning
             is raised.
         """
-        _validate_initial_values(self._parameters)
-        _validate_tied_parameters(self._parameters)
+        _validate_initial_values(parameters)
+        _validate_tied_parameters(parameters)
 
     ## Useful dunder methods from Astropy's `CompoundModel`
 
@@ -134,77 +195,13 @@ class SequentialModel:
         else:
             return self._model[idx]
 
-    @cached_property
-    def n_submodels(self) -> int:
-        return self._model.n_submodels
-
-    @cached_property
-    def submodels(self) -> tuple[BaseModel]:
-        if self.n_submodels == 1:
-            return (self._model,)
-        else:
-            return tuple(self._model.submodels)
-
-    # Parameters
-
     @property
     def parameters(self) -> NDArray[float64]:
         return self._model.parameters
 
-    @cached_property
-    def _parameters(self) -> tuple[Parameter]:
-        return tuple(
-            getattr(submodel, param_name)
-            for submodel in self.submodels
-            for param_name in submodel.param_names
-        )
-
-    @property
-    def _n(self) -> int:
-        return len(self._parameters)
-
-    @cached_property
-    def _parameters_dict(self) -> dict[str, dict[str, tuple[int, Parameter]]]:
-        """
-        Returns a dictionary of dictionaries mapping from submodel and parameter
-        names to a tuple of the parameter instance and the parameter's
-        corresponding index in the full parameter array.
-        """
-        _parameters_dict = {}
-        count: int = 0
-        for submodel in self.submodels:
-            field = {}
-            for param_name in submodel.param_names:
-                param = getattr(submodel, param_name)
-                field[param_name] = (count, param)
-                count += 1
-
-            _parameters_dict[submodel.name] = field
-
-        return _parameters_dict
-
-    @cached_property
-    def _free_parameters_dict(self) -> dict[str, dict[str, tuple[int, Parameter]]]:
-        """
-        Returns a dictionary of dictionaries mapping from submodel and parameter
-        names to a tuple of the parameter instance and the parameter's
-        corresponding index in the truncated free parameter array.
-        """
-        _parameters_dict = {}
-        count: int = 0
-        for submodel in self.submodels:
-            field = {}
-            for param_name in submodel.param_names:
-                param = getattr(submodel, param_name)
-                if not self._param_is_free(param):
-                    continue
-
-                field[param_name] = (count, param)
-                count += 1
-
-            _parameters_dict[submodel.name] = field
-
-        return _parameters_dict
+    @parameters.setter
+    def parameters(self, values: NDArray[float64]) -> None:
+        self._model.parameters = values
 
     ## Free parameters
 
@@ -215,13 +212,19 @@ class SequentialModel:
         """
         return not param.fixed and not self._param_is_tied(param)
 
-    @cached_property
-    def _free_parameters(self) -> tuple[Parameter, ...]:
-        return tuple(filter(self._param_is_free, self._parameters))
+    def _prepare_free(self) -> None:
+        _free_indices: list[int] = []
+        _free_parameters: list[Parameter] = []
+        for i, param in filter(
+            lambda tup: self._param_is_free(tup[1]),
+            enumerate(self._parameters),
+        ):
+            _free_indices.append(i)
+            _free_parameters.append(param)
 
-    @property
-    def _n_free(self) -> int:
-        return len(self._free_parameters)
+        self._free_indices = array(_free_indices, dtype=int_)
+        self._free_parameters = tuple(_free_parameters)
+        self._n_free = len(self._free_parameters)
 
     ## Tied parameters
 
@@ -230,10 +233,9 @@ class SequentialModel:
         Returns True if the parameter is not fixed and is tied to another
         non-fixed parameter.
         """
-        if param.fixed or not param.tied:
+        if not isinstance(tied := param.tied, LinearTie):
             return False
 
-        tied: LinearTie = param.tied
         for submodel in self.submodels:
             if submodel.name == tied.model_name:
                 tied_param: Parameter = getattr(submodel, tied.parameter_name)
@@ -247,13 +249,33 @@ class SequentialModel:
 
         raise ValueError(f"Could not find submodel: {tied.model_name}")
 
-    @cached_property
-    def _tied_parameters(self) -> tuple[Parameter, ...]:
-        return tuple(filter(self._param_is_tied, self._parameters))
+    def _prepare_tied(self) -> None:
+        _tied_indices: list[int] = []
+        _tied_to_indices: list[int] = []
+        _tied_as: list[float] = []
+        _tied_bs: list[float] = []
+        _tied_parameters: list[Parameter] = []
 
-    @property
-    def _n_tied(self) -> int:
-        return len(self._tied_parameters)
+        for i, param in filter(
+            lambda tup: self._param_is_tied(tup[1]),
+            enumerate(self._parameters),
+        ):
+            _tied_indices.append(i)
+            _tied_parameters.append(param)
+            
+            tied: LinearTie = param.tied
+            _tied_to_indices.append(
+                self._parameters_dict[tied.model_name][tied.parameter_name][0]
+            )
+            _tied_as.append(tied.a)
+            _tied_bs.append(tied.b)
+
+        self._tied_indices = array(_tied_indices, dtype=int_)
+        self._tied_to_indices = array(_tied_to_indices, dtype=int_)
+        self._tied_as = array(_tied_as, dtype=float64)
+        self._tied_bs = array(_tied_bs, dtype=float64)
+        self._tied_parameters = tuple(_tied_parameters)
+        self._n_tied = len(self._tied_parameters)
 
     ## Fixed parameters
 
@@ -264,59 +286,21 @@ class SequentialModel:
         """
         return param.fixed or (param.tied and not self._param_is_tied(param))
 
-    @cached_property
-    def _fixed_parameters(self) -> tuple[Parameter, ...]:
-        return tuple(filter(self._param_is_fixed, self._parameters))
+    def _prepare_fixed(self) -> None:
+        _fixed_indices: list[int] = []
+        _fixed_parameters: list[Parameter] = []
+        for i, param in filter(
+            lambda tup: self._param_is_fixed(tup[1]),
+            enumerate(self._parameters),
+        ):
+            _fixed_indices.append(i)
+            _fixed_parameters.append(param)
 
-    @property
-    def _n_fixed(self) -> int:
-        return len(self._fixed_parameters)
+        self._fixed_indices = array(_fixed_indices, dtype=int_)
+        self._fixed_parameters = tuple(_fixed_parameters)
+        self._n_fixed = len(self._fixed_parameters)
 
     # Preparation
-
-    def _calculate_free_indices(self) -> None:
-        """
-        Calculates a vector of indices that maps the truncated free parameter
-        array onto the full parameter array. In the event that all parameters
-        are free, the map is simply an array of integers from '0' to 'n-1',
-        where 'n' is the total number of parameters.
-        """
-        if self._n == self._n_free:
-            self._free_indices = arange(self._n, dtype=int_)
-        else:
-            self._free_indices = fromiter(
-                map(self._parameters.index, self._free_parameters),
-                dtype=int_,
-            )
-
-    def _calculate_tied_indices(self) -> None:
-        """
-        Calculates the following vectors:
-        1.  A vector of indices that extracts the tied value from the truncated free parameter array.
-        2.  A vector of indices that maps a value onto the full parameter array.
-        3.  A vector of 'a' coefficients for the tied parameters.
-        4.  A vector of 'b' coefficients for the tied parameters.
-        """
-        self._tied_indices = empty(self._n_tied, dtype=int_)
-        self._tied_to_indices = empty(self._n_tied, dtype=int_)
-        self._tied_as = empty(self._n_tied, dtype=float64)
-        self._tied_bs = empty(self._n_tied, dtype=float64)
-
-        if self._n_tied > 0:
-            i: int = 0
-            for j, param in enumerate(self._parameters):
-                if param not in self._tied_parameters:
-                    continue
-
-                self._tied_indices[i] = j
-
-                tied: LinearTie = param.tied
-                self._tied_to_indices[i] = self._parameters_dict[tied.model_name][
-                    tied.parameter_name
-                ][0]
-                self._tied_as[i] = tied.a
-                self._tied_bs[i] = tied.b
-                i += 1
 
     def _calculate_start_stop_indices(self) -> None:
         self._start_stop_indices = empty(self.n_submodels + 1, dtype=int_)
@@ -324,20 +308,6 @@ class SequentialModel:
         for i, submodel in enumerate(self.submodels):
             n_params = len(submodel.param_names)
             self._start_stop_indices[i + 1] = self._start_stop_indices[i] + n_params
-
-    @cached_property
-    def _not_fixed_submodels(self) -> list[BaseModel]:
-        """
-        Creates a list of submodel that aren't fully fixed.
-        """
-
-        def func(submodel: BaseModel) -> bool:
-            return any(
-                not getattr(submodel, param_name).fixed
-                for param_name in submodel.param_names
-            )
-
-        return list(filter(func, self.submodels))
 
     # Evaluation
 
@@ -463,7 +433,7 @@ class SequentialModel:
             )
 
         full_derivs[self._tied_to_indices] += (
-            self._tied_as * full_derivs[self._tied_indices]
+            self._tied_as[:, None] * full_derivs[self._tied_indices]
         )
 
         return full_derivs[self._free_indices]
