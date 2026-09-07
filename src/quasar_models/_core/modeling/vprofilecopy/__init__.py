@@ -15,17 +15,18 @@ def choose_evaluate_func() -> VProfileCopyEvaluate:
 
 
 def choose_fit_deriv_func(fixed: dict[str, bool]) -> VProfileCopyFitDeriv:
-    _case = (
-        fixed.get("strength_scale", False),
-        all(v for k, v in fixed.items() if not k == "strength_scale"),
-    )
-    match _case:
-        case False, False:
-            return fit_deriv_v_all
-        case False, True:
-            return fit_deriv_v_only_strength_scale
-        case True, True:
-            return does_nothing
+    return fit_deriv_v_all
+    # _case = (
+    #     fixed.get("strength_scale", False),
+    #     all(v for k, v in fixed.items() if k != "strength_scale"),
+    # )
+    # match _case:
+    #     case False, False:
+    #         return fit_deriv_v_all
+    #     case False, True:
+    #         return fit_deriv_v_only_strength_scale
+    #     case True, True:
+    #         return does_nothing
 
 
 evaluate_v = VProfileCopyEvaluate("evaluate_v")

@@ -147,22 +147,25 @@ class BalmerSeriesTemplate(BaseTemplate):
         is_logspace: bool = False,
         name: Literal["sh1995"] = "sh1995",
     ) -> Self:
-        weights /= weights.sum()
+        from numpy import stack
 
-        _data = evaluate(
-            x,
-            1.0,
-            fwhm[0],
-            sigma_res=sigma_res,
-            waves=waves,
-            weights=weights,
-            edge=edge,
-            normalisation=1.0,
-        )[None, :]
-        obj = BalmerSeriesTemplate(
-            fwhm=fwhm[:1],
+        weights = weights / weights.sum()
+        data = stack([
+                evaluate(
+                    x, 1.0, _fwhm,
+                    sigma_res=sigma_res,
+                    waves=waves,
+                    weights=weights,
+                    edge=edge,
+                    normalisation=1.0,
+                ) for _fwhm in fwhm
+            ],
+            axis=0,
+        )
+        return BalmerSeriesTemplate(
+            fwhm=fwhm,
             x=x,
-            data=_data,
+            data=data,
             is_logspace=is_logspace,
             sigma_res=sigma_res,
             n_scales=n_scales,
@@ -180,7 +183,6 @@ class BalmerSeriesTemplate(BaseTemplate):
             dens=dens,
             n_u_range=n_u_range,
         )
-        return obj.upsample(fwhm, inplace=True)
 
     def upsample(
         self,
@@ -210,6 +212,10 @@ class BalmerSeriesTemplate(BaseTemplate):
                     normalisation=1.0,
                     y=data[i, :],
                 )
+                import matplotlib.pyplot as plt
+                plt.figure()
+                plt.plot(self.x, data[i, :], label=fwhm_curr)
+                plt.show()
 
         obj.fwhm = fwhm
         obj.data = data

@@ -18,11 +18,17 @@ from quasar_typing.numpy import FloatVector, SortedFloatVector
 from quasar_typing.pathlib import AbsoluteFITSPath, AnyAbsoluteFITSPath
 from quasar_utils.setup import Info
 
-from quasar_models.modeling.template.io import BaseTemplateProtocol, _load, _save
+from quasar_models.modeling.template.io import (
+    BaseTemplateProtocol,
+    _load,
+    _save,
+)
+
+from ...utils.setup_utils import PathManager
 
 _this_file: Path = Path(__file__).resolve()
-PATH_TO_CACHE: Path = _this_file.parents[1] / ".cache"
-PATH_TO_DATA: Path = _this_file.parents[1] / ".data"
+PATH_TO_DATA: Path = _this_file.parent / ".data"
+PATH_TO_CACHE: Path = PathManager.get_balmer_series_cache()
 
 
 class BalmerSeriesTemplateProtocol(BaseTemplateProtocol, Protocol):
@@ -58,9 +64,9 @@ def convert_params_to_path(
     n_u_min = min(n_u_range)
     n_u_max = max(n_u_range)
 
-    path = (
-        PATH_TO_CACHE
-        / f"series-{name}:edge{_edge}_temp{_temp:.1e}_dens{_dens:.1e}_nu{n_u_min}-{n_u_max}.fits"
+    path = PATH_TO_CACHE / (
+        f"series-{name}:edge{_edge}_temp{_temp:.1e}_dens{_dens:.1e}"\
+        f"_nu{n_u_min}-{n_u_max}.fits"
     )
     if path.exists() or mode == "save":
         return path
@@ -75,10 +81,9 @@ def convert_params_to_path(
         if is_a_match(potential_path):
             return potential_path
 
-    msg = (
-        f"No cached template for name={name}, edge={info.balmer.edge}, temp={temp}, dens={dens}, "
-        f"n_u_range={n_u_range}"
-    )
+    msg = f"No cached template for name={name}, edge={info.balmer.edge}, "\
+        f"temp={temp}, dens={dens}, n_u_range={n_u_range}"
+    
     raise FileNotFoundError(msg)
 
 

@@ -1,6 +1,5 @@
 __all__ = [
     "PATH_TO_CACHE",
-    "PATH_TO_DATA",
     "convert_params_to_path",
     "convert_path",
     "load",
@@ -18,12 +17,15 @@ from quasar_typing.numpy import FloatVector
 from quasar_typing.pathlib import AbsoluteFITSPath, AnyAbsoluteFITSPath
 from quasar_utils.setup import Info
 
-from quasar_models.modeling.template.io import BaseTemplateProtocol, _load, _save
+from quasar_models.modeling.template.io import (
+    BaseTemplateProtocol,
+    _load,
+    _save,
+)
 
-_this_file: Path = Path(__file__).resolve()
-PATH_TO_CACHE: Path = _this_file.parents[1] / ".cache"
-PATH_TO_DATA: Path = _this_file.parents[1] / ".data"
+from ...utils.setup_utils import PathManager
 
+PATH_TO_CACHE: Path = PathManager.get_balmer_continuum_cache()
 
 class BalmerContinuumTemplateProtocol(BaseTemplateProtocol, Protocol):
     temp: float

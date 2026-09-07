@@ -45,10 +45,8 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.black]
-line-length = 88
-target-version = ["py312"]
+[tool.ruff]
+line-length = 79
 
-[tool.isort]
-profile = "black"
-line_length = 88
+[lint.pyupgrade]
+keep-runtime-typing = true

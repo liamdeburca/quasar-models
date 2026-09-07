@@ -13,6 +13,8 @@ from quasar_models._core.modeling.gaussian.evaluate cimport (
 cdef double GAUSS_AMP = 1 / math_sqrt(2 * math_pi)
 cdef double SIGMA_TO_FWHM = 2 * math_sqrt(2 * math_log(2))
 cdef double FWHM_TO_SIGMA = 1 / SIGMA_TO_FWHM
+cdef double C_KMS = 299792.458  # Speed of light in km/s
+cdef double INV_C_KMS = 1.0 / C_KMS
 
 cdef inline void _fit_deriv_v_all(
     double[:,::1] derivs,
@@ -24,42 +26,43 @@ cdef inline void _fit_deriv_v_all(
     const double wave,
     const double sigma_res,
 ) noexcept nogil:
-    cdef double strength, fwhm_v, v_off, sigma_v, mean, 
-    cdef double inv_sigma, inv_sigma_tot, dnorm, norm, k
-    cdef double xj, z, z_sq, exp_term, 
+    cdef double strength, fwhm_v_c, v_off_c, sigma_v_c, mean
+    cdef double inv_sigma_tot, inv_sigma, dnorm, norm, k
+    cdef double xj, z, z_sq, exp_term 
     cdef double f, df_dstrength, df_dfwhm, df_dvoff
     cdef Py_ssize_t i, j, n = strengths.shape[0], m = x.shape[0]
 
     for i in range(n):
         strength = strengths[i]
-        fwhm_v = fwhm_vs[i]
-        v_off = v_offs[i]
+        fwhm_v_c = fwhm_vs[i] * INV_C_KMS
+        v_off_c = v_offs[i] * INV_C_KMS
 
-        sigma_v = fwhm_v * FWHM_TO_SIGMA
-        mean = wave * (1 + v_off)
-        inv_sigma_tot = 1 / math_hypot(sigma_v, sigma_res)
+        sigma_v_c = fwhm_v_c * FWHM_TO_SIGMA
+        mean = wave * (1.0 + v_off_c)
+        inv_sigma_tot = 1.0 / math_hypot(sigma_v_c, sigma_res)
         inv_sigma = inv_sigma_tot / mean
+
         dnorm = GAUSS_AMP * inv_sigma
         norm = strength * dnorm
 
-        k = fwhm_v * math_pow(inv_sigma_tot / SIGMA_TO_FWHM, 2)
+        k = norm * fwhm_v_c * math_pow(inv_sigma_tot * FWHM_TO_SIGMA, 2) * INV_C_KMS
+        l = norm * INV_C_KMS / (1.0 + v_off_c)
 
         for j in range(m):
             xj = x[j]
-            
             z = (xj - mean) * inv_sigma
             z_sq = z * z
             exp_term = math_exp(-0.5 * z_sq)
 
             f = norm * exp_term
             df_dstrength = dnorm * exp_term
-            df_dfwhm = strength * df_dstrength * (z_sq - 1) * k
-            df_dvoff = f * (z * xj * inv_sigma - 1) / (1 + v_off)
+            df_dfwhm_v = exp_term * (z_sq - 1) * k
+            df_dv_off = exp_term * (z * xj * inv_sigma - 1) * l
 
             derivs[0, j] += f
             derivs[1+3*i, j] += strength_scale * df_dstrength
-            derivs[2+3*i, j] += strength_scale * df_dfwhm
-            derivs[3+3*i, j] += strength_scale * df_dvoff
+            derivs[2+3*i, j] += strength_scale * df_dfwhm_v
+            derivs[3+3*i, j] += strength_scale * df_dv_off
 
 def fit_deriv_v_all(
     double[:,::1] derivs,

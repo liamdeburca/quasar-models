@@ -1,13 +1,13 @@
-__all__ = [
-    "_VProfileCopy",
-]
+__all__ = ["_VProfileCopy"]
 
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from itertools import product
 from typing import ClassVar, Literal, Self, Union
 
-from numpy import array, float64
+from astropy.constants import c
+from numpy import float64, fromiter
 from quasar_typing.astropy import CompoundModel_
+from quasar_typing.bounds import AstropyBounds
 
 from quasar_models._core.modeling.vprofilecopy import (
     VProfileCopyEvaluate,
@@ -19,21 +19,10 @@ from quasar_models._core.modeling.vprofilecopy import (
 )
 from quasar_models.line.gaussian import GaussianModel
 from quasar_models.modeling import BaseModel, LinearTie
-from quasar_models.utils.astropy import apply_bounds
 
+from ...utils.astropy import apply_bounds
 
-def get_params_from_args(n_profiles: int, *args) -> tuple:
-    return tuple(
-        array(
-            [float(args[3 * i + o]) for i in range(n_profiles)],
-            dtype=float64,
-            order="C",
-        )
-        for o in range(3)
-    )
-
-
-###
+C_KMS: float = c.to("km/s").value  # Exact speed of light in km/s
 
 
 class _VProfileCopy(BaseModel):
@@ -46,6 +35,9 @@ class _VProfileCopy(BaseModel):
 
     @property
     def wave(self) -> float:
+        """
+        Theoretical rest wavelength of the emission line.
+        """
         return self.meta["wave"]
 
     @wave.setter
@@ -54,11 +46,23 @@ class _VProfileCopy(BaseModel):
 
     @property
     def sigma_res(self) -> float | None:
+        """
+        Velocity resolution of the spectrum (c).
+        """
         return self.meta["sigma_res"]
 
     @sigma_res.setter
     def sigma_res(self, value: float | None) -> None:
         self.meta["sigma_res"] = value
+
+    @property
+    def v_res(self) -> float | None:
+        """
+        Velocity resolution of the spectrum (km/s).
+        """
+        if self.sigma_res is None:
+            return None
+        return self.sigma_res * C_KMS
 
     @property
     def master_name(self) -> str | None:
@@ -83,13 +87,12 @@ class _VProfileCopy(BaseModel):
         name: str,
         *gs: GaussianModel,
         strength_scale_value: float = 1.0,
-        strength_scale_bounds: tuple[float | None, float | None] = (0, None),
-        strength_scale_fixed: bool = False,
+        strength_scale_bounds: AstropyBounds | None = None,
+        strength_scale_fixed: bool | None = None,
         sigma_res: float | None = None,
         master_name: str | None = None,
         n_sigmas: float | None = None,
         adapt: bool = True,
-        freeze: bool = False,
     ) -> Self:
         meta = cls._get_metadata(
             wave,
@@ -104,15 +107,17 @@ class _VProfileCopy(BaseModel):
             name=name,
             meta=meta,
         )
-        model.strength_scale.value = strength_scale_value
-        model.strength_scale.bounds = strength_scale_bounds
-        model.strength_scale.fixed = strength_scale_fixed
+        if strength_scale_bounds is not None:
+            model.strength_scale.value = apply_bounds.__wrapped__(
+                strength_scale_value, strength_scale_bounds
+            )
+            model.strength_scale.bounds = strength_scale_bounds
+
+        if strength_scale_fixed is not None:
+            model.strength_scale.fixed = strength_scale_fixed
 
         if adapt:
             model._adapt_to_models(*gs, tie_vel_profile=True, inplace=True)
-        if freeze:
-            model._freeze_velocity_profile(inplace=True)
-            model._forget_ties(inplace=True)
 
         return model
 
@@ -127,7 +132,6 @@ class _VProfileCopy(BaseModel):
         strength_scale_bounds: tuple[float | None, float | None] = (0, None),
         strength_scale_fixed: bool = False,
         adapt: bool = True,
-        freeze: bool = False,
     ) -> Self:
         if cls.n_profiles == 1:
             assert isinstance(model, GaussianModel)
@@ -136,7 +140,7 @@ class _VProfileCopy(BaseModel):
             model = tuple(model)
             assert len(model) == cls.n_profiles
 
-        return cls.create(
+        model = cls.create(
             wave,
             name,
             *model,
@@ -144,8 +148,8 @@ class _VProfileCopy(BaseModel):
             strength_scale_bounds=strength_scale_bounds,
             strength_scale_fixed=strength_scale_fixed,
             adapt=adapt,
-            freeze=freeze,
         )
+        return model
 
     def makeCopy(
         self,
@@ -154,7 +158,6 @@ class _VProfileCopy(BaseModel):
         strength_scale_value: float = 1.0,
         strength_scale_bounds: tuple[float | None, float | None] = (0, None),
         strength_scale_fixed: bool = False,
-        freeze: bool = False,
     ) -> Self:
         return self.from_model(
             self.wave,
@@ -164,7 +167,6 @@ class _VProfileCopy(BaseModel):
             strength_scale_bounds=strength_scale_bounds,
             strength_scale_fixed=strength_scale_fixed,
             adapt=True,
-            freeze=freeze,
         )
 
     @classmethod
@@ -198,34 +200,41 @@ class _VProfileCopy(BaseModel):
         name = self.name
         master = self.master_name
         wave = self.wave
-        untied = hasattr(self, "_prev_ties")
-        return (
-            f"{self.__class__.__name__}({name=}, {master=}, {wave=}, untied={untied})"
-        )
+        return f"{self.__class__.__name__}({name=}, {master=}, {wave=}"
 
     def __repr__(self) -> str:
         return self.__str__()
 
-    def evaluate(self, x, strength_scale, *args):
+    @classmethod
+    def _get_params_from_args(cls, n_profiles: int, *args) -> tuple[float, ...]:
+        args = cls._transform_args_if_ndarray(*args)
+        return tuple(
+            fromiter((args[3 * i + o] for i in range(n_profiles)), dtype=float64)
+            for o in range(3)
+        )
+
+    def evaluate(self, x, strength_scale, *args, y=None):
+        strength_scale = self._transform_if_ndarray(strength_scale)
+        params = self._get_params_from_args(self.n_profiles, *args)
         return self.evaluate_func(
             x,
-            strength_scale,
-            *get_params_from_args(self.n_profiles, *args),
-            **self._kwargs,
-            y=None,
+            strength_scale, *params,
+            wave=self.wave, sigma_res=self.sigma_res,
+            y=y,
         )
 
-    def jac(self, x, strength_scale, *args):
+    def partial_deriv(self, x, strength_scale, *args, derivs=None):
+        strength_scale = self._transform_if_ndarray(strength_scale)
+        params = self._get_params_from_args(self.n_profiles, *args)
         return self.fit_deriv_func(
             x,
-            strength_scale,
-            *get_params_from_args(self.n_profiles, *args),
-            **self._kwargs,
-            derivs=None,
+            strength_scale, *params,
+            wave=self.wave, sigma_res=self.sigma_res,
+            derivs=derivs,
         )
 
-    def fit_deriv(self, x, strength_scale, *args):
-        return list(self.jac(x, strength_scale, *args))
+    def fit_deriv(self, x, strength_scale, *args, derivs=None):
+        return list(self.partial_deriv(x, strength_scale, *args, derivs=derivs))
 
     ### Model preparation
 
@@ -257,16 +266,7 @@ class _VProfileCopy(BaseModel):
         self.evaluate_func = choose_evaluate_func()
 
     def _choose_fit_deriv_func(self) -> None:
-        self.fit_deriv_func = choose_fit_deriv_func(
-            self.fixed_dict or self.fixed,
-        )
-
-    @property
-    def _kwargs(self) -> dict:
-        return {
-            "wave": self.wave,
-            "sigma_res": self.sigma_res,
-        }
+        self.fit_deriv_func = choose_fit_deriv_func(self.fixed)
 
     ###
 
@@ -316,136 +316,6 @@ class _VProfileCopy(BaseModel):
                     model_name=g.name,
                     parameter_name=pname,
                 )
-
-        return model
-
-    def _freeze_velocity_profile(
-        self,
-        inplace: bool = False,
-    ) -> Self:
-        """
-        Fixes all profile parameters: 'strength', 'fwhm_v', and 'v_off'.
-
-        Parameters
-        ----------
-        inplace : bool, optional
-            If True, modifies this instance. If False, returns a modified copy.
-            Defaults to False.
-
-        Returns
-        -------
-        _VProfileCopy
-            Modified instance (self if inplace=True, otherwise a copy).
-
-        Notes
-        -----
-        Lorem ipsum.
-        """
-        model = self if inplace else self.copy()
-
-        for i, pname in product(
-            range(1, model.n_profiles + 1),
-            ("strength", "fwhm_v", "v_off"),
-        ):
-            getattr(model, f"{pname}_{i}").fixed = True
-
-        return model
-
-    def _thaw_velocity_profile(
-        self,
-        inplace: bool = False,
-    ) -> Self:
-        """
-        Unfixes all profile parameters: 'strength', 'fwhm_v', and 'v_off'.
-
-        Parameters
-        ----------
-        inplace : bool, optional
-
-        Returns
-        -------
-        Self
-
-        Notes
-        -----
-        Lorem ipsum.
-        """
-        model = self if inplace else self.copy()
-
-        for i, pname in product(
-            range(1, model.n_profiles + 1),
-            ("strength", "fwhm_v", "v_off"),
-        ):
-            getattr(model, f"{pname}_{i}").fixed = False
-
-        return model
-
-    def _forget_ties(
-        self,
-        inplace: bool = False,
-    ) -> Self:
-        """
-        Removes all profile ties ('strength', 'fwhm_v', and 'v_off') and
-        stores them in the '_prev_ties' attribute.
-
-        Parameters
-        ----------
-        inplace : bool, optional
-
-        Returns
-        -------
-        Self
-
-        Notes
-        -----
-        Lorem ipsum.
-        """
-        model = self if inplace else self.copy()
-
-        if not hasattr(model, "_prev_ties"):
-            _prev_ties: dict[str, Callable] = {}
-
-            for i, pname in product(
-                range(1, model.n_profiles + 1),
-                ("strength", "fwhm_v", "v_off"),
-            ):
-                attr_name = f"{pname}_{i}"
-                attr = getattr(model, attr_name)
-                if tie := attr.tied:
-                    _prev_ties[attr_name] = tie
-                    attr.tied = False
-
-            model._prev_ties = _prev_ties
-
-        return model
-
-    def _remember_ties(
-        self,
-        inplace: bool = False,
-    ) -> Self:
-        """
-        Restores all profile ties ('strength', 'fwhm_v', and 'v_off') from the
-        '_prev_ties' attribute and deletes '_prev_ties'.
-
-        Parameters
-        ----------
-        inplace : bool, optional
-
-        Returns
-        -------
-        Self
-
-        Notes
-        -----
-        Lorem ipsum.
-        """
-        model = self if inplace else self.copy()
-
-        if hasattr(model, "_prev_ties"):
-            for attr_name, tie in model._prev_ties.items():
-                getattr(model, attr_name).tied = tie
-
-            del model._prev_ties
 
         return model
 

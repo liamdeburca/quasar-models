@@ -17,8 +17,8 @@ cdef void _evaluate(
     const double split,
     const double left,
     const double right,
-    const double sigma_res,
-    const double scale,
+    const double sigma_res, # c
+    const double scale,     # c
 ) noexcept nogil:
     cdef double k, a, zi
     cdef Py_ssize_t i, n = x.shape[0]

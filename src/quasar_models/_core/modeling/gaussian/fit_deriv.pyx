@@ -10,6 +10,8 @@ from libc.math cimport (
 cdef double GAUSS_AMP = 1 / math_sqrt(2 * math_pi)
 cdef double SIGMA_TO_FWHM = 2 * math_sqrt(2 * math_log(2))
 cdef double FWHM_TO_SIGMA = 1 / SIGMA_TO_FWHM
+cdef double C_KMS = 299792.458  # Speed of light in km/s
+cdef double INV_C_KMS = 1 / C_KMS
 
 cdef inline void _fit_deriv_v_strength(
     double[::1] dy,
@@ -23,9 +25,12 @@ cdef inline void _fit_deriv_v_strength(
     """
     Inplace derivative w.r.t. `strength`.
     """
-    cdef double sigma_v = fwhm_v * FWHM_TO_SIGMA
-    cdef double mean = wave * (1 + v_off)
-    cdef double inv_sigma = 1 / (mean * math_hypot(sigma_v, sigma_res))
+    cdef double fwhm_v_c = fwhm_v * INV_C_KMS
+    cdef double v_off_c = v_off * INV_C_KMS
+
+    cdef double sigma_v_c = fwhm_v_c * FWHM_TO_SIGMA
+    cdef double mean = wave * (1.0 + v_off_c)
+    cdef double inv_sigma = 1.0 / (mean * math_hypot(sigma_v_c, sigma_res))
     
     cdef double dnorm = GAUSS_AMP * inv_sigma
 
@@ -47,21 +52,24 @@ cdef inline void _fit_deriv_v_fwhm_v(
     """
     Inplace derivative w.r.t. `fwhm_v`.
     """
-    cdef double sigma_v = fwhm_v * FWHM_TO_SIGMA
-    cdef double mean = wave * (1 + v_off)
-    cdef double inv_sigma_tot = 1 / math_hypot(sigma_v, sigma_res)
+    cdef double fwhm_v_c = fwhm_v * INV_C_KMS
+    cdef double v_off_c = v_off * INV_C_KMS
+
+    cdef double sigma_v_c = fwhm_v_c * FWHM_TO_SIGMA
+    cdef double mean = wave * (1.0 + v_off_c)
+    cdef double inv_sigma_tot = 1.0 / math_hypot(sigma_v_c, sigma_res)
     cdef double inv_sigma = inv_sigma_tot / mean
     cdef double norm = strength * GAUSS_AMP * inv_sigma
     
-    cdef double k = fwhm_v * math_pow(inv_sigma_tot * FWHM_TO_SIGMA, 2)
+    cdef double k = norm * fwhm_v_c * math_pow(inv_sigma_tot * FWHM_TO_SIGMA, 2) * INV_C_KMS
 
     cdef double z_sq
-    cdef double f
+    cdef double exp_term
     cdef Py_ssize_t i, n = x.shape[0]
     for i in range(n):
         z_sq = math_pow((x[i] - mean) * inv_sigma, 2)
-        f = norm * math_exp(-0.5 * z_sq)
-        dy[i] += f * (z_sq - 1) * k
+        exp_term = math_exp(-0.5 * z_sq)
+        dy[i] += exp_term * (z_sq - 1) * k
 
 cdef inline void _fit_deriv_v_v_off(
     double[::1] dy,
@@ -75,19 +83,24 @@ cdef inline void _fit_deriv_v_v_off(
     """
     Inplace derivative w.r.t. `v_off`.
     """
-    cdef double sigma_v = fwhm_v * FWHM_TO_SIGMA
-    cdef double mean = wave * (1 + v_off)
-    cdef double inv_sigma = 1 / (mean * math_hypot(sigma_v, sigma_res))
+    cdef double fwhm_v_c = fwhm_v * INV_C_KMS
+    cdef double v_off_c = v_off * INV_C_KMS
+
+    cdef double sigma_v_c = fwhm_v_c * FWHM_TO_SIGMA
+    cdef double mean = wave * (1.0 + v_off_c)
+    cdef double inv_sigma = 1.0 / (mean * math_hypot(sigma_v_c, sigma_res))
     cdef double norm = strength * GAUSS_AMP * inv_sigma
 
+    cdef double l = norm * INV_C_KMS / (1.0 + v_off_c)
+
     cdef double z
-    cdef double f
+    cdef double exp_term
 
     cdef Py_ssize_t i, n = x.shape[0]
     for i in range(n):
         z = (x[i] - mean) * inv_sigma
-        f = norm * math_exp(-0.5 * z * z)
-        dy[i] += f * (z * x[i] * inv_sigma - 1) / (1 + v_off)
+        exp_term = math_exp(-0.5 * z * z)
+        dy[i] += exp_term * (z * x[i] * inv_sigma - 1) * l
 
 ### Special cases: only calculate a single derivative
 
@@ -180,13 +193,16 @@ cdef inline void _fit_deriv_v_strength_and_fwhm_v(
     """
     Inplace derivatives w.r.t. `strength` and `fwhm_v` in parallel.
     """
-    cdef double sigma_v = fwhm_v * FWHM_TO_SIGMA
-    cdef double mean = wave * (1 + v_off)
-    cdef double inv_sigma_tot = 1 / math_hypot(sigma_v, sigma_res)
+    cdef double fwhm_v_c = fwhm_v * INV_C_KMS
+    cdef double v_off_c = v_off * INV_C_KMS
+
+    cdef double sigma_v_c = fwhm_v_c * FWHM_TO_SIGMA
+    cdef double mean = wave * (1.0 + v_off_c)
+    cdef double inv_sigma_tot = 1.0 / math_hypot(sigma_v_c, sigma_res)
     cdef double inv_sigma = inv_sigma_tot / mean
     
     cdef double dnorm = GAUSS_AMP * inv_sigma
-    cdef double k = fwhm_v * math_pow(inv_sigma_tot * FWHM_TO_SIGMA, 2)
+    cdef double k = fwhm_v_c * math_pow(inv_sigma_tot * FWHM_TO_SIGMA, 2) * INV_C_KMS
     
     cdef double z_sq
     cdef double df_dstrength
@@ -225,12 +241,16 @@ cdef inline void _fit_deriv_v_strength_and_v_off(
     """
     Inplace derivatives w.r.t. `strength` and `v_off` in parallel.
     """
-    cdef double sigma_v = fwhm_v * FWHM_TO_SIGMA
-    cdef double mean = wave * (1 + v_off)
-    cdef double inv_sigma = 1 / (mean * math_hypot(sigma_v, sigma_res))
+    cdef double fwhm_v_c = fwhm_v * INV_C_KMS
+    cdef double v_off_c = v_off * INV_C_KMS
+
+    cdef double sigma_v_c = fwhm_v_c * FWHM_TO_SIGMA
+    cdef double mean = wave * (1.0 + v_off_c)
+    cdef double inv_sigma = 1.0 / (mean * math_hypot(sigma_v_c, sigma_res))
     
     cdef double dnorm = GAUSS_AMP * inv_sigma
     cdef double norm = strength * dnorm
+    cdef double l = norm * INV_C_KMS / (1.0 + v_off_c)
     
     cdef double z
     cdef double exp_term
@@ -241,7 +261,7 @@ cdef inline void _fit_deriv_v_strength_and_v_off(
         exp_term = math_exp(-0.5 * z * z)
         
         derivs[0, i] += dnorm * exp_term
-        derivs[2, i] += norm * exp_term * (z * x[i] * inv_sigma - 1) / (1 + v_off)
+        derivs[2, i] += exp_term * (z * x[i] * inv_sigma - 1) * l
 
 def fit_deriv_v_strength_and_v_off(
     double[:,::1] derivs,
@@ -269,13 +289,17 @@ cdef inline void _fit_deriv_v_fwhm_v_and_v_off(
     """
     Inplace derivatives w.r.t. `fwhm_v` and `v_off` in parallel.
     """
-    cdef double sigma_v = fwhm_v * FWHM_TO_SIGMA
-    cdef double mean = wave * (1 + v_off)
-    cdef double inv_sigma_tot = 1 / math_hypot(sigma_v, sigma_res)
+    cdef double fwhm_v_c = fwhm_v * INV_C_KMS
+    cdef double v_off_c = v_off * INV_C_KMS
+
+    cdef double sigma_v_c = fwhm_v_c * FWHM_TO_SIGMA
+    cdef double mean = wave * (1.0 + v_off_c)
+    cdef double inv_sigma_tot = 1.0 / math_hypot(sigma_v_c, sigma_res)
     cdef double inv_sigma = inv_sigma_tot / mean
     cdef double norm = strength * GAUSS_AMP * inv_sigma
     
-    cdef double k = fwhm_v * math_pow(inv_sigma_tot * FWHM_TO_SIGMA, 2)
+    cdef double k = norm * fwhm_v_c * math_pow(inv_sigma_tot * FWHM_TO_SIGMA, 2) * INV_C_KMS
+    cdef double l = norm * INV_C_KMS / (1.0 + v_off_c)
     
     cdef double z
     cdef double z_sq
@@ -287,8 +311,8 @@ cdef inline void _fit_deriv_v_fwhm_v_and_v_off(
         z_sq = z * z
         exp_term = math_exp(-0.5 * z_sq)
 
-        derivs[1, i] += norm * exp_term * (z_sq - 1) * k
-        derivs[2, i] += norm * exp_term * (z * x[i] * inv_sigma - 1) / (1 + v_off)
+        derivs[1, i] += exp_term * (z_sq - 1.0) * k
+        derivs[2, i] += exp_term * (z * x[i] * inv_sigma - 1) * l
 
 def fit_deriv_v_fwhm_v_and_v_off(
     double[:,::1] derivs,
@@ -318,14 +342,18 @@ cdef inline void _fit_deriv_v_all(
     """
     Inplace derivatives w.r.t. all three parameters in parallel.
     """
-    cdef double sigma_v = fwhm_v * FWHM_TO_SIGMA
-    cdef double mean = wave * (1 + v_off)
-    cdef double inv_sigma_tot = 1 / math_hypot(sigma_v, sigma_res)
+    cdef double fwhm_v_c = fwhm_v * INV_C_KMS
+    cdef double v_off_c = v_off * INV_C_KMS
+
+    cdef double sigma_v_c = fwhm_v_c * FWHM_TO_SIGMA
+    cdef double mean = wave * (1.0 + v_off_c)
+    cdef double inv_sigma_tot = 1.0 / math_hypot(sigma_v_c, sigma_res)
     cdef double inv_sigma = inv_sigma_tot / mean
     
     cdef double dnorm = GAUSS_AMP * inv_sigma
     cdef double norm = strength * dnorm
-    cdef double k = fwhm_v * math_pow(inv_sigma_tot * FWHM_TO_SIGMA, 2)
+    cdef double k = norm * fwhm_v_c * math_pow(inv_sigma_tot * FWHM_TO_SIGMA, 2) * INV_C_KMS
+    cdef double l = norm * INV_C_KMS / (1.0 + v_off_c)
     
     cdef double z
     cdef double z_sq
@@ -338,8 +366,8 @@ cdef inline void _fit_deriv_v_all(
         exp_term = math_exp(-0.5 * z_sq)
         
         derivs[0, i] += dnorm * exp_term
-        derivs[1, i] += norm * exp_term * (z_sq - 1) * k
-        derivs[2, i] += norm * exp_term * (z * x[i] * inv_sigma - 1) / (1 + v_off)
+        derivs[1, i] += exp_term * (z_sq - 1) * k
+        derivs[2, i] += exp_term * (z * x[i] * inv_sigma - 1) * l
 
 def fit_deriv_v_all(
     double[:,::1] derivs,

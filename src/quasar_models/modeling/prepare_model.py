@@ -17,11 +17,9 @@ class PrepareModel:
         *,
         x: FloatVector,
         model: M,
-        copy: bool = False,
     ) -> None:
         self.x: FloatVector = x
-        self.model: SequentialModel = SequentialModel(model.copy() if copy else model)
-        self.copy: bool = copy
+        self.model: SequentialModel = SequentialModel(model)
 
     @classmethod
     def prepare_submodels(
@@ -60,10 +58,9 @@ class PrepareModel:
         submodels = (model,) if model.n_submodels == 1 else model
         cls.unprepare_submodels(submodels)
 
-    def __enter__(self) -> SequentialModel | None:
+    def __enter__(self) -> SequentialModel:
         self.prepare_submodels(self.x, self.model.submodels)
-        if self.copy:
-            return self.model
+        return self.model
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         self.unprepare_submodels(self.model.submodels)

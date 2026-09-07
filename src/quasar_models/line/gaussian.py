@@ -5,11 +5,12 @@ Lorem ipsum.
 from math import hypot, log, pi
 from typing import ClassVar, Literal, Self
 
+from astropy.constants import c
 from astropy.modeling import Parameter
-from numpy import dot, isclose
+from numpy import dot
 from quasar_typing.bounds import AstropyBounds
 from quasar_typing.logging import Logger_
-from quasar_typing.numpy import FittableFloatVector, FloatMatrix, FloatVector
+from quasar_typing.numpy import FittableFloatVector
 from quasar_utils.decorators import validate_call
 from scipy.stats import norm
 
@@ -22,14 +23,16 @@ from quasar_models._core.modeling.gaussian import (
     fit_deriv_v_all,
 )
 from quasar_models.modeling import BaseModel
-from quasar_models.utils.astropy import apply_bounds
 
+from ..utils.astropy import apply_bounds
 from .utils import instantiate_model
 
 N_SIGMAS: float = 3.0
 GAUSS_AMP: float = 1 / (2 * pi) ** 0.5
 SIGMA_TO_FWHM: float = 2 * (2 * log(2)) ** 0.5
 FWHM_TO_SIGMA: float = 1 / SIGMA_TO_FWHM
+
+C_KMS: float = c.to("km/s").value  # Exact speed of light in km/s
 
 
 class GaussianModel(BaseModel):
@@ -56,18 +59,21 @@ class GaussianModel(BaseModel):
     """
 
     strength = Parameter(
+        description="Integrated flux",
         default=1.0,
         bounds=(0.0, None),
         fixed=False,
     )
     fwhm_v = Parameter(
-        default=1e-3,
+        description="Intrinsic FWHM (km/s)",
+        default=1000,
         bounds=(0.0, None),
         fixed=False,
     )
     v_off = Parameter(
+        description="Velocity offset (km/s) from the theoretical centre",
         default=0.0,
-        bounds=(-1.0, 1.0),
+        bounds=(-C_KMS, C_KMS),
         fixed=False,
     )
 
@@ -80,21 +86,74 @@ class GaussianModel(BaseModel):
         sigma_res: float,
         *,
         strength: float = 1.0,
-        fwhm_v: float = 1e-3,
+        fwhm_v: float = 1000.0,
         v_off: float = 0.0,
         n_sigmas: float = 3.0,
+
+        strength_bounds: AstropyBounds | None = None,
+        fwhm_v_bounds: AstropyBounds | None = None,
+        v_off_bounds: AstropyBounds | None = None,
+
+        strength_fixed: bool | None = None,
+        fwhm_v_fixed: bool | None = None,
+        v_off_fixed: bool | None = None,
         **kwargs,
     ) -> Self:
-        return GaussianModel(
+        """
+        Parameters
+        ----------
+        wave : float
+            Theoretical rest wavelength of the emission line.
+        sigma_res : float
+            Velocity resolution (c) of the spectrum.
+        strength : float, optional
+        fwhm_v : float, optional
+        v_off : float, optional
+        strength_bounds : tuple[float, float] | None, optional
+        fwhm_v_bounds : tuple[float, float] | None, optional
+        v_off_bounds : tuple[float, float] | None, optional
+        n_sigmas : float, optional
+        """
+        model = GaussianModel(
             strength,
             fwhm_v,
             v_off,
             meta={"wave": wave, "sigma_res": sigma_res, "n_sigmas": n_sigmas},
             **kwargs,
         )
+        if strength_bounds is not None:
+            model.strength.value = apply_bounds.__wrapped__(
+                strength, 
+                strength_bounds,
+            )
+            model.strength.bounds = strength_bounds
+        if fwhm_v_bounds is not None:
+            model.fwhm_v.value = apply_bounds.__wrapped__(
+                fwhm_v, 
+                fwhm_v_bounds,
+            )
+            model.fwhm_v.bounds = fwhm_v_bounds
+        if v_off_bounds is not None:
+            model.v_off.value = apply_bounds.__wrapped__(
+                v_off,
+                v_off_bounds,
+            )
+            model.v_off.bounds = v_off_bounds
+
+        if strength_fixed is not None:
+            model.strength.fixed = strength_fixed
+        if fwhm_v_fixed is not None:
+            model.fwhm_v.fixed = fwhm_v_fixed
+        if v_off_fixed is not None:
+            model.v_off.fixed = v_off_fixed
+
+        return model
 
     @property
     def wave(self) -> float:
+        """
+        Theoretical rest wavelength of the emission line.
+        """
         return self.meta["wave"]
 
     @wave.setter
@@ -103,11 +162,21 @@ class GaussianModel(BaseModel):
 
     @property
     def sigma_res(self) -> float:
+        """
+        Velocity resolution of the spectrum (c).
+        """
         return self.meta["sigma_res"]
 
     @sigma_res.setter
     def sigma_res(self, value: float) -> None:
         self.meta["sigma_res"] = value
+
+    @property
+    def v_res(self) -> float:
+        """
+        Velocity resolution of the spectrum (km/s).
+        """
+        return self.sigma_res * C_KMS
 
     @property
     def n_sigmas(self) -> float:
@@ -117,59 +186,26 @@ class GaussianModel(BaseModel):
     def n_sigmas(self, value: float) -> None:
         self.meta["n_sigmas"] = value
 
-    def evaluate(
-        self,
-        x: float | FloatVector,
-        strength: float,
-        fwhm_v: float,
-        v_off: float,
-        y: FloatVector | None = None,
-    ) -> float | FloatVector:
+    def evaluate(self, x, strength, fwhm_v, v_off, y=None):            
         return self.evaluate_func(
             x,
-            strength,
-            fwhm_v,
-            v_off,
+            *self._transform_args_if_ndarray(strength, fwhm_v, v_off),
             wave=self.wave,
             sigma_res=self.sigma_res,
             y=y,
         )
 
-    def partial_deriv(
-        self,
-        x: FloatVector,
-        strength: float,
-        fwhm_v: float,
-        v_off: float,
-        derivs: FloatMatrix | None = None,
-    ) -> FloatMatrix:
+    def partial_deriv(self, x, strength, fwhm_v, v_off, derivs=None):
         return self.fit_deriv_func(
             x,
-            strength,
-            fwhm_v,
-            v_off,
+            *self._transform_args_if_ndarray(strength, fwhm_v, v_off),
             wave=self.wave,
             sigma_res=self.sigma_res,
             derivs=derivs,
         )
 
-    def fit_deriv(
-        self,
-        x: FloatVector,
-        strength: float,
-        fwhm_v: float,
-        v_off: float,
-        derivs: FloatMatrix | None = None,
-    ) -> list[FloatVector]:
-        return list(
-            self.partial_deriv(
-                x,
-                strength,
-                fwhm_v,
-                v_off,
-                derivs=derivs,
-            )
-        )
+    def fit_deriv(self, x, strength, fwhm_v, v_off, derivs=None):
+        return list(self.partial_deriv(x, strength, fwhm_v, v_off, derivs=derivs))
 
     ### Model preparation
 
@@ -212,10 +248,13 @@ class GaussianModel(BaseModel):
         y_smooth: FittableFloatVector,
         *,
         name: str | None = None,
+        sigma_res: float | None = None,
         strength_bounds: AstropyBounds | None = None,
         v_off_bounds: AstropyBounds | None = None,
         fwhm_v_bounds: AstropyBounds | None = None,
-        sigma_res: float | None = None,
+        strength_fixed: bool | None = None,
+        v_off_fixed: bool | None = None,
+        fwhm_v_fixed: bool | None = None,
         logger: Logger_ | None = None,
     ) -> Self:
         strength, fwhm_v, v_off = instantiate_model(
@@ -228,17 +267,21 @@ class GaussianModel(BaseModel):
             v_off_bounds=v_off_bounds,
             fwhm_v_bounds=fwhm_v_bounds,
         )
+
         model = GaussianModel.create(
             wave,
             sigma_res,
             strength=strength,
             fwhm_v=fwhm_v,
             v_off=v_off,
+            strength_bounds=strength_bounds,
+            fwhm_v_bounds=fwhm_v_bounds,
+            v_off_bounds=v_off_bounds,
+            strength_fixed=strength_fixed,
+            fwhm_v_fixed=fwhm_v_fixed,
+            v_off_fixed=v_off_fixed,
             name=name or "model",
         )
-        model.strength.bounds = strength_bounds
-        model.fwhm_v.bounds = fwhm_v_bounds
-        model.v_off.bounds = v_off_bounds
 
         if logger is not None:
             msg = "Instantiated GaussianModel with parameters: "
@@ -261,7 +304,7 @@ class GaussianModel(BaseModel):
 
     @property
     def mu(self) -> float:
-        return self.wave * (1 + self.v_off.value)
+        return self.wave * (1 + self.v_off.value / C_KMS)
 
     @property
     def sigma_v(self) -> float:
@@ -269,7 +312,7 @@ class GaussianModel(BaseModel):
 
     @property
     def sigma(self) -> float:
-        return self.mu * hypot(self.sigma_v, self.sigma_res)
+        return self.mu * hypot(self.sigma_v / C_KMS, self.sigma_res)
 
     @property
     def fwhm(self) -> float:
@@ -392,16 +435,21 @@ class GaussianModel(BaseModel):
         new = self.copy()
         if not (new.strength.fixed or new.strength.tied):
             new.strength.value = apply_bounds(
-                dot(z * dy, x * new.sigma_res), new.strength.bounds
+                dot(z * dy, x * new.sigma_res), 
+                new.strength.bounds,
             )
 
         if not (new.fwhm_v.fixed or new.fwhm_v.tied):
             new.fwhm_v.value = apply_bounds(
-                0.5 * (new.fwhm_v.value + new.fwhm_v.bounds[0]), new.fwhm_v.bounds
+                0.5 * (new.fwhm_v.value + new.fwhm_v.bounds[0]), 
+                new.fwhm_v.bounds,
             )
 
         if not (new.v_off.fixed or new.v_off.tied):
-            new.v_off.value = apply_bounds(0.5 * new.v_off.value, new.v_off.bounds)
+            new.v_off.value = apply_bounds(
+                0.5 * new.v_off.value, 
+                new.v_off.bounds,
+            )
 
         return new
 
@@ -417,9 +465,9 @@ class GaussianModel(BaseModel):
                 lb: float | None = param.bounds[0]
                 ub: float | None = param.bounds[1]
 
-                if lb is not None and isclose(val, lb):
+                if lb is not None and val <= lb:
                     return True
-                if ub is not None and isclose(val, ub):
+                if ub is not None and ub <= val:
                     return True
 
         return False

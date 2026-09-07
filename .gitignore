@@ -1,3 +1,9 @@
+.gitignore
+
+.DS_Store 
+.github
+.vscode
+
 # Compiled python files
 __pycache__/
 *.pyc
@@ -12,3 +18,8 @@ pl_wiggle.py
 .pytest_cache/
 *.ipynb
 *.egg-info
+
+# cython
+*.c
+*.so
+*.o

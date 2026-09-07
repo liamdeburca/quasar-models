@@ -4,6 +4,7 @@ Lorem ipsum.
 
 from math import log, pi
 
+from astropy.constants import c
 from numpy import argmax, argmin, argwhere, dot, float64, invert
 from numpy.typing import NDArray
 from quasar_typing.bounds import AstropyBounds
@@ -12,6 +13,8 @@ from ..utils.astropy import apply_bounds
 
 SIGMA_TO_FWHM: float = 2 * (2 * log(2)) ** 0.5
 FWHM_TO_SIGMA: float = 1 / SIGMA_TO_FWHM
+
+C_KMS: float = c.to("km/s").value  # Exact speed of light in km/s
 
 
 def measure_intersection(
@@ -68,7 +71,7 @@ def measure_sigma(
     r: float = 0.5,
 ) -> float:
     """
-    Lorem ipsum.
+    Measure the velocity dispersion (km/s) of a spectral line using the FWHM.
 
     Parameters
     ----------
@@ -79,11 +82,7 @@ def measure_sigma(
 
     Returns
     -------
-    float
-
-    Notes
-    -----
-    Lorem ipsum.
+    sigma : float
     """
     y_crit: float = r * y[argmin(abs(x - wave))]
 
@@ -103,7 +102,9 @@ def measure_sigma(
     else:
         x2 = x[-1]
 
-    return (x2 - x1) / wave / (2 * (-2 * pi * r) ** 0.5)
+    sigma = (x2 - x1) / wave / (2 * (-2 * pi * r) ** 0.5)
+    sigma *= C_KMS  # Convert to km/s
+    return sigma
 
 
 def instantiate_model(
@@ -112,7 +113,7 @@ def instantiate_model(
     y: NDArray[float64],
     y_smooth: NDArray[float64] | None = None,
     sigma_res: float = 0,
-    v_off_bounds: AstropyBounds = (-1, 1),
+    v_off_bounds: AstropyBounds = (-C_KMS, C_KMS),
     fwhm_v_bounds: AstropyBounds = (0, None),
     strength_bounds: AstropyBounds = (0, None),
 ) -> tuple[float, float, float]:
@@ -126,6 +127,7 @@ def instantiate_model(
     y : 1D numpy.array of floats
     y_smooth : 1D numpy.array of floats or None, optional
     sigma_res : float, optional
+        Velocity resolution of the spectrum (c).
     v_off_bounds : tuple of floats, optional
     fwhm_v_bounds : tuple of floats, optional
     strength_bounds : tuple of floats, optional
@@ -133,11 +135,9 @@ def instantiate_model(
     Returns
     -------
     tuple[float, float, float]
-
-    Notes
-    -----
-    Lorem ipsum.
     """
+    v_res = C_KMS * sigma_res 
+
     if y_smooth is None:
         y_smooth = y
 
@@ -148,13 +148,13 @@ def instantiate_model(
     _x = x[mask]
     _mu = x[argmax(y_smooth)] if _x.size <= 1 else _x.mean()
 
-    v_off = apply_bounds((_mu - line) / line, v_off_bounds)
-    mu = line * (1 + v_off)
+    v_off = apply_bounds((_mu / line - 1) * C_KMS, v_off_bounds)
+    mu = line * (1 + v_off / C_KMS)
 
     # Guessing the velocity dispersion
     # - Method 4 (FWQM) from thesis (smoothed preferred)
     sigma = measure_sigma(mu, x, y_smooth, 0.25)
-    sigma_v = max(sigma**2 - sigma_res**2, 0) ** 0.5
+    sigma_v = max(sigma**2 - v_res ** 2, 0) ** 0.5
     fwhm_v = sigma_v * SIGMA_TO_FWHM
 
     # Guessing the line strength

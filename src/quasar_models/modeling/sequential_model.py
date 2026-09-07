@@ -1,8 +1,6 @@
-from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Union
-from warnings import warn
 
 from astropy.modeling import CompoundModel, Parameter
 from numpy import (
@@ -10,15 +8,20 @@ from numpy import (
     einsum,
     empty,
     float64,
-    inf,
+    fromiter,
     int_,
     isfinite,
     zeros,
 )
 from numpy.typing import NDArray
 
+from ..utils.astropy import apply_bounds
 from .base_model import BaseModel
-from .linear_tie import LinearTie
+from .utils import (
+    LinearTie,
+    Param,
+    get_param_type,
+)
 
 
 def _validate_compound_model(model: CompoundModel) -> None:
@@ -39,7 +42,7 @@ def _validate_compound_model(model: CompoundModel) -> None:
         m = m.left
 
 
-def _validate_initial_values(params: Iterable[Parameter]) -> None:
+def _validate_initial_values(params: Iterable[Param | Parameter]) -> None:
     for param in params:
         if not isfinite(val := param.value):
             msg = f"Parameter '{param.name}' has non-finite value: {val}."
@@ -47,41 +50,18 @@ def _validate_initial_values(params: Iterable[Parameter]) -> None:
 
         if not param.fixed:
             lb, ub = param.bounds
+
             if (lb is not None) and val < lb:
-                msg = (
-                    f"Parameter '{param.name}' has value {val} below lower bound {lb}."
-                )
+                msg = f"Parameter '{param.name}' has value {val} below lower bound {lb}."
                 raise ValueError(msg)
+            
             if (ub is not None) and val > ub:
-                msg = (
-                    f"Parameter '{param.name}' has value {val} above upper bound {ub}."
-                )
+                msg = f"Parameter '{param.name}' has value {val} above upper bound {ub}."
                 raise ValueError(msg)
+            
             if (lb is not None) and (ub is not None) and lb == ub:
                 msg = f"Parameter '{param.name}' has identical lower and upper bounds {(lb, ub)}."
                 raise ValueError(msg)
-
-
-def _validate_tied_parameters(params: Iterable[Parameter]) -> None:
-    for param in params:
-        if (tied := param.tied) in (False, None):
-            continue
-        elif not isinstance(tied, LinearTie):
-            msg = f"Parameter '{param.name}' has invalid 'tied' attribute: {tied}."
-            raise TypeError(msg)
-        elif param.fixed:
-            msg = (
-                f"Parameter '{param.name}' is fixed but has a 'tied' attribute: {tied}."
-            )
-            warn(msg, UserWarning, stacklevel=2)
-
-
-def _validate_unique_submodel_names(submodels: Iterable[BaseModel]) -> None:
-    name_counts = Counter(submodel.name for submodel in submodels)
-    duplicates = [name for name, count in name_counts.items() if count > 1]
-    if duplicates:
-        msg = f"Submodels must have unique names. Found duplicates: {duplicates}."
-        raise ValueError(msg)
 
 
 @dataclass(init=False, repr=False)
@@ -93,13 +73,13 @@ class SequentialModel:
 
     _initial_values: NDArray[float64] = field(init=False)
 
-    _parameters: tuple[Parameter, ...] = field(init=False)
+    _params: tuple[Param, ...] = field(init=False)
     _n: int = field(init=False)
-    _parameters_dict: dict[str, dict[str, tuple[int, Parameter]]] = field(init=False)
+    _params_dict: dict[str, dict[str, int]] = field(init=False)
 
     # Free parameters
     _free_indices: NDArray[int_] = field(init=False)
-    _free_parameters: tuple[Parameter, ...] = field(init=False)
+    _free_params: tuple[Param, ...] = field(init=False)
     _n_free: int = field(init=False)
 
     # Tied parameters
@@ -107,12 +87,12 @@ class SequentialModel:
     _tied_to_indices: NDArray[int_] = field(init=False)
     _tied_as: NDArray[float64] = field(init=False)
     _tied_bs: NDArray[float64] = field(init=False)
-    _tied_parameters: tuple[Parameter, ...] = field(init=False)
+    _tied_params: tuple[Param, ...] = field(init=False)
     _n_tied: int = field(init=False)
 
     # Fixed parameters
     _fixed_indices: NDArray[int_] = field(init=False)
-    _fixed_parameters: tuple[Parameter, ...] = field(init=False)
+    _fixed_params: tuple[Param, ...] = field(init=False)
     _n_fixed: int = field(init=False)
 
     # Start/Stop
@@ -126,57 +106,25 @@ class SequentialModel:
             _validate_compound_model(model)
 
         self._model = model
-        self._initial_values = self._model.parameters.copy()
+        self._initial_values = self._model.parameters.copy(order="C")
         self.n_submodels = self._model.n_submodels
         self.submodels = (
             (self._model,) if self.n_submodels == 1 else tuple(self._model)
         )
-        self._validate_submodels(self.submodels)
 
         # Parameters
-
-        self._parameters = tuple(
-            getattr(submodel, param_name)
+        self._params = tuple(
+            Param.from_parameter(getattr(submodel, param_name))
             for submodel in self.submodels
             for param_name in submodel.param_names
         )
-        self._validate_params(self._parameters)
-        self._n = len(self._parameters)
+        self._n = len(self._params)
+        _validate_initial_values(self._params)
 
-        count: int = 0
-        self._parameters_dict = {}
-        for submodel in self.submodels:
-            field = {}
-            for param_name in submodel.param_names:
-                param = getattr(submodel, param_name)
-
-                field[param_name] = (count, param)
-                count += 1
-
-            self._parameters_dict[submodel.name] = field
-
-        # Preparation
-        self._prepare_free()
-        self._prepare_tied()
-        self._prepare_fixed()
+        self._prepare_params_dict()
+        self._prepare_parameters()
+        self._update_bounds()
         self._calculate_start_stop_indices()
-
-    @staticmethod
-    def _validate_submodels(submodels: tuple[BaseModel, ...]) -> None:
-        _validate_unique_submodel_names(submodels)
-
-    @staticmethod
-    def _validate_params(parameters: tuple[Parameter, ...]) -> None:
-        """
-        Validates the following:
-        1.  All parameters' initial values are finite, and lie within any given
-            bounds. These bounds should not be identical.
-        2.  All parameters' 'tied' attributes are either False, None, or an
-            instance of 'LinearTie'. If a 'tied' parameter is fixed, a warning
-            is raised.
-        """
-        _validate_initial_values(parameters)
-        _validate_tied_parameters(parameters)
 
     ## Useful dunder methods from Astropy's `CompoundModel`
 
@@ -202,105 +150,69 @@ class SequentialModel:
     @parameters.setter
     def parameters(self, values: NDArray[float64]) -> None:
         self._model.parameters = values
+        for v, param in zip(values, self._params):
+            param.value = v
 
     ## Free parameters
 
-    def _param_is_free(self, param: Parameter) -> bool:
-        """
-        Returns True if the parameter is not fixed and not tied to another
-        non-fixed parameter.
-        """
-        return not param.fixed and not self._param_is_tied(param)
-
-    def _prepare_free(self) -> None:
-        _free_indices: list[int] = []
-        _free_parameters: list[Parameter] = []
-        for i, param in filter(
-            lambda tup: self._param_is_free(tup[1]),
-            enumerate(self._parameters),
-        ):
-            _free_indices.append(i)
-            _free_parameters.append(param)
-
-        self._free_indices = array(_free_indices, dtype=int_)
-        self._free_parameters = tuple(_free_parameters)
-        self._n_free = len(self._free_parameters)
-
-    ## Tied parameters
-
-    def _param_is_tied(self, param: Parameter) -> bool:
-        """
-        Returns True if the parameter is not fixed and is tied to another
-        non-fixed parameter.
-        """
-        if not isinstance(tied := param.tied, LinearTie):
-            return False
-
+    def _prepare_params_dict(self) -> None:
+        self._params_dict = {}
+        count: int = 0
         for submodel in self.submodels:
-            if submodel.name == tied.model_name:
-                tied_param: Parameter = getattr(submodel, tied.parameter_name)
-                if tied_param.tied not in (False, None):
-                    msg = (
-                        f"Parameter '{param.name}' is tied to another tied parameter '{tied_param.name}'. "
-                        "Tie chains are not allowed."
-                    )
-                    raise ValueError(msg)
-                return not tied_param.fixed
+            field: dict[str, int] = {}
+            for param_name in submodel.param_names:
+                field[param_name] = count
+                count += 1
 
-        raise ValueError(f"Could not find submodel: {tied.model_name}")
+            self._params_dict[submodel.name] = field
 
-    def _prepare_tied(self) -> None:
+    def _prepare_parameters(self) -> None:
+        _free_indices: list[int] = []
+        _free_params: list[Param] = []
+
         _tied_indices: list[int] = []
         _tied_to_indices: list[int] = []
         _tied_as: list[float] = []
         _tied_bs: list[float] = []
-        _tied_parameters: list[Parameter] = []
+        _tied_params: list[Param] = []
 
-        for i, param in filter(
-            lambda tup: self._param_is_tied(tup[1]),
-            enumerate(self._parameters),
-        ):
-            _tied_indices.append(i)
-            _tied_parameters.append(param)
-            
-            tied: LinearTie = param.tied
-            _tied_to_indices.append(
-                self._parameters_dict[tied.model_name][tied.parameter_name][0]
-            )
-            _tied_as.append(tied.a)
-            _tied_bs.append(tied.b)
+        _fixed_indices: list[int] = []
+        _fixed_params: list[Param] = []
+
+        for i, param in enumerate(self._params):
+            param_type = get_param_type(param, self.submodels, coerce=True)
+            match param_type:
+                case "free":
+                    _free_indices.append(i)
+                    _free_params.append(param)
+                case "fixed":
+                    _fixed_indices.append(i)
+                    _fixed_params.append(param)
+                case "tied":
+                    _tied_indices.append(i)
+                    _tied_params.append(param)
+
+                    tied: LinearTie = param.tied
+                    _tied_to_indices.append(
+                        self._params_dict[tied.model_name][tied.parameter_name]
+                    )
+                    _tied_as.append(tied.a)
+                    _tied_bs.append(tied.b)
+
+        self._free_indices = array(_free_indices, dtype=int_)
+        self._free_params = tuple(_free_params)
+        self._n_free = len(self._free_params)
 
         self._tied_indices = array(_tied_indices, dtype=int_)
         self._tied_to_indices = array(_tied_to_indices, dtype=int_)
         self._tied_as = array(_tied_as, dtype=float64)
         self._tied_bs = array(_tied_bs, dtype=float64)
-        self._tied_parameters = tuple(_tied_parameters)
-        self._n_tied = len(self._tied_parameters)
-
-    ## Fixed parameters
-
-    def _param_is_fixed(self, param: Parameter) -> bool:
-        """
-        Returns True if the parameter is fixed, or if it is tied to a fixed
-        parameter.
-        """
-        return param.fixed or (param.tied and not self._param_is_tied(param))
-
-    def _prepare_fixed(self) -> None:
-        _fixed_indices: list[int] = []
-        _fixed_parameters: list[Parameter] = []
-        for i, param in filter(
-            lambda tup: self._param_is_fixed(tup[1]),
-            enumerate(self._parameters),
-        ):
-            _fixed_indices.append(i)
-            _fixed_parameters.append(param)
+        self._tied_params = tuple(_tied_params)
+        self._n_tied = len(self._tied_params)
 
         self._fixed_indices = array(_fixed_indices, dtype=int_)
-        self._fixed_parameters = tuple(_fixed_parameters)
-        self._n_fixed = len(self._fixed_parameters)
-
-    # Preparation
+        self._fixed_params = tuple(_fixed_params)
+        self._n_fixed = len(self._fixed_params)
 
     def _calculate_start_stop_indices(self) -> None:
         self._start_stop_indices = empty(self.n_submodels + 1, dtype=int_)
@@ -309,10 +221,34 @@ class SequentialModel:
             n_params = len(submodel.param_names)
             self._start_stop_indices[i + 1] = self._start_stop_indices[i] + n_params
 
+    def _update_bounds(self) -> None:
+        for i, j in zip(self._tied_indices, self._tied_to_indices):
+            limiter: Param = self._params[i]
+            param: Param = self._params[j]
+            
+            a: float = limiter.tied.a
+            b: float = limiter.tied.b
+            if a == 0:
+                continue
+
+            _lb = limiter.bounds[0 if a > 0 else 1]
+            _ub = limiter.bounds[1 if a > 0 else 0]
+
+            new_lb, new_ub = param.bounds
+            if isfinite(_lb):
+                new_lb = max(new_lb, (_lb - b) / a)
+            if isfinite(_ub):
+                new_ub = min(new_ub, (_ub - b) / a)
+
+            param.bounds = (new_lb, new_ub)
+            param.value = apply_bounds.__wrapped__(param.value, param.bounds)
+            self._initial_values[j] = param.value
+
     # Evaluation
 
     def _get_full_parameter_array(
-        self, free_params: NDArray[float64]
+        self, 
+        free_params: NDArray[float64],
     ) -> NDArray[float64]:
         """
         Expands the truncated free parameter array to a full parameter array.
@@ -336,7 +272,8 @@ class SequentialModel:
         params[self._free_indices] = free_params
         if self._n_tied > 0:
             params[self._tied_indices] = (
-                self._tied_as * params[self._tied_to_indices] + self._tied_bs
+                self._tied_as * params[self._tied_to_indices] 
+                + self._tied_bs
             )
         return params
 
@@ -348,7 +285,7 @@ class SequentialModel:
             msg = f"Expected {self._n_free} free parameters, got {params.size} instead."
             raise ValueError(msg)
 
-        for param, val in zip(self._free_parameters, params):
+        for param, val in zip(self._free_params, params):
             param.value = val
 
     def evaluate(
@@ -381,6 +318,15 @@ class SequentialModel:
             submodel.evaluate(x, *full_params[start:stop], y=y)
 
         return y
+
+    def __call__(
+        self,
+        x: NDArray[float64],
+    ) -> NDArray[float64]:
+        return self.evaluate(
+            x,
+            self.parameters[self._free_indices],
+        )
 
     def fit_deriv(
         self,
@@ -444,14 +390,17 @@ class SequentialModel:
         copy: bool = True,
     ) -> Union[BaseModel, CompoundModel]:
         """
-        Returns a new model instance with the final fitted parameter values.
+        Returns an Astropy (compound) model instance with the final fitted 
+        parameter values.
 
         Parameters
         ----------
         params : NDArray[float64] | None
             Free parameter values (length _n_free). If None, uses current values.
         copy : bool
-            If True, returns a copy of the model; otherwise, returns the original.
+            If True, returns a copy of the Astropy model used to instantiate
+            this SequentialModel. Otherwise, returns the original, modified
+            Astropy model.
 
         Returns
         -------
@@ -459,18 +408,34 @@ class SequentialModel:
             Model instance with updated parameter values.
         """
         out = self._model.copy() if copy else self._model
-        if params is not None:
-            out.parameters = (
-                self._get_full_parameter_array(params)
-                if params.size != self._n
-                else params
-            )
+        if params is None:
+            return out
+        
+        if params.size != self._n:
+            params = self._get_full_parameter_array(params)
+
+        out.parameters = params
+        if not copy:
+            # Update own parameters
+            self.parameters = params
+
         return out
+
+    def get_updated_model(
+        self,
+        copy: bool = True,
+    ) -> Union[BaseModel, CompoundModel]:
+        return self.get_final_model(
+            self.parameters[self._free_indices],
+            copy=copy,
+        )
 
     ### For Scipy `least_squares` optimization
 
     def fun(
-        self, x: NDArray[float64], data: dict[str, NDArray[float64]]
+        self, 
+        x: NDArray[float64], 
+        data: dict[str, NDArray[float64]],
     ) -> NDArray[float64]:
         """
         Scipy notation: 'x' is the vector of free parameters.
@@ -480,12 +445,14 @@ class SequentialModel:
         return einsum("i,i->i", z, data["w"], out=z)
 
     def jac(
-        self, x: NDArray[float64], data: dict[str, NDArray[float64]]
+        self, 
+        x: NDArray[float64], 
+        data: dict[str, NDArray[float64]],
     ) -> NDArray[float64]:
         """
         Scipy notation: 'x' is the vector of free parameters.
         """
-        jac = self.partial_deriv(data["x"], x)
+        jac = self.partial_deriv(data["x"], x).T
         return einsum("ij,i->ij", jac, data["w"], out=jac)
 
     @property
@@ -494,10 +461,11 @@ class SequentialModel:
 
     @property
     def bounds(self) -> tuple[NDArray[float64], NDArray[float64]]:
-        lbs = empty(self._n_free, dtype=float64)
-        ubs = empty(self._n_free, dtype=float64)
-        for i, param in enumerate(self._free_parameters):
-            lbs[i] = -inf if param.bounds[0] is None else param.bounds[0]
-            ubs[i] = inf if param.bounds[1] is None else param.bounds[1]
-
-        return (lbs, ubs)
+        return tuple(
+            fromiter(
+                (param.bounds[i] for param in self._free_params), 
+                dtype=float64,
+            ) 
+            for i in (0, 1)
+        )
+    

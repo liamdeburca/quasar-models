@@ -29,10 +29,6 @@ class BC2003:
     def __init__(self):
         self.info: Info = Info()
         self.fwhm: FloatVector = array([0], dtype=float64)
-        self.__post_init__()
-
-    def __post_init__(self):
-        PATH_TO_CACHE.mkdir(exist_ok=True)
 
     @classmethod
     def get_age_from_path(cls, path: Path) -> int:
@@ -85,7 +81,7 @@ def plot() -> None:
         key=lambda t: t.age,
     )
 
-    fig, ax = plt.subplots(dpi=300, figsize=(8, 4))
+    _, ax = plt.subplots(dpi=300, figsize=(8, 4))
     ax.set_title("Host Galaxy Templates", loc="left")
 
     for t in templates:

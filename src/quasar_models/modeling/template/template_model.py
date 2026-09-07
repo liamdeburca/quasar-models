@@ -69,7 +69,10 @@ class TemplateModel(BaseModel, ABC):
 
     def _set_cytemplates(self) -> None:
         for k, _k in zip(self.CYTEMPLATE_KEYS, self.TEMPLATE_KEYS):
-            self.meta[k] = CyTemplate.fromTemplate(getattr(self, _k))
+            self.meta[k] = CyTemplate.fromTemplate(
+                getattr(self, _k),
+                simplify=self.evaluate_func.simplify,
+            )
 
     def _del_cytemplates(self) -> None:
         del self.cytemplates
@@ -78,11 +81,11 @@ class TemplateModel(BaseModel, ABC):
 
     @property
     def allow_interp_fitting(self) -> bool:
-        return self.meta["allow_interp_fitting"]
+        return bool(self.meta["allow_interp_fitting"])
 
     @allow_interp_fitting.setter
     def allow_interp_fitting(self, value: bool) -> None:
-        self.meta["allow_interp_fitting"] = value
+        self.meta["allow_interp_fitting"] = bool(value)
 
     @abstractmethod
     def _choose_evaluate_func(self) -> None:

@@ -52,10 +52,16 @@ def _save(
     template: BaseTemplateProtocol,
     info: Info,
 ) -> fits.HDUList:
+    """
+    Create a FITS HDUList from a template object.
 
-    v_unit: str = info.units.velocity_unit.to_string()
+    Notes
+    -----
+    The FWHM array is stored in km/s.
+    """
+
     x_unit: str = info.units.wavelength_unit.to_string()
-    f_unit: str = info.units.getFluxUnit().to_string()
+    f_unit: str = info.units.flux_unit.to_string()
 
     hdul = fits.HDUList()
 
@@ -77,8 +83,8 @@ def _save(
     col_fwhm: fits.Column = fits.Column(
         name="fwhm",
         format="D",
-        unit=v_unit,
-        array=info.units.getC(template.fwhm).to(v_unit).value,
+        unit="km/s",
+        array=template.fwhm,
     )
     col_x: fits.Column = fits.Column(
         name="x",
@@ -168,6 +174,9 @@ def _load(
     path: AbsoluteFITSPath,
     info: Info,
 ) -> dict:
+    """
+    Create a dictionary of template attributes from a FITS file.
+    """
     kwargs = {
         "n_scales": info.convolution.n_scales,
         "fwhm": None,
@@ -186,8 +195,8 @@ def _load(
         x_unit = Unit(hdul[1].columns[1].unit)
         f_unit = Unit(hdul[0].header["BUNIT"])
 
-        def transform_velocity(arr: FloatVector) -> FloatVector:
-            return info.units.getC(arr * v_unit)
+        def transform_kms(arr: FloatVector) -> FloatVector:
+            return info.units.getKMS(arr * v_unit)
 
         def transform_wavelength(arr: FloatVector) -> FloatVector:
             return info.units.getWavelength(arr * x_unit)
@@ -196,7 +205,7 @@ def _load(
             return info.units.getFlux(arr * f_unit)
 
         kwargs["data"] = data = transform_flux(hdul[0].data)
-        kwargs["fwhm"] = transform_velocity(hdul[1].data["fwhm"])[: data.shape[0]]
+        kwargs["fwhm"] = transform_kms(hdul[1].data["fwhm"])[: data.shape[0]]
         kwargs["x"] = transform_wavelength(hdul[1].data["x"])[: data.shape[1]]
 
         kwargs["name"] = hdul[0].header["NAME"]

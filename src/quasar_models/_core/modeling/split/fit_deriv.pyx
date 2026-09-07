@@ -21,8 +21,8 @@ cdef void _fit_deriv_only_split(
     const double split,
     const double left,
     const double right,
-    const double sigma_res,
-    const double scale,
+    const double sigma_res, # c
+    const double scale,     # c
 ) noexcept nogil:
     cdef double k = 1.0 / (sigma_res * scale)
     cdef double a = math_log(split) * k
@@ -57,8 +57,8 @@ cdef void _fit_deriv_only_left(
     const double split,
     const double left,
     const double right,
-    const double sigma_res,
-    const double scale,
+    const double sigma_res, # c
+    const double scale,     # c
 ) noexcept nogil:
     cdef double k = 1.0 / (sigma_res * scale)
     cdef double a = math_log(split) * k
@@ -88,8 +88,8 @@ cdef void _fit_deriv_only_right(
     const double split,
     const double left,
     const double right,
-    const double sigma_res,
-    const double scale,
+    const double sigma_res, # c
+    const double scale,     # c
 ) noexcept nogil:
     cdef double k = 1.0 / (sigma_res * scale)
     cdef double a = math_log(split) * k
@@ -122,8 +122,8 @@ cdef void _fit_deriv_split_and_left(
     const double split,
     const double left,
     const double right,
-    const double sigma_res,
-    const double scale,
+    const double sigma_res, # c
+    const double scale,     # c
 ) noexcept nogil:
     cdef double k = 1.0 / (sigma_res * scale)
     cdef double a = math_log(split) * k
@@ -160,8 +160,8 @@ cdef void _fit_deriv_split_and_right(
     const double split,
     const double left,
     const double right,
-    const double sigma_res,
-    const double scale,
+    const double sigma_res, # c
+    const double scale,     # c
 ) noexcept nogil:
     cdef double k = 1.0 / (sigma_res * scale)
     cdef double a = math_log(split) * k
@@ -198,8 +198,8 @@ cdef void _fit_deriv_left_and_right(
     const double split,
     const double left,
     const double right,
-    const double sigma_res,
-    const double scale,
+    const double sigma_res, # c
+    const double scale,     # c
 ) noexcept nogil:
     cdef double k = 1.0 / (sigma_res * scale)
     cdef double a = math_log(split) * k
@@ -234,8 +234,8 @@ cdef void _fit_deriv_all(
     const double split,
     const double left,
     const double right,
-    const double sigma_res,
-    const double scale,
+    const double sigma_res, # c
+    const double scale,     # c
 ) noexcept nogil:
     cdef double k = 1.0 / (sigma_res * scale)
     cdef double a = math_log(split) * k

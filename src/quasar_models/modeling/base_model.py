@@ -1,15 +1,17 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
-from typing import Self
+from typing import ClassVar, Literal, Self
 
 from astropy.modeling import Fittable1DModel
-from numpy import float64
+from numpy import float64, ndarray
 from numpy.typing import NDArray
 from pydantic_core import PydanticCustomError
 from pydantic_core.core_schema import no_info_plain_validator_function
 
 
 class BaseModel(ABC, Fittable1DModel):
+    model_type: ClassVar[Literal["pl", "fe", "ba", "hg", "em"]]
+    
     def __iter__(self) -> Iterator[Self]:
         yield self
 
@@ -23,6 +25,14 @@ class BaseModel(ABC, Fittable1DModel):
         """
         Return a tuple used for sorting models.
         """
+
+    @classmethod
+    def _transform_if_ndarray(cls, param: float | NDArray[float64]) -> float:
+        return param.item() if isinstance(param, ndarray) else param
+
+    @classmethod
+    def _transform_args_if_ndarray(cls, *args: float | NDArray[float64]) -> tuple[float, ...]:
+        return tuple(cls._transform_if_ndarray(arg) for arg in args)
 
     # Evaluation
 

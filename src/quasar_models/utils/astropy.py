@@ -10,11 +10,11 @@ from collections.abc import Iterable
 
 from astropy.modeling.core import Fittable1DModel
 from numpy import clip, inf
-from pydantic import validate_call
 from quasar_typing.astropy import CompoundModel_, Fittable1DModel_, Model_
 from quasar_typing.bounds import AstropyBounds
 from quasar_typing.misc.literals import FluxComponent
 from quasar_typing.numpy import FloatArray
+from quasar_utils.decorators import validate_call
 
 
 @validate_call
@@ -22,9 +22,6 @@ def apply_bounds(
     val: float | FloatArray,
     bounds: AstropyBounds,
 ) -> float | FloatArray:
-    """
-    ** PYDANTIC VALIDATED FUNCTION **
-    """
     return clip(
         val,
         a_min=bounds[0] if (bounds[0] is not None) else -inf,

@@ -26,11 +26,14 @@ cdef double GAUSS_AMP = 1 / math_sqrt(2 * math_pi)
 cdef double SIGMA_TO_FWHM = 2 * math_sqrt(2 * math_log(2))
 cdef double FWHM_TO_SIGMA = 1 / SIGMA_TO_FWHM
 
+cdef double C_KMS = 299792.458  # km/s
+cdef double INV_C_KMS = 1 / C_KMS  # 1/km/s
+
 cdef double _scale(
-    const double fwhm,
-    const double sigma_res,
+    const double fwhm,      # km/s
+    const double sigma_res, # c
 ):
-    return fwhm * FWHM_TO_SIGMA / sigma_res
+    return fwhm * INV_C_KMS * FWHM_TO_SIGMA / sigma_res
 
 def scale(
     const double fwhm,
@@ -192,15 +195,19 @@ def identify_closest_idx_for_deriv(
 
 cdef object _convolve(
     const double[:,::1] data,
-    const double[::1] fwhm,
-    const double fwhm_final,
-    const double sigma_res,
+    const double[::1] fwhm,     # km/s
+    const double fwhm_final,    # km/s
+    const double sigma_res,     # c
     const double n_scales,
 ):
-    cdef int idx = _identify_closest_idx(fwhm, fwhm_final)
-    cdef double fwhm_init = fwhm[idx]
+    """
+    !!! Changed:
 
-    cdef object y = np_copy(data[idx, :])
+    Now convolving up from the lowest FWHM to avoid issues with the kernel 
+    having diminishing FWHM. 
+    """
+    cdef double fwhm_init = fwhm[0]
+    cdef object y = np_copy(data[0, :])
     
     cdef double fwhm_kernel
     cdef object kernel
@@ -223,15 +230,14 @@ def convolve(
 
 cdef object _convolve_deriv(
     const double[:,::1] data,
-    const double[::1] fwhm,
-    const double fwhm_final,
-    const double sigma_res,
+    const double[::1] fwhm,     # km/s
+    const double fwhm_final,    # km/s
+    const double sigma_res,     # c
     const double n_scales,
 ):
     cdef Py_ssize_t i, n = data.shape[1]
     cdef object dy
 
-    cdef int idx
     cdef double fwhm_init, fwhm_kernel
     cdef object signal, kernel_deriv
 
@@ -240,9 +246,8 @@ cdef object _convolve_deriv(
         dbl_multiply_inplace(dy, -FWHM_TO_SIGMA)
         return dy
     else:
-        idx = _identify_closest_idx_for_deriv(fwhm, fwhm_final)
-        fwhm_init = fwhm[idx]
-        signal = data[idx, :]
+        fwhm_init = fwhm[0]
+        signal = data[0, :]
         
         fwhm_kernel = math_sqrt(fwhm_final * fwhm_final - fwhm_init * fwhm_init)
         kernel_deriv = _kernel_deriv(fwhm_kernel, sigma_res, n_scales)

@@ -14,11 +14,17 @@ from astropy.io import fits
 from quasar_typing.pathlib import AbsoluteFITSPath
 from quasar_utils.setup import Info
 
-from quasar_models.modeling.template.io import BaseTemplateProtocol, _load, _save
+from quasar_models.modeling.template.io import (
+    BaseTemplateProtocol,
+    _load,
+    _save,
+)
+
+from ..utils.setup_utils import PathManager
 
 _this_file: Path = Path(__file__).resolve()
-PATH_TO_CACHE: Path = _this_file.parent / ".cache"
 PATH_TO_DATA: Path = _this_file.parent / ".data"
+PATH_TO_CACHE: Path = PathManager.get_host_cache()
 
 
 class HostGalaxyTemplateProtocol(BaseTemplateProtocol, Protocol):
@@ -103,7 +109,3 @@ def load_from_cache(
         path=convert_params_to_path(name, int(age)),
         info=info,
     )
-
-
-if __name__ == "__main__":
-    PATH_TO_CACHE.mkdir(exist_ok=True)

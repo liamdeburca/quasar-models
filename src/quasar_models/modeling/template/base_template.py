@@ -34,7 +34,7 @@ from quasar_utils.interpolation import create_interp_matrix
 from quasar_utils.raster import rasterise
 from quasar_utils.setup import Info
 
-from quasar_models._core.convolution import convolve_signal, kernel
+from ..._core.convolution import convolve_signal, kernel
 
 templates_dir: Path = Path(__file__).parent / "templates"
 
@@ -455,3 +455,17 @@ class BaseTemplate(ABC):
             flux_bounds=flux_bounds,
             fwhm_bounds=fwhm_bounds,
         )
+
+    def simplifyData(
+        self, 
+        tol: float = 1e-8,
+        inplace: bool = False,
+    ) -> Self:
+        assert tol > 0.0
+        obj = self if inplace else self.copy(with_matrices=True)
+
+        for i, arr in enumerate(obj.data):
+            mask = arr < tol * arr.max()
+            obj.data[i,mask] = 0.0
+
+        return obj

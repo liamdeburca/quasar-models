@@ -28,6 +28,7 @@ def evaluate(
 
     if y is None:
         y = zeros(x.shape, dtype=float64)
+
     _evaluate(
         y,
         x,

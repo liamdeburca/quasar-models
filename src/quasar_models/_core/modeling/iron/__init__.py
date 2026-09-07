@@ -50,23 +50,26 @@ from .utils import (
 )
 
 
+def _no_split(left: float, right: float, fixed: dict[str, bool]) -> bool:
+    return left == 1.0 \
+        and right == 1.0 \
+        and fixed.get("left", False) \
+        and fixed.get("right", False)
+
+
 def choose_evaluate_func(
     left: float,
     right: float,
     allow_interp_fitting: bool,
     fixed: dict[str, bool],
 ) -> IronEvaluate:
-    if all(
-        [
-            left == 1.0,
-            right == 1.0,
-            fixed.get("left", False),
-            fixed.get("right", False),
-        ]
-    ):
-        return evaluate_interp if allow_interp_fitting else evaluate_exact_no_split
-    else:
-        return evaluate_exact
+    match (_no_split(left, right, fixed), allow_interp_fitting):
+        case True, True:
+            return evaluate_interp
+        case True, False:
+            return evaluate_exact_no_split
+        case _:
+            return evaluate_exact
 
 
 def choose_fit_deriv_func(
@@ -75,14 +78,7 @@ def choose_fit_deriv_func(
     allow_interp_fitting: bool,
     fixed: dict[str, bool],
 ) -> IronFitDeriv:
-    if all(
-        [
-            left == 1.0,
-            right == 1.0,
-            fixed.get("left", False),
-            fixed.get("right", False),
-        ]
-    ):
+    if _no_split(left, right, fixed):
         _case = (fixed.get("flux", False), fixed.get("fwhm", False))
         if allow_interp_fitting:
             match _case:
@@ -189,80 +185,180 @@ def choose_fit_deriv_func(
                 return does_nothing
 
 
-### By CONVOLUTION // No split
+### By CONVOLUTION // No split: Simplify template
 
-evaluate_exact_no_split = IronEvaluate("evaluate_exact_no_split")
+evaluate_exact_no_split = IronEvaluate(
+    "evaluate_exact_no_split",
+    simplify=True,
+)
 
-fit_deriv_exact_no_split_only_flux = IronFitDeriv("fit_deriv_exact_no_split_only_flux")
-fit_deriv_exact_no_split_only_fwhm = IronFitDeriv("fit_deriv_exact_no_split_only_fwhm")
-fit_deriv_exact_no_split_all = IronFitDeriv("fit_deriv_exact_no_split_all")
+fit_deriv_exact_no_split_only_flux = IronFitDeriv(
+    "fit_deriv_exact_no_split_only_flux",
+    simplify=True,
+)
+fit_deriv_exact_no_split_only_fwhm = IronFitDeriv(
+    "fit_deriv_exact_no_split_only_fwhm",
+    simplify=True,
+)
+fit_deriv_exact_no_split_all = IronFitDeriv(
+    "fit_deriv_exact_no_split_all",
+    simplify=True,
+)
 
-### By CONVOLUTION // With split
+### By CONVOLUTION // With split: Simplify template
 
-evaluate_exact = IronEvaluate("evaluate_exact")
+evaluate_exact = IronEvaluate(
+    "evaluate_exact",
+    simplify=True,
+)
 
-fit_deriv_exact_only_flux = IronFitDeriv("fit_deriv_exact_only_flux")
-fit_deriv_exact_only_fwhm = IronFitDeriv("fit_deriv_exact_only_fwhm")
-fit_deriv_exact_only_split = IronFitDeriv("fit_deriv_exact_only_split")
-fit_deriv_exact_only_left = IronFitDeriv("fit_deriv_exact_only_left")
-fit_deriv_exact_only_right = IronFitDeriv("fit_deriv_exact_only_right")
+fit_deriv_exact_only_flux = IronFitDeriv(
+    "fit_deriv_exact_only_flux",
+    simplify=True,
+)
+fit_deriv_exact_only_fwhm = IronFitDeriv(
+    "fit_deriv_exact_only_fwhm",
+    simplify=True,
+)
+fit_deriv_exact_only_split = IronFitDeriv(
+    "fit_deriv_exact_only_split",
+    simplify=True,
+)
+fit_deriv_exact_only_left = IronFitDeriv(
+    "fit_deriv_exact_only_left",
+    simplify=True,
+)
+fit_deriv_exact_only_right = IronFitDeriv(
+    "fit_deriv_exact_only_right",
+    simplify=True,
+)
 
-fit_deriv_exact_flux_and_fwhm = IronFitDeriv("fit_deriv_exact_flux_and_fwhm")
-fit_deriv_exact_flux_and_split = IronFitDeriv("fit_deriv_exact_flux_and_split")
-fit_deriv_exact_flux_and_left = IronFitDeriv("fit_deriv_exact_flux_and_left")
-fit_deriv_exact_flux_and_right = IronFitDeriv("fit_deriv_exact_flux_and_right")
-fit_deriv_exact_fwhm_and_split = IronFitDeriv("fit_deriv_exact_fwhm_and_split")
-fit_deriv_exact_fwhm_and_left = IronFitDeriv("fit_deriv_exact_fwhm_and_left")
-fit_deriv_exact_fwhm_and_right = IronFitDeriv("fit_deriv_exact_fwhm_and_right")
-fit_deriv_exact_split_and_left = IronFitDeriv("fit_deriv_exact_split_and_left")
-fit_deriv_exact_split_and_right = IronFitDeriv("fit_deriv_exact_split_and_right")
-fit_deriv_exact_left_and_right = IronFitDeriv("fit_deriv_exact_left_and_right")
+fit_deriv_exact_flux_and_fwhm = IronFitDeriv(
+    "fit_deriv_exact_flux_and_fwhm",
+    simplify=True,
+)
+fit_deriv_exact_flux_and_split = IronFitDeriv(
+    "fit_deriv_exact_flux_and_split",
+    simplify=True,
+)
+fit_deriv_exact_flux_and_left = IronFitDeriv(
+    "fit_deriv_exact_flux_and_left",
+    simplify=True,
+)
+fit_deriv_exact_flux_and_right = IronFitDeriv(
+    "fit_deriv_exact_flux_and_right",
+    simplify=True,
+)
+fit_deriv_exact_fwhm_and_split = IronFitDeriv(
+    "fit_deriv_exact_fwhm_and_split",
+    simplify=True,
+)
+fit_deriv_exact_fwhm_and_left = IronFitDeriv(
+    "fit_deriv_exact_fwhm_and_left",
+    simplify=True,
+)
+fit_deriv_exact_fwhm_and_right = IronFitDeriv(
+    "fit_deriv_exact_fwhm_and_right",
+    simplify=True,
+)
+fit_deriv_exact_split_and_left = IronFitDeriv(
+    "fit_deriv_exact_split_and_left",
+    simplify=True,
+)
+fit_deriv_exact_split_and_right = IronFitDeriv(
+    "fit_deriv_exact_split_and_right",
+    simplify=True,
+)
+fit_deriv_exact_left_and_right = IronFitDeriv(
+    "fit_deriv_exact_left_and_right",
+    simplify=True,
+)
 
 fit_deriv_exact_flux_and_fwhm_and_split = IronFitDeriv(
-    "fit_deriv_exact_flux_and_fwhm_and_split"
+    "fit_deriv_exact_flux_and_fwhm_and_split",
+    simplify=True,
 )
 fit_deriv_exact_flux_and_fwhm_and_left = IronFitDeriv(
-    "fit_deriv_exact_flux_and_fwhm_and_left"
+    "fit_deriv_exact_flux_and_fwhm_and_left",
+    simplify=True,
 )
 fit_deriv_exact_flux_and_fwhm_and_right = IronFitDeriv(
-    "fit_deriv_exact_flux_and_fwhm_and_right"
+    "fit_deriv_exact_flux_and_fwhm_and_right",
+    simplify=True,
 )
 fit_deriv_exact_flux_and_split_and_left = IronFitDeriv(
-    "fit_deriv_exact_flux_and_split_and_left"
+    "fit_deriv_exact_flux_and_split_and_left",
+    simplify=True,
 )
 fit_deriv_exact_flux_and_split_and_right = IronFitDeriv(
-    "fit_deriv_exact_flux_and_split_and_right"
+    "fit_deriv_exact_flux_and_split_and_right",
+    simplify=True,
 )
 fit_deriv_exact_flux_and_left_and_right = IronFitDeriv(
-    "fit_deriv_exact_flux_and_left_and_right"
+    "fit_deriv_exact_flux_and_left_and_right",
+    simplify=True,
 )
 fit_deriv_exact_fwhm_and_split_and_left = IronFitDeriv(
-    "fit_deriv_exact_fwhm_and_split_and_left"
+    "fit_deriv_exact_fwhm_and_split_and_left",
+    simplify=True,
 )
 fit_deriv_exact_fwhm_and_split_and_right = IronFitDeriv(
-    "fit_deriv_exact_fwhm_and_split_and_right"
+    "fit_deriv_exact_fwhm_and_split_and_right",
+    simplify=True,
 )
 fit_deriv_exact_fwhm_and_left_and_right = IronFitDeriv(
-    "fit_deriv_exact_fwhm_and_left_and_right"
+    "fit_deriv_exact_fwhm_and_left_and_right",
+    simplify=True,
 )
 fit_deriv_exact_split_and_left_and_right = IronFitDeriv(
-    "fit_deriv_exact_split_and_left_and_right"
+    "fit_deriv_exact_split_and_left_and_right",
+    simplify=True,
 )
 
-fit_deriv_exact_all_except_flux = IronFitDeriv("fit_deriv_exact_all_except_flux")
-fit_deriv_exact_all_except_fwhm = IronFitDeriv("fit_deriv_exact_all_except_fwhm")
-fit_deriv_exact_all_except_split = IronFitDeriv("fit_deriv_exact_all_except_split")
-fit_deriv_exact_all_except_left = IronFitDeriv("fit_deriv_exact_all_except_left")
-fit_deriv_exact_all_except_right = IronFitDeriv("fit_deriv_exact_all_except_right")
+fit_deriv_exact_all_except_flux = IronFitDeriv(
+    "fit_deriv_exact_all_except_flux",
+    simplify=True,
+)
+fit_deriv_exact_all_except_fwhm = IronFitDeriv(
+    "fit_deriv_exact_all_except_fwhm",
+    simplify=True,
+)
+fit_deriv_exact_all_except_split = IronFitDeriv(
+    "fit_deriv_exact_all_except_split",
+    simplify=True,
+)
+fit_deriv_exact_all_except_left = IronFitDeriv(
+    "fit_deriv_exact_all_except_left",
+    simplify=True,
+)
+fit_deriv_exact_all_except_right = IronFitDeriv(
+    "fit_deriv_exact_all_except_right",
+    simplify=True,
+)
 
-fit_deriv_exact_all = IronFitDeriv("fit_deriv_exact_all")
+fit_deriv_exact_all = IronFitDeriv(
+    "fit_deriv_exact_all",
+    simplify=True,
+)
 
-### By INTERPOLATION
+### By INTERPOLATION: No simplification
 
-evaluate_interp = IronEvaluate("evaluate_interp")
+evaluate_interp = IronEvaluate(
+    "evaluate_interp",
+    simplify=False,
+)
 
-fit_deriv_interp_only_flux = IronFitDeriv("fit_deriv_interp_only_flux")
-fit_deriv_interp_only_fwhm = IronFitDeriv("fit_deriv_interp_only_fwhm")
-fit_deriv_interp_all = IronFitDeriv("fit_deriv_interp_all")
+fit_deriv_interp_only_flux = IronFitDeriv(
+    "fit_deriv_interp_only_flux",
+    simplify=False,
+)
+fit_deriv_interp_only_fwhm = IronFitDeriv(
+    "fit_deriv_interp_only_fwhm",
+    simplify=False,
+)
+fit_deriv_interp_all = IronFitDeriv(
+    "fit_deriv_interp_all",
+    simplify=False,
+)
 
 does_nothing = IronFitDeriv()

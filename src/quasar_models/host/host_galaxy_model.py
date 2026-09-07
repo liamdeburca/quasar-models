@@ -5,9 +5,11 @@ AstroPy compatible model: HostGalaxyModel.
 from logging import getLogger
 from typing import Any, ClassVar, Literal, Self
 
+from astropy.constants import c
 from astropy.modeling import Parameter
 from numpy import argmin, isfinite
-from quasar_typing.numpy import FloatMatrix, FloatVector
+from quasar_typing.bounds import AstropyBounds
+from quasar_typing.numpy import FloatVector
 from quasar_utils.decorators import validate_call
 from quasar_utils.setup import Info
 
@@ -19,21 +21,25 @@ from quasar_models._core.modeling.host import (
     evaluate_exact,
     fit_deriv_exact_all,
 )
-from quasar_models.modeling.template import TemplateModel
 
+from ..modeling.template import TemplateModel
 from ..utils.astropy import apply_bounds
 from .host_galaxy_template import HostGalaxyTemplate
 from .io import convert_params_to_name
 
 logger = getLogger(__name__)
 
+C_KMS: float = c.to("km/s").value  # Exact speed of light in km/s
+
 
 class HostGalaxyModel(TemplateModel):
     flux = Parameter(
+        description="Flux density at ('fwhm_norm', 'x_norm')",
         default=1.0,
         min=0.0,
     )
     fwhm = Parameter(
+        description="FWHM (km/s) of the template",
         default=0.0,
         min=0.0,
         fixed=True,
@@ -56,6 +62,11 @@ class HostGalaxyModel(TemplateModel):
         n_scales: float = 3.0,
         name: Literal["bc2003"] | None = None,
         age: int | None = None,
+
+        flux_bounds: AstropyBounds | None = None,
+        fwhm_bounds: AstropyBounds | None = None,
+        flux_fixed: bool | None = None,
+        fwhm_fixed: bool | None = None,
     ) -> Self:
         if template is None:
             if info is None:
@@ -84,11 +95,21 @@ class HostGalaxyModel(TemplateModel):
                 "_interpolation_matrices": {},
             },
         )
-        model.fwhm.bounds = (template.fwhm[0], template.fwhm[-1])
-        model.fwhm.value = apply_bounds.__wrapped__(
-            model.fwhm.value,
-            model.fwhm.bounds,
-        )
+        if flux_bounds is not None:
+            model.flux.value = apply_bounds.__wrapped__(flux, flux_bounds)
+            model.flux.bounds = flux_bounds
+
+        if fwhm_bounds is None and template.fwhm.shape[0] > 1:
+            fwhm_bounds = (template.fwhm[0], template.fwhm[-1])
+
+        if fwhm_bounds is not None:
+            model.fwhm.value = apply_bounds.__wrapped__(fwhm, fwhm_bounds)
+            model.fwhm.bounds = fwhm_bounds
+
+        if flux_fixed is not None:
+            model.flux.fixed = flux_fixed
+        if fwhm_fixed is not None:
+            model.fwhm.fixed = fwhm_fixed
 
         return model
 
@@ -114,51 +135,30 @@ class HostGalaxyModel(TemplateModel):
 
     ###
 
-    def evaluate(
-        self,
-        x: float | FloatVector,
-        flux: float,
-        fwhm: float,
-        y: FloatVector | None = None,
-    ) -> float | FloatVector:
+    def evaluate(self, x, flux, fwhm, y=None):
         return self.evaluate_func(
             x,
-            flux,
-            fwhm,
+            *self._transform_args_if_ndarray(flux, fwhm),
             **self._kwargs,
             y=y,
         )
 
-    def partial_deriv(
-        self,
-        x: FloatVector,
-        flux: float,
-        fwhm: float,
-        derivs: FloatMatrix | None = None,
-    ) -> FloatMatrix:
+    def partial_deriv(self, x, flux, fwhm, derivs=None):
         return self.fit_deriv_func(
             x,
-            flux,
-            fwhm,
+            *self._transform_args_if_ndarray(flux, fwhm),
             **self._kwargs,
             derivs=derivs,
         )
 
-    def fit_deriv(
-        self,
-        x: FloatVector,
-        flux: float,
-        fwhm: float,
-        derivs: FloatMatrix | None = None,
-    ) -> list[FloatVector]:
+    def fit_deriv(self, x, flux, fwhm, derivs=None):
         return list(self.partial_deriv(x, flux, fwhm, derivs=derivs))
 
     @property
     def _kwargs(self) -> dict[str, Any]:
-        cytemplates = self.cytemplates
         return {
             "template": self.template,
-            "cytemplate": cytemplates["cytemplate"],
+            "cytemplate": self.cytemplates["cytemplate"],
             "n_scales": self.n_scales,
             "interpolation_matrix": self.interpolation_matrix,
         }
@@ -190,15 +190,13 @@ class HostGalaxyModel(TemplateModel):
         self.meta.pop("fit_deriv_func", None)
 
     def _choose_evaluate_func(self) -> None:
-        self.evaluate_func = choose_evaluate_func(
-            self.allow_interp_fitting,
-        )
+        self.evaluate_func = choose_evaluate_func(self.allow_interp_fitting)
 
     def _choose_fit_deriv_func(self) -> None:
         self.fit_deriv_func = choose_fit_deriv_func(
             self.allow_interp_fitting,
             self.fixed,
-        )
+        )        
 
     # Utilities
 

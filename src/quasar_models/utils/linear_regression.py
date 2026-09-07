@@ -1,7 +1,11 @@
 from logging import getLogger
 
 from numpy import einsum, float64, full_like, nan, zeros_like
-from quasar_typing.numpy import FittableFloatMatrix, FittableFloatVector, FloatVector
+from quasar_typing.numpy import (
+    FittableFloatMatrix,
+    FittableFloatVector,
+    FloatVector,
+)
 from quasar_utils.decorators import validate_call
 
 logger = getLogger(__name__)

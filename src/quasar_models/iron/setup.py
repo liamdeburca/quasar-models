@@ -13,7 +13,7 @@ from quasar_models.iron.utils import _get_xlog
 class VestergaardWilkes2001:
     def __init__(self):
         self.info: Info = Info()
-        self.x_bounds: tuple[float, float] = (1000.0, 4000.0)
+        self.x_bounds: tuple[float, float] = (1000.0, 3250.0)
         self.path_to_data: Path = PATH_TO_DATA / "Fe_UVtmplt_A_im.fits"
 
         self.template: IronTemplate | None = None
@@ -39,11 +39,11 @@ class VestergaardWilkes2001:
                 fwhm[int(elems[0]) - 1] = float(elems[1])
 
             # Adjust units to fit data
-            self.info.units["wavelength_unit"] = Unit("1 angstrom")
-            self.info.units["velocity_unit"] = Unit("1 km/s")
+            self.info.units.wavelength_unit = Unit("1 angstrom")
+            self.info.units.velocity_unit = Unit("1 km/s")
 
             self.template = IronTemplate(
-                fwhm=self.info.units.getC(fwhm * self.info.units["velocity_unit"]),
+                fwhm=fwhm, # Array already in km/s
                 x=self.info.units.getWavelength(x * self.info.units["wavelength_unit"]),
                 data=data,
                 is_logspace=False,
@@ -57,6 +57,7 @@ class VestergaardWilkes2001:
 
             _template.resample(self.template.fwhm, inplace=True)
             self.template.mimicLogspace(_template, inplace=True)
+            self.template.simplifyData(tol=1e-8, inplace=True)
 
             self.template.save_to_cache(self.info)
 
@@ -90,12 +91,12 @@ class Veron2003:
                 fwhm[int(elems[0]) - 1] = float(elems[1])
 
             # Adjust units to fit data
-            self.info.units["wavelength_unit"] = Unit("1 angstrom")
-            self.info.units["velocity_unit"] = Unit("1 km/s")
+            self.info.units.wavelength_unit = Unit("1 angstrom")
+            self.info.units.velocity_unit = Unit("1 km/s")
 
             self.template = IronTemplate(
-                fwhm=self.info.units.getC(fwhm * self.info.units["velocity_unit"]),
-                x=self.info.units.getWavelength(x * self.info.units["wavelength_unit"]),
+                fwhm=fwhm, # Array already in km/s
+                x=self.info.units.getWavelength(x * self.info.units.wavelength_unit),
                 data=data,
                 is_logspace=False,
                 name="v2003",
@@ -108,6 +109,7 @@ class Veron2003:
             )
             _template.resample(self.template.fwhm, inplace=True)
             self.template.mimicLogspace(_template, inplace=True)
+            self.template.simplifyData(tol=1e-8, inplace=True)
 
             self.template.save_to_cache(self.info)
 
@@ -137,12 +139,12 @@ class BevWills:
         data /= data[0].max()
 
         # Adjust units to fit data
-        self.info.units["wavelength_unit"] = Unit("1 angstrom")
-        self.info.units["velocity_unit"] = Unit("1 km/s")
+        self.info.units.wavelength_unit = Unit("1 angstrom")
+        self.info.units.velocity_unit = Unit("1 km/s")
 
         self.template = IronTemplate(
-            fwhm=self.info.units.getC(fwhm * self.info.units["velocity_unit"]),
-            x=self.info.units.getWavelength(x * self.info.units["wavelength_unit"]),
+            fwhm=fwhm, # Array already in km/s
+            x=self.info.units.getWavelength(x * self.info.units.wavelength_unit),
             data=data,
             is_logspace=False,
             name="bw",
@@ -157,42 +159,15 @@ class BevWills:
         )
         _template.resample(vw2001.fwhm, inplace=True)
         self.template.mimicLogspace(_template, inplace=True)
-        self.template.data /= self.template.data[-1].max()
+        self.template.simplifyData(tol=1e-8, inplace=True)
 
         self.template.save_to_cache(self.info)
 
 
-def main_silent() -> None:
+def main() -> None:
     VestergaardWilkes2001().main()
     Veron2003().main()
     BevWills().main()
-
-
-def main_verbose() -> None:
-    print("Initialising: Vestergaard & Wilkes (2001)...", end="\r")
-    try:
-        VestergaardWilkes2001().main()
-        print("Initialising: Vestergaard & Wilkes (2001)... Success!")
-    except Exception:
-        print("Initialising: Vestergaard & Wilkes (2001)... Failed!")
-
-    print("Initialising: Veron et al. (2003)...", end="\r")
-    try:
-        Veron2003().main()
-        print("Initialising: Veron et al. (2003)... Success!")
-    except Exception:
-        print("Initialising: Veron et al. (2003)... Failed!")
-
-    print("Initialising: BevWills...", end="\r")
-    try:
-        BevWills().main()
-        print("Initialising: BevWills... Success!")
-    except Exception:
-        print("Initialising: BevWills... Failed!")
-
-
-def main(silent: bool = False) -> None:
-    (main_silent if silent else main_verbose)()
 
 
 def plot() -> None:
@@ -203,16 +178,13 @@ def plot() -> None:
     from matplotlib.cm import rainbow as cmap
     from matplotlib.colors import Normalize
 
-    def transform(fwhm):
-        return info.units.getC(fwhm).to("1e3km/s").value
-
     vw_2001 = IronTemplate.load_from_cache(name="vw2001", info=info)
     v_2003 = IronTemplate.load_from_cache(name="v2003", info=info)
     bw = IronTemplate.load_from_cache(name="bw", info=info)
 
     norm = Normalize(
-        vmin=transform(vw_2001.fwhm[0]),
-        vmax=transform(vw_2001.fwhm[-1]),
+        vmin=vw_2001.fwhm[0] / 1e3,
+        vmax=vw_2001.fwhm[-1] / 1e3,
     )
     scalmap = ScalarMappable(norm=norm, cmap=cmap)
 
@@ -226,7 +198,7 @@ def plot() -> None:
     t = vw_2001
     ax.text(0.95, 0.95, t.name, ha="right", va="top", transform=ax.transAxes)
 
-    for y, fwhm in zip(t.data[sel], transform(t.fwhm[sel])):
+    for y, fwhm in zip(t.data[sel], t.fwhm[sel] / 1e3):
         ax.fill_between(
             t.x,
             y / t.normalisation,
@@ -239,7 +211,7 @@ def plot() -> None:
     t = v_2003
     ax.text(0.95, 0.95, t.name, ha="right", va="top", transform=ax.transAxes)
 
-    for y, fwhm in zip(t.data[sel], transform(t.fwhm[sel])):
+    for y, fwhm in zip(t.data[sel], t.fwhm[sel] / 1e3):
         ax.fill_between(
             t.x,
             y / t.normalisation,
@@ -252,7 +224,7 @@ def plot() -> None:
     t = bw
     ax.text(0.95, 0.95, t.name, ha="right", va="top", transform=ax.transAxes)
 
-    for y, fwhm in zip(t.data[sel], transform(t.fwhm[sel])):
+    for y, fwhm in zip(t.data[sel], t.fwhm[sel] / 1e3):
         ax.fill_between(
             t.x,
             y / t.normalisation,
@@ -292,6 +264,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    main(silent=True)
+    main()
     if args.plot:
         plot()

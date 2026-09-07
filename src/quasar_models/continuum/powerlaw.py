@@ -1,3 +1,16 @@
+"""Power-law continuum model.
+
+This module provides a small Astropy-style model wrapper around a
+performance-oriented power-law implementation in
+``quasar_models._core.modeling.powerlaw``. The public class
+``PowerLawModel`` exposes parameters ``flux`` and ``alpha`` and helpers to
+transform to/from log-space, evaluate the model, compute derivatives used by
+fitting routines and construct models from linearised fits.
+
+The implementation keeps changes minimal and delegates heavy numeric work to
+the compiled core module.
+"""
+
 from collections.abc import Callable
 from logging import getLogger
 from typing import ClassVar, Literal, Self
@@ -6,6 +19,8 @@ from astropy.modeling import Parameter
 from numpy import exp, float64, log
 from numpy.typing import NDArray
 from pydantic_core import ValidationError
+from quasar_typing.bounds import AstropyBounds
+from quasar_typing.errors import OutsideBoundsError
 from quasar_typing.numpy import FloatMatrix, FloatVector
 from quasar_utils.decorators import validate_call
 
@@ -19,13 +34,100 @@ from quasar_models._core.modeling.powerlaw import (
     inverse,
 )
 from quasar_models.modeling import BaseModel
-from quasar_models.utils.astropy import apply_bounds
-from quasar_models.utils.linear_regression import linreg
+
+from ..utils.astropy import apply_bounds
+from ..utils.linear_regression import linreg
 
 logger = getLogger(__name__)
 
 
+@validate_call
+def perform_linear_regression(
+    x: FloatVector,
+    y: FloatVector,
+    dy: FloatVector,
+    *,
+    x0: float,
+    y0: float,
+    flux_bounds: AstropyBounds,
+    alpha_bounds: AstropyBounds,
+) -> tuple[float, float]:
+    """
+    Performs linear regression. 
+
+    Parameters
+    ----------
+    x : FloatVector
+        The independent variable data.
+    y : FloatVector
+        The dependent variable data.
+    dy : FloatVector
+        The uncertainties in the dependent variable data.
+    x0 : float
+        The reference x value for the power law model.
+    y0 : float
+        The reference y value for the power law model.
+    flux_bounds : AstropyBounds
+        The bounds for the derived flux value.
+    alpha_bounds : AstropyBounds
+        The bounds for the derived alpha value.
+
+    Returns
+    -------
+    flux : float
+        The derived flux value from the linear regression.
+    alpha : float
+        The derived alpha value from the linear regression.
+
+    Raises
+    ------
+    ValidationError
+        If 'x', 'y', or 'dy' are not 1D numpy arrays.
+        If 'flux_bounds' or 'alpha_bounds' are not valid bounds.
+    OutsideBoundsError
+        If the derived flux or alpha values are outside the specified bounds.
+    """
+    res: tuple[float, float] = linreg(x, y, dy)
+
+    flux = y0 * exp(res[0])
+    flux_lb, flux_ub = flux_bounds
+    if flux_lb is not None and flux < flux_lb:
+        msg = f"Derived flux value is below the lower bound: {flux=:.1f}<{flux_lb:.1f}"
+        logger.warning(msg)
+        raise OutsideBoundsError(msg)
+    if flux_ub is not None and flux_ub < flux:
+        msg = f"Derived flux value is above the upper bound: {flux=:.1f}>{flux_ub:.1f}"
+        logger.warning(msg)
+        raise OutsideBoundsError(msg)
+
+    alpha = res[1]
+    alpha_lb, alpha_ub = alpha_bounds
+    if alpha_lb is not None and alpha < alpha_lb:
+        msg = f"Derived alpha value is below the lower bound: {alpha=:.1f}<{alpha_lb:.1f}"
+        logger.warning(msg)
+        raise OutsideBoundsError(msg)
+    if alpha_ub is not None and alpha_ub < alpha:
+        msg = f"Derived alpha value is above the upper bound: {alpha=:.1f}>{alpha_ub:.1f}"
+        logger.warning(msg)
+        raise OutsideBoundsError(msg)
+
+    return flux, alpha
+
 class PowerLawModel(BaseModel):
+    """Power-law continuum model wrapper.
+
+    Parameters
+    ----------
+    flux, alpha : astropy.modeling.Parameter
+        Model parameters. ``flux`` represents the normalisation at ``y0`` and
+        ``alpha`` the power-law slope. Bounds are kept on the parameters and
+        may be overridden on creation.
+
+    Notes
+    -----
+    The class delegates evaluation and derivative calculations to compiled
+    functions from ``quasar_models._core.modeling.powerlaw`` for performance.
+    """
     flux = Parameter(
         default=1.0,
         bounds=(0.0, None),
@@ -47,13 +149,31 @@ class PowerLawModel(BaseModel):
         flux: float,
         alpha: float,
         name: str = "powerlaw",
+
+        flux_bounds: AstropyBounds | None = None,
+        alpha_bounds: AstropyBounds | None = None,
+        flux_fixed: bool | None = None,
+        alpha_fixed: bool | None = None,
     ) -> Self:
-        return PowerLawModel(
+        model = PowerLawModel(
             flux,
             alpha,
             meta={"x0": x0, "y0": y0},
             name=name,
         )
+        if flux_bounds is not None:
+            model.flux.value = apply_bounds.__wrapped__(flux, flux_bounds)
+            model.flux.bounds = flux_bounds
+        if alpha_bounds is not None:
+            model.alpha.value = apply_bounds.__wrapped__(alpha, alpha_bounds)
+            model.alpha.bounds = alpha_bounds
+
+        if flux_fixed is not None:
+            model.flux.fixed = flux_fixed
+        if alpha_fixed is not None:
+            model.alpha.fixed = alpha_fixed
+
+        return model
 
     @property
     def x0(self) -> float:
@@ -71,41 +191,61 @@ class PowerLawModel(BaseModel):
     def y0(self, value: float) -> None:
         self.meta["y0"] = value
 
-    def evaluate(
-        self,
-        x: float | FloatVector,
-        flux: float,
-        alpha: float,
-        y: FloatVector | None = None,
-    ) -> float | FloatVector:
-        return self.evaluate_func(x, flux, alpha, **self._kwargs, y=y)
+    def evaluate(self, x, flux, alpha, y=None):
+        """Evaluate the power-law model.
 
-    def partial_deriv(
-        self,
-        x: FloatVector,
-        flux: float,
-        alpha: float,
-        derivs: FloatMatrix | None = None,
-    ) -> FloatMatrix:
+        Parameters
+        ----------
+        x : array_like
+            Independent variable (wavelength).
+        flux, alpha : float or ndarray
+            Model parameters. If arrays are passed, the first element will be
+            used (this matches the small-wrapper behaviour used elsewhere in
+            the package).
+        y : array_like, optional
+            If provided, the model output is added inplace to this array.
+
+        Returns
+        -------
+        float or ndarray
+            Model value(s) at ``x``.
+        """
+        return self.evaluate_func(
+            x, 
+            *self._transform_args_if_ndarray(flux, alpha), 
+            x0=self.x0, 
+            y=y,
+        )
+
+    def partial_deriv(self, x, flux, alpha, derivs=None):
+        """Compute partial derivatives of the model.
+
+        This returns an iterator (or generator) produced by the chosen
+        ``fit_deriv_func`` implemented in the core module. The method enforces
+        that scalar floats are provided for ``flux`` and ``alpha``.
+        """
         return self.fit_deriv_func(
-            x,
-            flux,
-            alpha,
-            **self._kwargs,
+            x, 
+            *self._transform_args_if_ndarray(flux, alpha),
+            x0=self.x0, 
             derivs=derivs,
         )
 
-    def fit_deriv(
-        self,
-        x: FloatVector,
-        flux: float,
-        alpha: float,
-        derivs: FloatMatrix | None = None,
-    ) -> list[FloatVector]:
+    def fit_deriv(self, x, flux, alpha, derivs=None):
+        """Return derivatives as a list.
+
+        Convenience wrapper around :meth:`partial_deriv` that materialises the
+        returned iterator into a list (useful for callers that require
+        concrete arrays).
+        """
         return list(self.partial_deriv(x, flux, alpha, derivs=derivs))
 
     def inverse(self, y, flux, alpha):
-        return inverse(y, flux, alpha, **self._kwargs, x=None)
+        """Invert the model (solve for x given y).
+
+        Delegates to the core ``inverse`` implementation.
+        """
+        return inverse(y, flux, alpha, x0=self.x0, x=None)
 
     ### Model preparation
 
@@ -139,12 +279,6 @@ class PowerLawModel(BaseModel):
     def _choose_fit_deriv_func(self) -> None:
         self.fit_deriv_func = choose_fit_deriv_func(self.fixed)
 
-    @property
-    def _kwargs(self) -> dict:
-        return {
-            "x0": self.x0,
-        }
-
     # Utilities
 
     @property
@@ -164,6 +298,23 @@ class PowerLawModel(BaseModel):
         dy: float | FloatVector,
         log: bool = False,
     ) -> float | FloatVector:
+        """Compute residuals for data given the model.
+
+        Parameters
+        ----------
+        x, y, dy : float or array-like
+            Data and uncertainties. If ``log`` is True the inputs are expected
+            to already be log-transformed (the helper transform functions will
+            be used to convert values as required).
+        log : bool
+            If True, treat ``x`` and ``y`` as logarithmic values and apply the
+            appropriate transforms before computing residuals.
+
+        Returns
+        -------
+        float or ndarray
+            Residuals (``(y - model)/dy``).
+        """
 
         _x = self.transform_x.__wrapped__(self, x) if log else x
         _y = self.transform_y.__wrapped__(self, y) if log else y
@@ -175,6 +326,11 @@ class PowerLawModel(BaseModel):
 
     @validate_call
     def log(self, x_log: float | FloatVector) -> float | FloatVector:
+        """Evaluate the linearised (log) power-law.
+
+        Returns log(flux/y0) + alpha * x_log which is useful for linear
+        regression based estimation of parameters.
+        """
         return log(self.flux.value / self.y0) + self.alpha.value * x_log
 
     @validate_call
@@ -222,46 +378,67 @@ class PowerLawModel(BaseModel):
     @validate_call
     def from_linear_fit(
         self,
-        x: FloatVector,
-        y: FloatVector,
-        dy: FloatVector,
+        x_log: FloatVector,
+        y_log: FloatVector,
+        dy_log: FloatVector,
     ) -> Self:
+        """Fit this model to data using linear regression.
+        
+        Creates a new PowerLawModel instance from a linear regression fit to the 
+        provided data.
+
+        Parameters
+        ----------
+        x_log : FloatVector
+            Log-wavelength array.
+        y_log : FloatVector
+            Log-flux-density array.
+        dy_log : FloatVector
+            Log-flux-density uncertainty array.
+
+        Raises
+        ------
+        OutsideBoundsError
+            If the derived parameters from linear regression fall outside the 
+            specified bounds.
+        ValidationError
+            If Pydantic validation fails.
+        ValueError
+            If any other unexpected error occurs during linear regression.
+        """
         flux = self.flux.value
         alpha = self.alpha.value
         try:
-            a, b = linreg(
-                self.transform_x.__wrapped__(self, x),
-                self.transform_y.__wrapped__(self, y),
-                self.transform_dy.__wrapped__(self, y, dy),
-            )
-            flux = apply_bounds(self.y0 * exp(a), self.flux.bounds)
-            alpha = apply_bounds(b, self.alpha.bounds)
-            msg = (
-                "Linear regression successful: "
-                f"{a=:.3e}, {b=:.3f} | {flux=:.3e}, {alpha=:.3f}."
-            )
+            flux, alpha = perform_linear_regression.__wrapped__(
+                x_log, y_log, dy_log,
+                x0=self.x0,
+                y0=self.y0,
+                flux_bounds=self.flux.bounds,
+                alpha_bounds=self.alpha.bounds
+            )            
+            msg = f"Linear regression successful: {flux=:.1f}, {alpha=:.1f}."
             logger.debug(msg)
+        except OutsideBoundsError as e:
+            msg = "Outside bounds error during linear regression (nonlinear optimisation recommended)"
+            logger.critical(msg)
+            raise OutsideBoundsError(msg) from e
         except ValidationError as e:
-            msg = f"Linear regression failed due to validation error: {e}"
-            logger.warning(msg)
-        except ValueError as e:
-            msg = f"Linear regression failed due to value error: {e}"
-            logger.warning(msg)
+            msg = "Validation error during linear regression"
+            logger.critical(msg)
+            raise ValidationError(msg) from e
         except Exception as e:
-            msg = f"Linear regression failed due to unexpected error: {e}"
-            logger.warning(msg)
+            msg = f"Linear regression failed due to {type(e).__name__}: {e}"
+            logger.critical(msg)
+            raise ValueError(msg) from e
 
-        model = PowerLawModel.create(
+        return PowerLawModel.create(
             self.x0,
             self.y0,
-            flux,
-            alpha,
+            flux, alpha, 
             name=self.name,
+            flux_bounds=self.flux.bounds,
+            alpha_bounds=self.alpha.bounds,
         )
-        model.flux.bounds = self.flux.bounds
-        model.alpha.bounds = self.alpha.bounds
-
-        return model
 
     @validate_call
     def bootstrap(
@@ -299,7 +476,7 @@ class PowerLawModel(BaseModel):
         self,
     ) -> Callable[[float | NDArray[float64]], float | NDArray[float64]]:
         """
-        Returns function equavalent to f(...) = 1 / self.evaluate(...)
+        Returns function equivalent to f(...) = 1 / self.evaluate(...)
         """
         x0 = self.x0
         flux = self.flux.value

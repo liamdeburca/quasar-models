@@ -9,26 +9,27 @@ from libc.math cimport (
 cdef double GAUSS_AMP = 1 / math_sqrt(2 * math_pi)
 cdef double SIGMA_TO_FWHM = 2 * math_sqrt(2 * math_log(2))
 cdef double FWHM_TO_SIGMA = 1 / SIGMA_TO_FWHM
+cdef double C_KMS = 299792.458  # Speed of light in km/s
 
 ###
 
 cdef inline void _evaluate_v(
     double[::1] y,
     const double[::1] x,
-    const double strength,
-    const double fwhm_v,
-    const double v_off,
-    const double wave,
-    const double sigma_res,
+    const double strength,  # unitless
+    const double fwhm_v,    # km/s
+    const double v_off,     # km/s
+    const double wave,      # unitless
+    const double sigma_res, # c
 ) noexcept nogil:
     """
     Inplace evaluation of a Gaussian function.
     """
-    cdef double sigma_v = fwhm_v * FWHM_TO_SIGMA
-    cdef double mean = wave * (1 + v_off)
-    cdef double inv_sigma = 1 / (mean * math_hypot(sigma_v, sigma_res))
+    cdef double sigma_v_c = fwhm_v * FWHM_TO_SIGMA / C_KMS
+    cdef double mean = wave * (1.0 + v_off / C_KMS)         
+    cdef double inv_sigma = 1.0 / (mean * math_hypot(sigma_v_c, sigma_res)) 
     cdef double norm = strength * GAUSS_AMP * inv_sigma
-
+    
     cdef double z
     cdef Py_ssize_t i, n = x.shape[0]
     for i in range(n):
@@ -63,9 +64,9 @@ cdef inline void _prime_v(
     """
     Inplace evaluation of the derivative of a Gaussian function.
     """
-    cdef double sigma_v = fwhm_v * FWHM_TO_SIGMA
-    cdef double mean = wave * (1 + v_off)
-    cdef double inv_sigma = 1 / (mean * math_hypot(sigma_v, sigma_res))
+    cdef double sigma_v_c = fwhm_v * FWHM_TO_SIGMA / C_KMS
+    cdef double mean = wave * (1.0 + v_off / C_KMS)
+    cdef double inv_sigma = 1.0 / (mean * math_hypot(sigma_v_c, sigma_res))
     cdef double norm = strength * GAUSS_AMP * inv_sigma
 
     cdef double z

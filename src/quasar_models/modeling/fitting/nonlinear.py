@@ -4,22 +4,30 @@ Fitter class designed for 'SequentialModel' instances.
 __all__ = ["Fitter"]
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import field
+from logging import getLogger
+from time import perf_counter
 from typing import Any, Literal, Union
 from warnings import warn
 
 from astropy.modeling import CompoundModel
 from numpy import float64, ones
 from numpy.typing import NDArray
-from scipy.optimize import OptimizeResult, least_squares
+from pydantic.dataclasses import dataclass
+from quasar_typing.numpy import FloatVector
+from quasar_typing.scipy import OptimizeResult_
+from scipy.optimize import least_squares
 
-from quasar_models.modeling import BaseModel, SequentialModel
+from ..base_model import BaseModel
+from ..sequential_model import SequentialModel
+
+logger = getLogger(__name__)
 
 
 @dataclass
 class Fitter:
-    fit_info: OptimizeResult | None = field(default=None, init=False)
-    sol: NDArray[float64] | None = field(default=None, init=False)
+    fit_info: OptimizeResult_ | None = field(default=None, init=False)
+    sol: FloatVector | None = field(default=None, init=False)
 
     def __call__(
         self,
@@ -39,7 +47,7 @@ class Fitter:
         loss: str | Callable = "linear",
         f_scale: float = 1.0,
         max_nfev: int | None = None,
-    ) -> Union[BaseModel, CompoundModel] | None:
+    ) -> Union[BaseModel, CompoundModel, None]:
         """
         Wrapper for `scipy.optimize.least_squares`.
 
@@ -95,7 +103,8 @@ class Fitter:
         else:
             data["w"] = 1.0 / dy
 
-        self.fit_info = least_squares(
+        t_start = perf_counter()
+        res = least_squares(
             model.fun,
             model.x0,
             jac=model.jac,
@@ -111,10 +120,46 @@ class Fitter:
             f_scale=f_scale,
             max_nfev=max_nfev,
         )
+        t_elapsed: float = (perf_counter() - t_start) * 1e3
+        # except ValueError as e:
+        #     msg = "Fitting failed due to ValueError: "
+
+        #     bad_indices = []
+        #     for i, (val, lb, ub) in enumerate(zip(model.x0, model.bounds[0], model.bounds[1])):
+        #         if val < lb or val > ub:
+        #             bad_indices.append(i)
+
+        #     if bad_indices:
+        #         msg += f"found {len(bad_indices)} parameter(s) outside of bounds:"
+        #         for i in bad_indices:
+        #             param = model._free_params[i]
+        #             name = param.name
+        #             val = param.value
+        #             lb = param.bounds[0]
+        #             ub = param.bounds[1]
+        #             msg += f"\nParameter({name}): {val=} < {lb=}, {val=} > {ub=}; "
+        #     raise ValueError(msg) from e
+
+        self.fit_info = OptimizeResult_.fromFitInfo(res)
         self.sol = model._get_full_parameter_array(self.fit_info.x)
 
+        chi2n = self.fit_info.reduced_chi2
+        n_lb = self.fit_info.n_lb
+        n_ub = self.fit_info.n_ub
+        nfev = self.fit_info.nfev
+        status = self.fit_info.status
+        message = self.fit_info.message
+
+        if self.fit_info.success:
+            msg = f"OptimizeResult [SUCCESS ({status})]: "
+            log = logger.debug
+        else:
+            msg = f"OptimizeResult [FAILURE ({status})]: "
+            log = logger.info
+        log(msg + f"chi2/dof={chi2n:.1f}, {nfev=}/{max_nfev}, {n_lb=}, {n_ub=}, {message=}, {t_elapsed=:.1f} ms")
+
         if get_model:
-            if not isinstance(inplace, bool):
+            if inplace is None:
                 msg = "'inplace' must be specified when 'get_model' is True."
                 raise ValueError(msg)
             
@@ -122,6 +167,6 @@ class Fitter:
                 params=self.fit_info.x,
                 copy=not inplace,
             )
-        elif isinstance(inplace, bool):
+        elif inplace is not None:
             msg = "'inplace' should only be specified when 'get_model' is True."
             warn(msg, UserWarning)

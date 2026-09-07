@@ -9,15 +9,17 @@ __all__ = ["SH1995"]
 
 from itertools import product
 from pathlib import Path
+from typing import ClassVar
 
-from astropy.constants import c
 from astropy.units import Unit
 from numpy import arange, isin, log, unique
 from pandas import DataFrame, read_csv
 from quasar_typing.numpy import FloatVector
 from quasar_utils.setup import Info
 
-from quasar_models.balmer.series.balmer_series_template import BalmerSeriesTemplate
+from quasar_models.balmer.series.balmer_series_template import (
+    BalmerSeriesTemplate,
+)
 from quasar_models.balmer.series.io import PATH_TO_CACHE, PATH_TO_DATA
 
 
@@ -25,14 +27,14 @@ class SH1995:
     name: str = "sh1995"
     path_to_csv: Path = PATH_TO_DATA / "sh1995.csv"
 
-    temp_range: list[float] = [
+    temp_range: ClassVar[list[float]] = [
         10_000.0,
         12_500.0,
         15_000.0,
         20_000.0,
         30_000.0,
     ]
-    dens_range: list[float] = [
+    dens_range: ClassVar[list[float]] = [
         1e9,
     ]
 
@@ -44,7 +46,7 @@ class SH1995:
         )
         self.info: Info = Info()
 
-        self.fwhm: FloatVector = arange(1000, 20_000 + 1, 250) / c.to("km/s").value
+        self.fwhm: FloatVector = arange(1000, 20_000 + 1, 250)
 
         x0, x1 = self.info.units.getWavelength([1000, 4500] * Unit("angstrom"))
         n = int(log(x1 / x0) / log(1 + self.info.loading.sigma_res)) + 1
@@ -56,8 +58,6 @@ class SH1995:
         self.__post_init__()
 
     def __post_init__(self):
-        PATH_TO_CACHE.mkdir(exist_ok=True)
-
         assert isin(self.temp_range, self._temp).all()
         assert isin(self.dens_range, self._dens).all()
 
@@ -78,8 +78,7 @@ class SH1995:
             self.data.loc[mask, "wave"].values * Unit("angstrom")
         )
         weights = self.data.loc[mask, "val"].values
-        weights /= weights.sum()
-
+        weights = weights / weights.sum()
         return waves, weights
 
     def get_template(
@@ -94,6 +93,7 @@ class SH1995:
             dens=dens,
             n_u_range=n_u_range,
         )
+
         template = BalmerSeriesTemplate.instantiate(
             self.fwhm,
             self.x,
@@ -110,15 +110,20 @@ class SH1995:
             normalisation=None,
             name=self.name,
         )
-        return template.normalise(inplace=True)
+        template.normalise(inplace=True)
+        return template
 
-    def main(self) -> None:
+    def main(self) -> list[BalmerSeriesTemplate]:
+        templates = []
         for temp, dens in product(self.temp_range, self.dens_range):
-            _ = self.get_template(
+            template = self.get_template(
                 temp=temp,
                 dens=dens,
                 n_u_range=self.n_u_range,
-            ).save_to_cache(self.info)
+            )
+            template.save_to_cache(self.info)
+            templates.append(template)
+        return templates
 
 
 def main() -> None:
@@ -131,20 +136,18 @@ def plot() -> None:
     from matplotlib.cm import rainbow as cmap
     from matplotlib.colors import Normalize
 
+
     sh1995 = SH1995()
     info = sh1995.info
 
-    def transform(fwhm):
-        return info.units.getC(fwhm).to("km/s").value / 1e3
-
-    norm = Normalize(vmin=transform(sh1995.fwhm[0]), vmax=transform(sh1995.fwhm[-1]))
+    norm = Normalize(vmin=sh1995.fwhm[0] / 1e3, vmax=sh1995.fwhm[-1] / 1e3)
     scalmap = ScalarMappable(norm=norm, cmap=cmap)
     sel = slice(None, None, 10)
 
+    # for template in true_templates:
     for path in PATH_TO_CACHE.glob("series*.fits"):
         template = BalmerSeriesTemplate.load(path=path, info=info)
-
-        fig, ax = plt.subplots(dpi=300, figsize=(8, 4))
+        _, ax = plt.subplots(dpi=300, figsize=(8, 4))
         ax.set_title(path.stem, loc="left")
 
         for y, fwhm in zip(template.data[sel], template.fwhm[sel]):
@@ -153,7 +156,7 @@ def plot() -> None:
                 y,
                 template.data[-1],
                 step="mid",
-                color=scalmap.to_rgba(transform(fwhm)),
+                color=scalmap.to_rgba(fwhm / 1e3),
             )
 
         ax.set_xlabel(

@@ -3,6 +3,7 @@ from libc.math cimport (
 )
 from numpy import (
     ascontiguousarray as np_ascontiguousarray,
+    asarray as np_asarray,
     zeros as np_zeros,
     float64 as np_float64,
 )
@@ -58,8 +59,23 @@ cdef class CyTemplate:
         self.data = data
         self.sigma_res = sigma_res
 
+    def __reduce__(self):
+        """Return state for pickling using a factory function."""
+        return (
+            _cytemplate_unpickle,
+            (
+                np_asarray(self.fwhm, dtype=np_float64, order="C"),
+                np_asarray(self.x, dtype=np_float64, order="C"),
+                np_asarray(self.data, dtype=np_float64, order="C"),
+                self.sigma_res,
+            ),
+        )
+
     @staticmethod
-    def fromTemplate(object python_template):
+    def fromTemplate(
+        object python_template,
+        bool simplify,
+    ):
         """
         Factory method to create CyTemplate from a Python template object.
         
@@ -68,16 +84,28 @@ cdef class CyTemplate:
         python_template : BaseTemplate
             A template instance with fwhm, x, data, sigma_res, 
             and normalisation attributes.
+        simplify : bool
+            Whether to simplify the template by constructing a CyTemplate using 
+            only the smallest fwhm value. 
         
         Returns
         -------
         CyTemplate
             A new CyTemplate instance with cached memoryviews.
         """
+        if simplify:
+            fwhm = python_template.fwhm[:1]
+            x = python_template.x
+            data = python_template.data[:1,:]
+        else:
+            fwhm = python_template.fwhm
+            x = python_template.x
+            data = python_template.data
+        
         return CyTemplate(
-            np_ascontiguousarray(python_template.fwhm),
-            np_ascontiguousarray(python_template.x),
-            np_ascontiguousarray(python_template.data / python_template.normalisation),
+            np_ascontiguousarray(fwhm),
+            np_ascontiguousarray(x),
+            np_ascontiguousarray(data / python_template.normalisation),
             python_template.sigma_res,
         )
 
@@ -347,3 +375,13 @@ cdef class CyTemplate:
                 flux, fwhm, split, left, right, scale, n_scales,
                 indices,
             )
+
+
+def _cytemplate_unpickle(fwhm, x, data, sigma_res):
+    """Factory function for unpickling CyTemplate objects."""
+    return CyTemplate(
+        np_ascontiguousarray(fwhm, dtype=np_float64),
+        np_ascontiguousarray(x, dtype=np_float64),
+        np_ascontiguousarray(data, dtype=np_float64),
+        sigma_res,
+    )

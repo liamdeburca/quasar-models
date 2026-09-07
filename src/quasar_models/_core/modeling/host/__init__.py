@@ -46,20 +46,44 @@ def choose_fit_deriv_func(
             return does_nothing
 
 
-### By CONVOLUTION
+### By CONVOLUTION: Simplify template
 
-evaluate_exact = HostGalaxyEvaluate("evaluate_exact")
+evaluate_exact = HostGalaxyEvaluate(
+    "evaluate_exact",
+    simplify=True,
+)
 
-fit_deriv_exact_only_flux = HostGalaxyFitDeriv("fit_deriv_exact_only_flux")
-fit_deriv_exact_only_fwhm = HostGalaxyFitDeriv("fit_deriv_exact_only_fwhm")
-fit_deriv_exact_all = HostGalaxyFitDeriv("fit_deriv_exact_all")
+fit_deriv_exact_only_flux = HostGalaxyFitDeriv(
+    "fit_deriv_exact_only_flux", 
+    simplify=True,
+)
+fit_deriv_exact_only_fwhm = HostGalaxyFitDeriv(
+    "fit_deriv_exact_only_fwhm",
+    simplify=True,
+)
+fit_deriv_exact_all = HostGalaxyFitDeriv(
+    "fit_deriv_exact_all",
+    simplify=True,
+)
 
-### By INTERPOLATION
+### By INTERPOLATION: No simplification
 
-evaluate_interp = HostGalaxyEvaluate("evaluate_interp")
+evaluate_interp = HostGalaxyEvaluate(
+    "evaluate_interp",
+    simplify=False,
+)
 
-fit_deriv_interp_only_flux = HostGalaxyFitDeriv("fit_deriv_interp_only_flux")
-fit_deriv_interp_only_fwhm = HostGalaxyFitDeriv("fit_deriv_interp_only_fwhm")
-fit_deriv_interp_all = HostGalaxyFitDeriv("fit_deriv_interp_all")
+fit_deriv_interp_only_flux = HostGalaxyFitDeriv(
+    "fit_deriv_interp_only_flux",
+    simplify=False,
+)
+fit_deriv_interp_only_fwhm = HostGalaxyFitDeriv(
+    "fit_deriv_interp_only_fwhm",
+    simplify=False,
+)
+fit_deriv_interp_all = HostGalaxyFitDeriv(
+    "fit_deriv_interp_all",
+    simplify=False,
+)
 
 does_nothing = HostGalaxyFitDeriv()

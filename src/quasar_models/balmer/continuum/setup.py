@@ -3,8 +3,8 @@ This script contains utilities for setting up various Balmer continuum templates
 """
 
 from itertools import product
+from typing import ClassVar
 
-from astropy.constants import c
 from astropy.units import Unit
 from numpy import arange, log
 from quasar_typing.numpy import FloatVector
@@ -19,33 +19,28 @@ from quasar_models.balmer.continuum.io import PATH_TO_CACHE
 class QSFit:
     name: str = "qsfit"
 
-    temp_range: list[float] = [
+    temp_range: ClassVar[list[float]] = [
         10_000.0,
         12_500.0,
         15_000.0,
         20_000.0,
         30_000.0,
     ]
-    tau_range: list[float] = [
+    tau_range: ClassVar[list[float]] = [
         1.0,
     ]
-    scale_range: list[float] = [
+    scale_range: ClassVar[list[float]] = [
         3.0,
     ]
 
     def __init__(self):
         self.info: Info = Info()
 
-        self.fwhm: FloatVector = arange(1000, 20_000 + 1, 250) / c.to("km/s").value
+        self.fwhm: FloatVector = arange(1000, 20_000 + 1, 250)
 
         x0, x1 = self.info.units.getWavelength([1000, 4500] * Unit("angstrom"))
         n = int(log(x1 / x0) / log(1 + self.info.loading.sigma_res)) + 1
         self.x: FloatVector = x0 * (1 + self.info.loading.sigma_res) ** arange(n + 1)
-
-        self.__post_init__()
-
-    def __post_init__(self):
-        PATH_TO_CACHE.mkdir(exist_ok=True)
 
     def get_template(
         self,
@@ -95,17 +90,14 @@ def plot() -> None:
     sh1995 = QSFit()
     info = sh1995.info
 
-    def transform(fwhm):
-        return info.units.getC(fwhm).to("km/s").value / 1e3
-
-    norm = Normalize(vmin=transform(sh1995.fwhm[0]), vmax=transform(sh1995.fwhm[-1]))
+    norm = Normalize(vmin=sh1995.fwhm[0] / 1e3, vmax=sh1995.fwhm[-1] / 1e3)
     scalmap = ScalarMappable(norm=norm, cmap=cmap)
     sel = slice(None, None, 10)
 
     for path in PATH_TO_CACHE.glob("continuum*.fits"):
         template = BalmerContinuumTemplate.load(path=path, info=info)
 
-        fig, ax = plt.subplots(dpi=300, figsize=(8, 4))
+        _, ax = plt.subplots(dpi=300, figsize=(8, 4))
         ax.set_title(path.stem, loc="left")
 
         for y, fwhm in zip(template.data[sel], template.fwhm[sel]):
@@ -114,7 +106,7 @@ def plot() -> None:
                 y,
                 template.data[-1],
                 step="mid",
-                color=scalmap.to_rgba(transform(fwhm)),
+                color=scalmap.to_rgba(fwhm / 1e3),
             )
 
         ax.set_xlabel(
