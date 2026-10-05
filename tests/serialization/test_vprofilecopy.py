@@ -3,7 +3,7 @@ from pathlib import Path
 
 from quasar_utils.setup import Info
 
-from quasar_models import VProfileCopy1G
+from quasar_models.line import VProfileCopy1G
 
 
 def test_serialize(v_profile_copy: VProfileCopy1G, info: Info, temp_dir: Path):
