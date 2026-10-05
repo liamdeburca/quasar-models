@@ -117,6 +117,7 @@ def v_profile_copy(gaussian_model: GaussianModel) -> VProfileCopy1G:
     return VProfileCopy1G.from_model(
         6584.0,
         "test_gaussian_copy",
+        "n",
         gaussian_model,
         strength_scale_value=3.0,
         strength_scale_bounds=(2.0, 4.0),

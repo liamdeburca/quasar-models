@@ -22,6 +22,12 @@ from quasar_models.line.gaussian import GaussianModel
 from quasar_models.modeling import BaseModel, LinearTie
 
 from ...utils.astropy import apply_bounds
+from ...utils.serialization import (
+    deserialize_parameter,
+    deserialize_quantity,
+    serialize_parameter,
+    serialize_quantity,
+)
 
 C_KMS: float = c.to("km/s").value  # Exact speed of light in km/s
 
@@ -495,8 +501,97 @@ class _VProfileCopy(BaseModel):
     ### Serialization
 
     def serialize(self, info: Info) -> dict[str, dict[str, Any]]:
-        return {}
+        # Follow GaussianModel's serialization scheme but handle multiple
+        # profile parameters based on cls.n_profiles.
+        wave_unit = str(info.units.wavelength_unit)
+        strength_unit = str(info.units.strength_unit)
+        kms_unit = "km/s"
+
+        data: dict[str, Any] = {
+            "wave": serialize_quantity(self.wave, wave_unit),
+            "linetype": self.linetype,
+            "n_sigmas": self.n_sigmas,
+            # Meta fields necessary to reconstruct the object without
+            # reference Gaussians
+            "sigma_res": self.sigma_res,
+            "master_name": self.master_name,
+            "dx": self.dx,
+            "strength_scale": serialize_parameter(self.strength_scale, None),
+        }
+
+        # Per-profile parameters
+        for i in range(1, self.n_profiles + 1):
+            data[f"strength_{i}"] = serialize_parameter(
+                getattr(self, f"strength_{i}"), strength_unit
+            )
+            data[f"fwhm_v_{i}"] = serialize_parameter(
+                getattr(self, f"fwhm_v_{i}"), None
+            )
+            data[f"v_off_{i}"] = serialize_parameter(
+                getattr(self, f"v_off_{i}"), None
+            )
+
+        return {f"{self.__class__.__name__}::{self.name}": data}
 
     @classmethod
     def deserialize(cls, data: dict[str, Any], name: str, info: Info) -> Self:
-        pass
+        # Expect the inner data dict (not the outer wrapper)
+        wave_unit = str(info.units.wavelength_unit)
+        strength_unit = str(info.units.strength_unit)
+
+        wave = deserialize_quantity(data["wave"], wave_unit)
+        linetype = data["linetype"]
+        n_sigmas = data.get("n_sigmas")
+
+        sigma_res = data.get("sigma_res")
+        master_name = data.get("master_name")
+        dx = data.get("dx")
+
+        strength_scale_ser = deserialize_parameter(data["strength_scale"], None)
+
+        # Build metadata required by create when no source Gaussians are
+        # available (len(gs) == 0 branch).
+        meta = cls._get_metadata(
+            wave,
+            name,
+            linetype,
+            sigma_res=sigma_res,
+            master_name=master_name,
+            n_sigmas=n_sigmas,
+            dx=dx,
+        )
+
+        # Instantiate the object and populate parameters
+        model = cls(
+            strength_scale_ser["value"],
+            name=name,
+            meta=meta,
+        )
+
+        # Restore bounds/fixed/tied for strength_scale
+        model.strength_scale.bounds = strength_scale_ser["bounds"]
+        model.strength_scale.fixed = strength_scale_ser["fixed"]
+        model.strength_scale.tied = strength_scale_ser["tied"]
+
+        # Per-profile parameters
+        for i in range(1, cls.n_profiles + 1):
+            s = deserialize_parameter(data[f"strength_{i}"], strength_unit)
+            f = deserialize_parameter(data[f"fwhm_v_{i}"], None)
+            v = deserialize_parameter(data[f"v_off_{i}"], None)
+
+            getattr(model, f"strength_{i}").value = s["value"]
+            getattr(model, f"strength_{i}").bounds = s["bounds"]
+            getattr(model, f"strength_{i}").fixed = s["fixed"]
+            getattr(model, f"strength_{i}").tied = s["tied"]
+
+            getattr(model, f"fwhm_v_{i}").value = f["value"]
+            getattr(model, f"fwhm_v_{i}").bounds = f["bounds"]
+            getattr(model, f"fwhm_v_{i}").fixed = f["fixed"]
+            getattr(model, f"fwhm_v_{i}").tied = f["tied"]
+
+            getattr(model, f"v_off_{i}").value = v["value"]
+            getattr(model, f"v_off_{i}").bounds = v["bounds"]
+            getattr(model, f"v_off_{i}").fixed = v["fixed"]
+            getattr(model, f"v_off_{i}").tied = v["tied"]
+
+        return model

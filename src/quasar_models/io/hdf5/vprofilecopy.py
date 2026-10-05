@@ -3,12 +3,12 @@ from h5py import File, Group, string_dtype
 from numpy import dtype, float32
 from quasar_utils.setup import Info
 
-from ...line import GaussianModel
+from ...line import VProfileCopy, VProfileCopyDict
 from .utils import hdf5_to_model, hdf5_to_models, model_to_hdf5, models_to_hdf5
 
 
-def gaussian_to_hdf5(
-    model: GaussianModel, 
+def vprofilecopy_to_hdf5(
+    model: VProfileCopy, 
     f: File | Group,
     info: Info,
     group_name: str | None = None,
@@ -17,11 +17,12 @@ def gaussian_to_hdf5(
     compression: str | None = None,
     compression_opts: int | None = None,
 ) -> Group:
-    unit_map: dict[str, str] = {
-        "strength": str(info.units.strength_unit),
-        "fwhm_v": "km/s",
-        "v_off": "km/s",
-    }
+    unit_map: dict[str, str] = {}
+    for i in range(model.n_profiles):
+        unit_map[f"strength_{i+1}"] = str(info.units.strength_unit)
+        unit_map[f"fwhm_v_{i+1}"] = "km/s"
+        unit_map[f"v_off_{i+1}"] = "km/s"
+
     grp = model_to_hdf5(
         model,
         f,
@@ -38,10 +39,11 @@ def gaussian_to_hdf5(
     grp.attrs["wave"] = float(model.wave)
     grp.attrs["linetype"] = model.linetype
     grp.attrs["wavelength_unit"] = str(info.units.wavelength_unit)
+    grp.attrs["n_profiles"] = model.n_profiles
     return grp
 
-def gaussians_to_hdf5(
-    models: list[GaussianModel], 
+def vprofilecopies_to_hdf5(
+    models: list[VProfileCopy], 
     f: File | Group,
     info: Info,
     group_name: str = "gaussians",
@@ -50,11 +52,12 @@ def gaussians_to_hdf5(
     compression: str | None = None,
     compression_opts: int | None = None,   
 ) -> Group:
-    unit_map: dict[str, str] = {
-        "strength": str(info.units.strength_unit),
-        "fwhm_v": "km/s",
-        "v_off": "km/s",
-    }
+    unit_map: dict[str, str] = {}
+    for i in range(models[0].n_profiles):
+        unit_map[f"strength_{i+1}"] = str(info.units.strength_unit)
+        unit_map[f"fwhm_v_{i+1}"] = "km/s"
+        unit_map[f"v_off_{i+1}"] = "km/s"
+
     grp = models_to_hdf5(
         models,
         f,
@@ -83,25 +86,24 @@ def gaussians_to_hdf5(
         compression_opts=compression_opts,
     )
     grp.attrs["wavelength_unit"] = str(info.units.wavelength_unit)
+    grp.attrs["n_profiles"] = models[0].n_profiles
+
     return grp
 
-###
-
-def hdf5_to_gaussian(
+def hdf5_to_vprofilecopy(
     grp: Group,
     info: Info,
-) -> GaussianModel:
-    model = GaussianModel()
-    unit_map: dict[str, str] = {
-        "strength": str(info.units.strength_unit),
-        "fwhm_v": "km/s",
-        "v_off": "km/s",
-    }
-    hdf5_to_model(
-        model,
-        grp,
-        unit_map=unit_map,
-    )
+) -> VProfileCopy:
+    n_profiles = grp.attrs["n_profiles"]
+    model = VProfileCopyDict[n_profiles]()
+
+    unit_map: dict[str, str] = {}
+    for i in range(n_profiles):
+        unit_map[f"strength_{i+1}"] = str(info.units.strength_unit)
+        unit_map[f"fwhm_v_{i+1}"] = "km/s"
+        unit_map[f"v_off_{i+1}"] = "km/s"
+
+    hdf5_to_model(model, grp, unit_map=unit_map)
     # Read metadata stored as explicit attributes
     model.wave = (
         grp.attrs["wave"] * Unit(grp.attrs["wavelength_unit"])
@@ -111,18 +113,21 @@ def hdf5_to_gaussian(
     model.n_sigmas = 3.0
     return model
 
-def hdf5_to_gaussians(
+def hdf5_to_vprofilecopies(
     grp: Group,
     info: Info,
-) -> list[GaussianModel]:
-    unit_map: dict[str, str] = {
-        "strength": str(info.units.strength_unit),
-        "fwhm_v": "km/s",
-        "v_off": "km/s",
-    }
+) -> list[VProfileCopy]:
+    n_profiles = grp.attrs["n_profiles"]
+    _cls = VProfileCopyDict[n_profiles]
+
+    unit_map: dict[str, str] = {}
+    for i in range(n_profiles):
+        unit_map[f"strength_{i+1}"] = str(info.units.strength_unit)
+        unit_map[f"fwhm_v_{i+1}"] = "km/s"
+        unit_map[f"v_off_{i+1}"] = "km/s"
     
     n_models = grp.attrs["n_models"]
-    models = [GaussianModel() for _ in range(n_models)]
+    models = [_cls() for _ in range(n_models)]
     waves = grp["waves"][()]
     linetypes = grp["linetypes"].asstr()[()]
 
