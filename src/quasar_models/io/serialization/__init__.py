@@ -15,6 +15,7 @@ from .templates import (
     deserialize_balmer_series_template,
 )
 from .compound import serialize_compound_model, deserialize_compound_model
+from ..json import write_model_json, read_model_json
 
 __all__ = [
     "serialize_gaussian",
@@ -39,4 +40,6 @@ __all__ = [
     "deserialize_balmer_series_template",
     "serialize_compound_model",
     "deserialize_compound_model",
+    "write_model_json",
+    "read_model_json",
 ]
