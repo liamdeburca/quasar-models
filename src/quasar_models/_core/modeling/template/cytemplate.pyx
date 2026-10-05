@@ -74,7 +74,7 @@ cdef class CyTemplate:
     @staticmethod
     def fromTemplate(
         object python_template,
-        bool simplify,
+        int simplify,
     ):
         """
         Factory method to create CyTemplate from a Python template object.
@@ -84,7 +84,7 @@ cdef class CyTemplate:
         python_template : BaseTemplate
             A template instance with fwhm, x, data, sigma_res, 
             and normalisation attributes.
-        simplify : bool
+        simplify : int
             Whether to simplify the template by constructing a CyTemplate using 
             only the smallest fwhm value. 
         

@@ -1,7 +1,7 @@
 __all__ = ["IronTemplate"]
 
 from dataclasses import field
-from typing import ClassVar, Literal, Self
+from typing import Any, ClassVar, Literal, Self
 
 from numpy import searchsorted
 from pydantic.dataclasses import dataclass

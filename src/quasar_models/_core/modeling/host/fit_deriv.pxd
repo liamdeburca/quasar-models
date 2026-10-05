@@ -51,3 +51,13 @@ cdef void _fit_deriv_interp_all(
     CyTemplate cytemplate,
     const double n_scales,
 )
+
+### By RESCALING
+
+cdef void _fit_deriv_rescale_only_flux(
+    double[:,::1] derivs,
+    const double flux,
+    const double fwhm,
+    CyTemplate cytemplate,
+    const double n_scales,
+)

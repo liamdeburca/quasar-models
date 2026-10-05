@@ -5,80 +5,75 @@ This script contains utilities for setting up various Balmer continuum templates
 from itertools import product
 from typing import ClassVar
 
-from astropy.units import Unit
+from astropy.units import Quantity, Unit
 from numpy import arange, log
-from quasar_typing.numpy import FloatVector
 from quasar_utils.setup import Info
 
+from quasar_models.balmer.continuum import io
 from quasar_models.balmer.continuum.balmer_continuum_template import (
     BalmerContinuumTemplate,
 )
-from quasar_models.balmer.continuum.io import PATH_TO_CACHE
+
+INFO = Info()
 
 
-class QSFit:
-    name: str = "qsfit"
-
-    temp_range: ClassVar[list[float]] = [
+class QSFIT:
+    X_BOUNDS: ClassVar[Quantity] = (1000.0, 4500.0) * Unit("angstrom")
+    TEMPS: ClassVar[Quantity] = [
         10_000.0,
         12_500.0,
         15_000.0,
         20_000.0,
         30_000.0,
-    ]
-    tau_range: ClassVar[list[float]] = [
-        1.0,
-    ]
-    scale_range: ClassVar[list[float]] = [
-        3.0,
-    ]
+    ] * Unit("K")
+    TAUS: ClassVar[tuple[float, ...]] = (1.0,)
+    SCALES: ClassVar[tuple[float, ...]] = (3.0,)
 
-    def __init__(self):
-        self.info: Info = Info()
+    @classmethod
+    def main(cls) -> None:
+        cls.init_basic()
 
-        self.fwhm: FloatVector = arange(1000, 20_000 + 1, 250)
+    @classmethod
+    def get_x(cls):
+        lb, ub = INFO.units.getUnitlessWavelength(cls.X_BOUNDS)
+        n = int(log(ub / lb) / log(1 + INFO.loading.sigma_res) + 1)
+        return lb * (1 + INFO.loading.sigma_res) ** arange(n + 1)
 
-        x0, x1 = self.info.units.getWavelength([1000, 4500] * Unit("angstrom"))
-        n = int(log(x1 / x0) / log(1 + self.info.loading.sigma_res)) + 1
-        self.x: FloatVector = x0 * (1 + self.info.loading.sigma_res) ** arange(n + 1)
-
-    def get_template(
-        self,
-        *,
-        temp: float,
-        tau: float,
-        scale: float,
-    ) -> BalmerContinuumTemplate:
-        template = BalmerContinuumTemplate.instantiate(
-            self.fwhm,
-            self.x,
-            temp,
-            tau,
-            scale,
-            sigma_res=self.info.loading.sigma_res,
-            n_scales=self.info.convolution.n_scales,
-            edge=self.info.balmer.edge,
-            fwhm_norm=self.info.balmer.fwhm_norm,
-            boltz=self.info.units.getBoltzmannFactor(),
-            is_logspace=True,
-            name=self.name,
+    @classmethod
+    def get_fwhm(cls):
+        return INFO.units.getUnitlessKMS(
+            arange(1000, 20_000 + 1, 250) * Unit("km/s")
         )
-        return template.normalise(inplace=True)
 
-    def main(self) -> None:
+    @classmethod
+    def create_template(cls, temp: int, tau: float, scale: float) -> None:
+        template = BalmerContinuumTemplate.instantiate(
+            fwhm=cls.get_fwhm(),
+            x=cls.get_x(),
+            temp=temp,
+            tau=tau,
+            scale=scale,
+            sigma_res=INFO.loading.sigma_res,
+            n_scales=INFO.convolution.n_scales,
+            edge=INFO.balmer.edge,
+            fwhm_norm=INFO.balmer.fwhm_norm,
+            boltz=INFO.units.getBoltzmannFactor(),
+            is_logspace=True,
+            name="qsfit",
+        ).normalise()
+        template.save_to_cache(INFO)
+
+    @classmethod
+    def init_basic(cls) -> None:
         for temp, tau, scale in product(
-            self.temp_range, self.tau_range, self.scale_range
+            INFO.units.getUnitlessTemperature(cls.TEMPS), 
+            cls.TAUS, 
+            cls.SCALES,
         ):
-            template = self.get_template(
-                temp=temp,
-                tau=tau,
-                scale=scale,
-            )
-            template.save_to_cache(self.info)
-
+            cls.create_template(temp, tau, scale)
 
 def main():
-    QSFit().main()
+    QSFIT.main()
 
 
 def plot() -> None:
@@ -87,15 +82,12 @@ def plot() -> None:
     from matplotlib.cm import rainbow as cmap
     from matplotlib.colors import Normalize
 
-    sh1995 = QSFit()
-    info = sh1995.info
-
-    norm = Normalize(vmin=sh1995.fwhm[0] / 1e3, vmax=sh1995.fwhm[-1] / 1e3)
+    norm = Normalize(vmin=1.0, vmax=20.0)
     scalmap = ScalarMappable(norm=norm, cmap=cmap)
     sel = slice(None, None, 10)
 
-    for path in PATH_TO_CACHE.glob("continuum*.fits"):
-        template = BalmerContinuumTemplate.load(path=path, info=info)
+    for path in io.PATH_TO_CACHE.glob("continuum*.fits"):
+        template = BalmerContinuumTemplate.load(path=path, info=INFO)
 
         _, ax = plt.subplots(dpi=300, figsize=(8, 4))
         ax.set_title(path.stem, loc="left")
@@ -111,7 +103,7 @@ def plot() -> None:
 
         ax.set_xlabel(
             r"$\lambda_{\mathrm{rest}}$ ("
-            + info.units.wavelength_unit.to_string()
+            + INFO.units.wavelength_unit.to_string()
             + ")",
             loc="right",
         )

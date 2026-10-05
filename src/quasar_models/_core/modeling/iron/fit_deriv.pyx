@@ -22,6 +22,8 @@ from quasar_models._core.modeling.template.fit_deriv cimport (
     _fit_deriv_interp_only_flux as _template_fit_deriv_interp_only_flux,
     _fit_deriv_interp_only_fwhm as _template_fit_deriv_interp_only_fwhm,
     _fit_deriv_interp_all       as _template_fit_deriv_interp_all,
+
+    _fit_deriv_rescale_only_flux as _template_fit_deriv_rescale_only_flux,
 )
 from quasar_models._core.modeling.iron.evaluate cimport (
     _evaluate_exact,
@@ -1721,6 +1723,43 @@ def fit_deriv_interp_all(
     const double n_scales,
 ):
     _fit_deriv_interp_all(
+        derivs,
+        flux, fwhm,
+        split, left, right,
+        cytemplate, scale, n_scales,
+    )
+
+### By RESCALING
+
+cdef inline void _fit_deriv_rescale_only_flux(
+    double[:,::1] derivs,
+    const double flux,
+    const double fwhm,
+    const double split,
+    const double left,
+    const double right,
+    CyTemplate cytemplate,
+    const double scale,
+    const double n_scales,
+):
+    _template_fit_deriv_rescale_only_flux(
+        derivs[0:2, :],
+        flux, fwhm,
+        cytemplate, n_scales,
+    )
+
+def fit_deriv_rescale_only_flux(
+    double[:,::1] derivs,
+    const double flux,
+    const double fwhm,
+    const double split,
+    const double left,
+    const double right,
+    CyTemplate cytemplate,
+    const double scale,
+    const double n_scales,
+):
+    _fit_deriv_rescale_only_flux(
         derivs,
         flux, fwhm,
         split, left, right,

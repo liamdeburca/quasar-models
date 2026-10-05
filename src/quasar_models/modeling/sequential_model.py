@@ -1,19 +1,30 @@
-from collections.abc import Iterable
-from dataclasses import dataclass, field
+from collections.abc import Callable, Iterable
+from dataclasses import field
 from typing import Union
 
 from astropy.modeling import CompoundModel, Parameter
 from numpy import (
+    arange,
     array,
-    einsum,
     empty,
     float64,
     fromiter,
     int_,
     isfinite,
+    isin,
     zeros,
 )
-from numpy.typing import NDArray
+from pydantic.dataclasses import dataclass
+from quasar_typing.astropy import CompoundModel_
+from quasar_typing.numpy import (
+    BoolVector,
+    FloatArray,
+    FloatMatrix,
+    FloatVector,
+    IntVector,
+)
+from quasar_typing.scipy import csr_matrix_
+from quasar_utils.resolving import apply_resolution
 
 from ..utils.astropy import apply_bounds
 from .base_model import BaseModel
@@ -64,53 +75,60 @@ def _validate_initial_values(params: Iterable[Param | Parameter]) -> None:
                 raise ValueError(msg)
 
 
-@dataclass(init=False, repr=False)
+@dataclass(repr=False)
 class SequentialModel:
-    _model: Union[BaseModel, CompoundModel]
+    _model: Union[BaseModel, CompoundModel_[BaseModel]]
+
+    # For perfoming instrumental resolution correction
+    kernels: FloatMatrix | csr_matrix_ | None = None
 
     n_submodels: int = field(init=False)
     submodels: tuple[BaseModel, ...] = field(init=False)
 
-    _initial_values: NDArray[float64] = field(init=False)
+    _initial_values: FloatVector = field(init=False)
 
     _params: tuple[Param, ...] = field(init=False)
     _n: int = field(init=False)
     _params_dict: dict[str, dict[str, int]] = field(init=False)
 
     # Free parameters
-    _free_indices: NDArray[int_] = field(init=False)
+    _free_indices: IntVector = field(init=False)
     _free_params: tuple[Param, ...] = field(init=False)
     _n_free: int = field(init=False)
 
     # Tied parameters
-    _tied_indices: NDArray[int_] = field(init=False)
-    _tied_to_indices: NDArray[int_] = field(init=False)
-    _tied_as: NDArray[float64] = field(init=False)
-    _tied_bs: NDArray[float64] = field(init=False)
+    _tied_indices: IntVector = field(init=False)
+    _tied_to_indices: IntVector = field(init=False)
+    _tied_as: FloatVector = field(init=False)
+    _tied_bs: FloatVector = field(init=False)
     _tied_params: tuple[Param, ...] = field(init=False)
     _n_tied: int = field(init=False)
 
     # Fixed parameters
-    _fixed_indices: NDArray[int_] = field(init=False)
+    _fixed_indices: IntVector = field(init=False)
     _fixed_params: tuple[Param, ...] = field(init=False)
     _n_fixed: int = field(init=False)
 
     # Start/Stop
-    _start_stop_indices: NDArray[int_] = field(init=False)
+    _start_stop_indices: IntVector = field(init=False)
 
-    def __init__(
-        self,
-        model: Union[BaseModel, CompoundModel],
-    ) -> None:
-        if isinstance(model, CompoundModel):
-            _validate_compound_model(model)
+    # Instrumental resolution correction
+    _inst_correction: Callable[[FloatArray], FloatArray] = field(init=False)
 
-        self._model = model
+    def __post_init__(self) -> None:
+        if isinstance(self._model, CompoundModel):
+            # Sort model
+            ms = sorted(self._model, key=lambda m: m.sorting_key)
+            self._model = sum(ms[1:], start=ms[0])
+            _validate_compound_model(self._model)
+
+            self.n_submodels = len(ms)
+            self.submodels = tuple(ms)
+        else:
+            self.n_submodels = 1
+            self.submodels = (self._model,)
+
         self._initial_values = self._model.parameters.copy(order="C")
-        self.n_submodels = self._model.n_submodels
-        self.submodels = (
-            (self._model,) if self.n_submodels == 1 else tuple(self._model)
-        )
 
         # Parameters
         self._params = tuple(
@@ -125,6 +143,7 @@ class SequentialModel:
         self._prepare_parameters()
         self._update_bounds()
         self._calculate_start_stop_indices()
+        self._set_inst_corr_function()
 
     ## Useful dunder methods from Astropy's `CompoundModel`
 
@@ -144,11 +163,11 @@ class SequentialModel:
             return self._model[idx]
 
     @property
-    def parameters(self) -> NDArray[float64]:
+    def parameters(self) -> FloatVector:
         return self._model.parameters
 
     @parameters.setter
-    def parameters(self, values: NDArray[float64]) -> None:
+    def parameters(self, values: FloatVector) -> None:
         self._model.parameters = values
         for v, param in zip(values, self._params):
             param.value = v
@@ -244,12 +263,26 @@ class SequentialModel:
             param.value = apply_bounds.__wrapped__(param.value, param.bounds)
             self._initial_values[j] = param.value
 
+    def _set_inst_corr_function(self) -> None:
+        """
+        Set the function responsible for applying instrumental correction to the 
+        model.
+        """
+        if self.kernels is None:
+            self._inst_correction = lambda y: y
+        else:
+            self._inst_correction = lambda y: apply_resolution(
+                y,
+                self.kernels,
+                out=y,
+            )
+
     # Evaluation
 
     def _get_full_parameter_array(
         self, 
-        free_params: NDArray[float64],
-    ) -> NDArray[float64]:
+        free_params: FloatVector,
+    ) -> FloatVector:
         """
         Expands the truncated free parameter array to a full parameter array.
 
@@ -260,12 +293,12 @@ class SequentialModel:
 
         Parameters
         ----------
-        free_params : NDArray[float64]
+        free_params : FloatVector
             Array of free parameter values, length _n_free
 
         Returns
         -------
-        NDArray[float64]
+        FloatVector
             Full parameter array of length _n
         """
         params = self._initial_values.copy()
@@ -277,7 +310,7 @@ class SequentialModel:
             )
         return params
 
-    def _map_free_params(self, params: NDArray[float64]) -> None:
+    def _map_free_params(self, params: FloatVector) -> None:
         if len(params.shape) != 1:
             msg = f"Expected 1D array of free parameters, got {len(params.shape)}D array instead."
             raise ValueError(msg)
@@ -288,9 +321,34 @@ class SequentialModel:
         for param, val in zip(self._free_params, params):
             param.value = val
 
-    def evaluate(
-        self, x: NDArray[float64], params: NDArray[float64]
-    ) -> NDArray[float64]:
+    def get_true_fixed(self) -> dict[str, dict[str, bool]]:
+        """
+        Return a dictionary of parameter-fixed status dictionaries for the 
+        sequential model, i.e. a dictionary showing whether models' parameters
+        are actually fixed or not (e.g. tied or free).
+
+        Returns
+        -------
+        fixed_dict : dict[str, dict[str, bool]]
+            Dictionary mapping submodel names to dictionaries of 
+            parameter-fixed statuses.
+        """
+        fixed_dict = {}
+        _isin = isin(arange(self._n), self._fixed_indices, assume_unique=True)  
+        count: int = 0
+        for submodel in self.submodels:
+            fixed_dict[submodel.name] = fixed = {}
+            for param_name in submodel.param_names:
+                fixed[param_name] = _isin[count]
+                count += 1
+
+        assert count == self._n, \
+            "Mismatch between counted parameters and total number of parameters."
+        return fixed_dict
+
+    ### Without instrumental correction
+
+    def _evaluate(self, x: FloatVector, params: FloatVector) -> FloatVector:
         """
         Evaluates the sequential model by summing contributions from all submodels.
 
@@ -300,14 +358,14 @@ class SequentialModel:
 
         Parameters
         ----------
-        x : NDArray[float64]
+        x : FloatVector
             Wavelength array (1D)
-        params : NDArray[float64]
+        params : FloatVector
             Free parameter values (length _n_free)
 
         Returns
         -------
-        NDArray[float64]
+        FloatVector
             Combined model predictions, shape (len(x),)
         """
         y = zeros(x.size, dtype=float64)
@@ -319,27 +377,7 @@ class SequentialModel:
 
         return y
 
-    def __call__(
-        self,
-        x: NDArray[float64],
-    ) -> NDArray[float64]:
-        return self.evaluate(
-            x,
-            self.parameters[self._free_indices],
-        )
-
-    def fit_deriv(
-        self,
-        x: NDArray[float64],
-        params: NDArray[float64],
-    ) -> list[NDArray[float64]]:
-        return list(self.partial_deriv(x, params))
-
-    def partial_deriv(
-        self,
-        x: NDArray[float64],
-        params: NDArray[float64],
-    ) -> NDArray[float64]:
+    def _partial_deriv(self, x: FloatVector, params: FloatVector) -> FloatMatrix:
         """
         Computes the Jacobian matrix of partial derivatives for all free parameters.
 
@@ -354,14 +392,14 @@ class SequentialModel:
 
         Parameters
         ----------
-        x : NDArray[float64]
+        x : FloatVector
             Wavelength array (1D)
-        params : NDArray[float64]
+        params : FloatVector
             Free parameter values (length _n_free)
 
         Returns
         -------
-        NDArray[float64]
+        FloatMatrix
             Jacobian matrix, shape (_n_free, len(x))
         """
         full_derivs = zeros((self._n, x.size), dtype=float64)
@@ -383,19 +421,42 @@ class SequentialModel:
         )
 
         return full_derivs[self._free_indices]
+    
+    def _fit_deriv(self, x: FloatVector, params: FloatVector) -> list[FloatVector]:
+        return list(self._partial_deriv(x, params))
+
+    ### With instrumental correction
+    
+    def evaluate(self, x: FloatVector, params: FloatVector) -> FloatVector:
+        """Call '_evaluate' and apply instrumental correction."""
+        y = self._evaluate(x, params)
+        return self._inst_correction(y)
+
+    def partial_deriv(self, x: FloatVector, params: FloatVector) -> FloatMatrix:
+        """Call '_partial_deriv' and apply instrumental correction."""
+        derivs = self._partial_deriv(x, params)
+        return self._inst_correction(derivs)
+
+    def fit_deriv(self, x: FloatVector, params: FloatVector) -> list[FloatVector]:
+        return list(self.partial_deriv(x, params))
+
+    def __call__(self, x: FloatVector) -> FloatVector:
+        return self.evaluate(x, self.parameters[self._free_indices])
+
+    ###
 
     def get_final_model(
         self,
-        params: NDArray[float64] | None = None,
+        params: FloatVector | None = None,
         copy: bool = True,
-    ) -> Union[BaseModel, CompoundModel]:
+    ) -> Union[BaseModel, CompoundModel_[BaseModel]]:
         """
         Returns an Astropy (compound) model instance with the final fitted 
         parameter values.
 
         Parameters
         ----------
-        params : NDArray[float64] | None
+        params : FloatVector | None
             Free parameter values (length _n_free). If None, uses current values.
         copy : bool
             If True, returns a copy of the Astropy model used to instantiate
@@ -424,7 +485,7 @@ class SequentialModel:
     def get_updated_model(
         self,
         copy: bool = True,
-    ) -> Union[BaseModel, CompoundModel]:
+    ) -> Union[BaseModel, CompoundModel_[BaseModel]]:
         return self.get_final_model(
             self.parameters[self._free_indices],
             copy=copy,
@@ -434,33 +495,81 @@ class SequentialModel:
 
     def fun(
         self, 
-        x: NDArray[float64], 
-        data: dict[str, NDArray[float64]],
-    ) -> NDArray[float64]:
+        x: FloatVector, 
+        data: dict[str, FloatVector],
+        where: BoolVector | None = None,
+    ) -> FloatVector:
         """
-        Scipy notation: 'x' is the vector of free parameters.
+        Calculate the array of residuals. 
+
+        Parameters
+        ----------
+        x : FloatVector
+            Array of free parameter values (SciPy notation).
+        data : dict[str, FloatVector]
+            Dictionary containing the data arrays. Must include keys: x 
+            (wavelengths), y (flux densities), w (weights)
+        where : BoolVector | None
+            If provided, only the residuals where `where` is True are 
+            calculated.
+
+        Returns
+        -------
+        FloatVector
+            Array of residuals.
         """
-        z = self.evaluate(data["x"], x)
-        z -= data["y"]
-        return einsum("i,i->i", z, data["w"], out=z)
+        f = self.evaluate(data["x"], x)
+        if where is None:
+            y = data["y"]
+            w = data["w"]
+        else:
+            f = f[where]
+            y = data["y"][where]
+            w = data["w"][where]
+
+        return (f - y) * w
 
     def jac(
         self, 
-        x: NDArray[float64], 
-        data: dict[str, NDArray[float64]],
-    ) -> NDArray[float64]:
+        x: FloatVector, 
+        data: dict[str, FloatVector],
+        where: BoolVector | None = None,
+    ) -> FloatMatrix:
         """
-        Scipy notation: 'x' is the vector of free parameters.
+        Calculate the Jacobian matrix of the residuals with respect to the free 
+        parameters.
+
+        Parameters
+        ----------
+        x : FloatVector
+            Array of free parameter values (SciPy notation).
+        data : dict[str, FloatVector]
+            Dictionary containing the data arrays. Must include keys: x 
+            (wavelengths), y (flux densities), w (weights)
+        where : BoolVector | None
+            If provided, only the derivative values where `where` is True are 
+            considered.
+
+        Returns
+        -------
+        FloatMatrix
+            Jacobian matrix of the residuals with respect to the free 
+            parameters.
         """
-        jac = self.partial_deriv(data["x"], x).T
-        return einsum("ij,i->ij", jac, data["w"], out=jac)
+        derivs = self.partial_deriv(data["x"], x).T
+        if where is None:
+            w = data["w"]
+        else:
+            derivs = derivs[where,:]
+            w = data["w"][where]
+        return derivs * w[:,None]
 
     @property
-    def x0(self) -> NDArray[float64]:
+    def x0(self) -> FloatVector:
         return self._initial_values[self._free_indices]
 
     @property
-    def bounds(self) -> tuple[NDArray[float64], NDArray[float64]]:
+    def bounds(self) -> tuple[FloatVector, FloatVector]:
         return tuple(
             fromiter(
                 (param.bounds[i] for param in self._free_params), 

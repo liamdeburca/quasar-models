@@ -472,3 +472,17 @@ cdef void _fit_deriv_interp_all(
     const double scale,
     const double n_scales,
 )
+
+### By RESCALING
+
+cdef void _fit_deriv_rescale_only_flux(
+    double[:,::1] derivs,
+    const double flux,
+    const double fwhm,
+    const double split,
+    const double left,
+    const double right,
+    CyTemplate cytemplate,
+    const double scale,
+    const double n_scales,
+)

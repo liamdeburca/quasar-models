@@ -4,10 +4,20 @@ __all__ = [
     "HostGalaxyModel",
     "IronModel",
     "PowerLawModel",
+    "VProfileCopy",
 ]
+from typing import Union
 
-from .balmer.balmer_model import BalmerModel
-from .continuum.powerlaw import PowerLawModel
-from .host.host_galaxy_model import HostGalaxyModel
-from .iron.iron_model import IronModel
-from .line.gaussian import GaussianModel
+from .balmer import BalmerModel
+from .continuum import PowerLawModel
+from .host import HostGalaxyModel
+from .iron import IronModel
+from .line import GaussianModel, VProfileCopy
+
+### Types
+
+BaModel = BalmerModel
+PlModel = PowerLawModel
+HgModel = HostGalaxyModel
+FeModel = IronModel
+EmModel = Union[GaussianModel, VProfileCopy]

@@ -1,17 +1,3 @@
-__all__ = [
-    "PowerLawEvaluate",
-    "PowerLawFitDeriv",
-    "PowerLawInverse",
-    "choose_evaluate_func",
-    "choose_fit_deriv_func",
-    "does_nothing",
-    "evaluate",
-    "fit_deriv_all",
-    "fit_deriv_only_alpha",
-    "fit_deriv_only_flux",
-    "inverse",
-]
-
 from .utils import (
     PowerLawEvaluate,
     PowerLawFitDeriv,
@@ -24,16 +10,19 @@ def choose_evaluate_func() -> PowerLawEvaluate:
 
 
 def choose_fit_deriv_func(fixed: dict[str, bool]) -> PowerLawFitDeriv:
-    match fixed.get("flux", False), fixed.get("alpha", False):
-        case False, False:
+    _case = (
+        bool(fixed["flux"]),
+        bool(fixed["alpha"]),
+    )
+    match _case:
+        case (False, False):
             return fit_deriv_all
-        case False, True:
+        case (False, True):
             return fit_deriv_only_flux
-        case True, False:
+        case (True, False):
             return fit_deriv_only_alpha
-        case _:
+        case (True, True):
             return does_nothing
-
 
 ###
 

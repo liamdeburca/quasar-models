@@ -34,7 +34,7 @@ There are some exceptions to these guidelines:
 
 ### CORRECT Example:
 ```python
-def evaluate(x: float, strength: float, sigma_v: float) -> float:
+def evaluate(x: float, strength: float, fwhm_v: float) -> float:
     """
     Lorem ipsum.
 
@@ -42,7 +42,7 @@ def evaluate(x: float, strength: float, sigma_v: float) -> float:
     ----------
     x : float
     strength : float
-    sigma_v : float
+    fwhm_v : float
 
     Returns
     -------
@@ -57,7 +57,7 @@ def evaluate(x: float, strength: float, sigma_v: float) -> float:
 
 ### INCORRECT Example (DO NOT DO THIS):
 ```python
-def evaluate(x: float, strength: float, sigma_v: float) -> float:
+def evaluate(x: float, strength: float, fwhm_v: float) -> float:
     """
     Evaluates the profile at specified wavelengths.
 
@@ -69,8 +69,8 @@ def evaluate(x: float, strength: float, sigma_v: float) -> float:
         Wavelength at which to evaluate.
     strength : float
         Line strength parameter.
-    sigma_v : float
-        Velocity dispersion.
+    fwhm_v : float
+        Full width at half maximum in velocity units.
 
     Returns
     -------
@@ -104,6 +104,7 @@ For example:
 from pydantic import validate_function
 from quasar_typing.numpy import FloatVector
 
+
 @validate_function
 def wrong(v: FloatVector) -> None:
     """
@@ -114,6 +115,7 @@ def wrong(v: FloatVector) -> None:
     v : FloatVector
     """
     pass
+
 
 @validate_function
 def correct(v: FloatVector) -> None:

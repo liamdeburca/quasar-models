@@ -35,3 +35,15 @@ cdef void _evaluate_interp(
     const double scale,
     const double n_scales,
 )
+
+cdef void _evaluate_rescale(
+    double[::1] y,
+    const double flux,
+    const double fwhm,
+    const double split,
+    const double left,
+    const double right,
+    CyTemplate cytemplate,
+    const double scale,
+    const double n_scales,
+)

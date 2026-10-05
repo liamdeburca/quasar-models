@@ -49,7 +49,7 @@ def linreg(
             "Cannot perform linear regression on single-element arrays. "
             "Defaulting to: intercept=y[0], gradient=0."
         )
-        logger.warning(msg)
+        logger.info(msg)
         return y[0], zeros_like(y[0], dtype=float64)
 
     a = (1 / dy) ** 2
@@ -76,7 +76,7 @@ def linreg(
 
     if det == 0:
         msg = "Determinant is zero. Defaulting to: intercept=y.mean(), gradient=0."
-        logger.warning(msg)
+        logger.info(msg)
         return y.mean(), 0
 
     return (C * ya - B * yb) / det, (A * yb - B * ya) / det

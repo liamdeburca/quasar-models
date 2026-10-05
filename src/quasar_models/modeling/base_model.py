@@ -1,12 +1,13 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
-from typing import ClassVar, Literal, Self
+from typing import Any, ClassVar, Literal, Self
 
 from astropy.modeling import Fittable1DModel
 from numpy import float64, ndarray
 from numpy.typing import NDArray
 from pydantic_core import PydanticCustomError
 from pydantic_core.core_schema import no_info_plain_validator_function
+from quasar_utils.setup import Info
 
 
 class BaseModel(ABC, Fittable1DModel):
@@ -49,6 +50,13 @@ class BaseModel(ABC, Fittable1DModel):
 
     @abstractmethod
     def _choose_fit_deriv_func(self) -> None: ...
+
+    @property
+    @abstractmethod
+    def kwargs(self) -> dict[str, Any]: ...
+
+    @abstractmethod
+    def _set_kwargs(self) -> None: ...
 
     @abstractmethod
     def evaluate(
@@ -111,25 +119,44 @@ class BaseModel(ABC, Fittable1DModel):
 
     # Model preparation
 
-    def prepare_model(self) -> None:
+    def prepare_model(
+        self,
+        fixed: dict[str, bool] | None = None,
+    ) -> None:
         self._choose_evaluate_func()
-        self._choose_fit_deriv_func()
+        self._choose_fit_deriv_func(fixed=fixed)
+        self._set_kwargs()
 
     def unprepare_model(self) -> None:
         del self.evaluate_func
         del self.fit_deriv_func
+        del self.kwargs
 
     # Pydantic validation
 
     @classmethod
     def _validate(cls, value: object) -> Self:
         if not isinstance(value, cls):
-            msg = (
-                f"Expected {cls.__name__} instance, got {type(value).__name__} instead."
-            )
+            msg = f"Expected {cls.__name__} instance, "\
+                f"got {type(value).__name__} instead."
             raise PydanticCustomError("validation_error", msg)
         return value
 
     @classmethod
     def __get_pydantic_core_schema__(cls, source_type, handler):
         return no_info_plain_validator_function(cls._validate)
+
+    ### Serialization
+
+    @abstractmethod
+    def serialize(self, info: Info) -> dict[str, Any]:
+        """
+        Create a dictionary representation of the model instance.
+        """
+
+    @classmethod
+    @abstractmethod
+    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
+        """
+        Create a model instance from its dictionary representation.
+        """

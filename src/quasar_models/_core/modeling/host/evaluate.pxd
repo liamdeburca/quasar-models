@@ -15,3 +15,11 @@ cdef void _evaluate_interp(
     CyTemplate cytemplate,
     const double n_scales,
 )
+
+cdef void _evaluate_rescale(
+    double[::1] y,
+    const double flux,
+    const double fwhm,
+    CyTemplate cytemplate,
+    const double n_scales,
+)

@@ -36,6 +36,12 @@ from quasar_models.modeling.template import TemplateModel
 
 from ..continuum import PowerLawModel
 from ..utils.astropy import apply_bounds
+from ..utils.serialization import (
+    deserialize_parameter,
+    deserialize_quantity,
+    serialize_parameter,
+    serialize_quantity,
+)
 from .continuum import BalmerContinuumTemplate
 from .series import BalmerSeriesTemplate
 
@@ -61,13 +67,11 @@ class BalmerModel(TemplateModel):
 
     model_type: ClassVar[Literal["ba"]] = "ba"
 
-    TEMPLATE_KEYS: ClassVar[tuple[Literal["continuum_template", "series_template"]]] = (
+    TEMPLATE_KEYS: ClassVar[tuple[str, str]] = (
         "continuum_template",
         "series_template",
     )
-    CYTEMPLATE_KEYS: ClassVar[
-        tuple[Literal["continuum_cytemplate", "series_cytemplate"]]
-    ] = (
+    CYTEMPLATE_KEYS: ClassVar[tuple[str, str]] = (
         "continuum_cytemplate",
         "series_cytemplate",
     )
@@ -296,7 +300,7 @@ class BalmerModel(TemplateModel):
         return self.evaluate_func(
             x,
             *self._transform_args_if_ndarray(flux, fwhm, ratio),
-            **self._kwargs,
+            **self.kwargs,
             y=y,
         )
 
@@ -304,7 +308,7 @@ class BalmerModel(TemplateModel):
         return self.fit_deriv_func(
             x,
             *self._transform_args_if_ndarray(flux, fwhm, ratio),
-            **self._kwargs,
+            **self.kwargs,
             derivs=derivs,
         )
 
@@ -312,16 +316,33 @@ class BalmerModel(TemplateModel):
         return list(self.partial_deriv(x, flux, fwhm, ratio, derivs=derivs))
 
     @property
-    def _kwargs(self) -> dict[str, Any]:
-        cytemplates = self.cytemplates
-        return {
-            "continuum_template": self.continuum_template,
-            "series_template": self.series_template,
-            "continuum_cytemplate": cytemplates["continuum_cytemplate"],
-            "series_cytemplate": cytemplates["series_cytemplate"],
+    def kwargs(self) -> dict[str, Any]:
+        return self.meta.get(
+            "kwargs",
+            {
+                "continuum_template": self.continuum_template,
+                "series_template": self.series_template,
+                "n_scales": self.n_scales,
+                "interpolation_matrix": self.interpolation_matrix,
+            }
+        )
+
+    @kwargs.setter
+    def kwargs(self, value: dict[str, Any]) -> None:
+        self.meta["kwargs"] = value
+
+    @kwargs.deleter
+    def kwargs(self) -> None:
+        self.meta.pop("kwargs", None)
+
+    def _set_kwargs(self) -> None:
+        self.kwargs = {
+            "continuum_template": self.cytemplates["continuum_cytemplate"],
+            "series_template": self.cytemplates["series_cytemplate"],
             "n_scales": self.n_scales,
             "interpolation_matrix": self.interpolation_matrix,
         }
+
 
     ### Model preparation
 
@@ -349,15 +370,22 @@ class BalmerModel(TemplateModel):
     def fit_deriv_func(self) -> None:
         self.meta.pop("fit_deriv_func", None)
 
-    def _choose_evaluate_func(self) -> None:
+    def _choose_evaluate_func(
+        self, 
+        fixed: dict[str, bool] | None = None,
+    ) -> None:
         self.evaluate_func = choose_evaluate_func(
             self.allow_interp_fitting,
+            fixed or self.fixed,
         )
 
-    def _choose_fit_deriv_func(self) -> None:
+    def _choose_fit_deriv_func(
+        self,
+        fixed: dict[str, bool] | None = None,
+    ) -> None:
         self.fit_deriv_func = choose_fit_deriv_func(
             self.allow_interp_fitting,
-            self.fixed,
+            fixed or self.fixed,
         )
 
     @property
@@ -408,8 +436,8 @@ class BalmerModel(TemplateModel):
                 ctemp = self.continuum_template
                 stemp = self.series_template
             else:
-                ctemp = self.continuum_template.interpolate(x, inplace=False)
-                stemp = self.series_template.interpolate(x, inplace=False)
+                ctemp = self.continuum_template.interpolate(x)
+                stemp = self.series_template.interpolate(x)
 
             cdata = ctemp.data / ctemp.normalisation
             sdata = stemp.data / stemp.normalisation
@@ -422,16 +450,19 @@ class BalmerModel(TemplateModel):
         else:
             flux_bounds = self.flux.bounds
 
-        chi2s, fluxs = rasterise.__wrapped__(
-            y,
-            dy,
-            fwhm,
-            data,
-            flux_bounds=flux_bounds,
-            fwhm_bounds=self.fwhm.bounds,
-        )
-
         obj = self if inplace else self.copy()
+        try:
+            chi2s, fluxs = rasterise.__wrapped__(
+                y,
+                dy,
+                fwhm,
+                data,
+                flux_bounds=flux_bounds,
+                fwhm_bounds=self.fwhm.bounds,
+            )
+        except ValueError:
+            return obj
+
         if (chi2s == 0).all():
             # ! Raise warning
             return obj
@@ -501,3 +532,62 @@ class BalmerModel(TemplateModel):
         obj.flux.value = apply_bounds(a_qsfit * y_pl / y_ba, obj.flux.bounds)
 
         return obj
+
+    ### Serialization
+
+    def serialize(self, info: Info) -> dict[str, dict[str, Any]]:
+        wave_unit = str(info.units.wavelength_unit)
+        flux_unit = str(info.units.flux_unit)
+        kms_unit = "km/s"
+        data = {
+            "name": self.name,
+            "flux": serialize_parameter(self.flux, flux_unit),
+            "fwhm": serialize_parameter(self.fwhm, kms_unit),
+            "ratio": serialize_parameter(self.ratio, None),
+            "edge": serialize_quantity(self.edge, wave_unit),
+            "continuum_template": self.continuum_template.serialize(info),
+            "series_template": self.series_template.serialize(info),
+        }
+        return {f"BalmerModel::{self.name}": data}
+
+    @classmethod
+    def deserialize(cls, data: dict[str, Any], name: str, info: Info) -> Self:
+        wave_unit = str(info.units.wavelength_unit)
+        flux_unit = str(info.units.flux_unit)
+        kms_unit = "km/s"
+
+        flux = deserialize_parameter(data["flux"], flux_unit)
+        fwhm = deserialize_parameter(data["fwhm"], kms_unit)
+        ratio = deserialize_parameter(data["ratio"], None)
+        edge = deserialize_quantity(data["edge"], wave_unit)
+
+        continuum_template = BalmerContinuumTemplate.deserialize(
+            data["continuum_template"], 
+            info,
+        )
+        series_template = BalmerSeriesTemplate.deserialize(
+            data["series_template"], 
+            info,
+        )
+
+        model = BalmerModel.create(
+            flux["value"], fwhm["value"], ratio["value"], 
+            edge=edge, 
+            continuum_template=continuum_template, 
+            series_template=series_template,
+            info=info,
+            allow_interp_fitting=info.convolution.allow_interp_fitting,
+            flux_bounds=flux["bounds"],
+            fwhm_bounds=fwhm["bounds"],
+            ratio_bounds=ratio["bounds"],
+            flux_fixed=flux["fixed"],
+            fwhm_fixed=fwhm["fixed"],
+            ratio_fixed=ratio["fixed"],
+        )
+        model.flux.tied = flux["tied"]
+        model.fwhm.tied = fwhm["tied"]
+        model.ratio.tied = ratio["tied"]
+
+        model.name = name
+
+        return model

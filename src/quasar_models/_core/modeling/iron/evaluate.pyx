@@ -8,6 +8,7 @@ from quasar_models._core.utils cimport (
 from quasar_models._core.modeling.template.evaluate cimport (
     _evaluate_exact as _template_evaluate_exact,
     _evaluate_interp as _template_evaluate_interp,
+    _evaluate_rescale as _template_evaluate_rescale,
 )
 from quasar_models._core.modeling.split.evaluate cimport (
     _evaluate as _split_evaluate,
@@ -116,6 +117,42 @@ def evaluate_interp(
     const double n_scales,
 ):
     _evaluate_interp(
+        y, 
+        flux, fwhm, split, left, right, 
+        cytemplate, scale, n_scales,
+    )
+
+### By RESCALING
+
+cdef inline void _evaluate_rescale(
+    double[::1] y,
+    const double flux,
+    const double fwhm,
+    const double split,
+    const double left,
+    const double right,
+    CyTemplate cytemplate,
+    const double scale,
+    const double n_scales,
+):
+    _template_evaluate_rescale(
+        y,
+        flux, fwhm, 
+        cytemplate, n_scales,
+    )
+
+def evaluate_rescale(
+    double[::1] y,
+    const double flux,
+    const double fwhm,
+    const double split,
+    const double left,
+    const double right,
+    CyTemplate cytemplate,
+    const double scale,
+    const double n_scales,
+):
+    _evaluate_rescale(
         y, 
         flux, fwhm, split, left, right, 
         cytemplate, scale, n_scales,

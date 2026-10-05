@@ -3,10 +3,11 @@ __all__ = ["BaseTemplate"]
 from abc import ABC, abstractmethod
 from dataclasses import field
 from pathlib import Path
-from typing import ClassVar, Self
+from typing import Any, ClassVar, Self
 
 from numpy import (
     arange,
+    array,
     array_equal,
     ascontiguousarray,
     diff,
@@ -33,6 +34,13 @@ from quasar_utils.decorators import validate_call
 from quasar_utils.interpolation import create_interp_matrix
 from quasar_utils.raster import rasterise
 from quasar_utils.setup import Info
+
+from quasar_models.utils.serialization import (
+    deserialize_array,
+    deserialize_quantity,
+    serialize_array,
+    serialize_quantity,
+)
 
 from ..._core.convolution import convolve_signal, kernel
 
@@ -122,12 +130,14 @@ class BaseTemplate(ABC):
         if len(sel) > 2:
             raise IndexError("Too many indices for Template.")
 
-        obj = self.copy(with_matrices=False)
         if len(sel) == 1:
+            # 'x' doesn't change -> can keep transformation matrices
+            obj = self.copy(with_matrices=True)
             obj.data = obj.data[sel[0], :]
             obj.fwhm = obj.fwhm[sel[0]]
-
         else:
+            # 'x' changes -> cannot keep transformation matrices
+            obj = self.copy(with_matrices=False)
             obj.data = obj.data[sel[0], :][:, sel[1]]
             obj.fwhm = obj.fwhm[sel[0]]
             obj.x = obj.x[sel[1]]
@@ -235,16 +245,12 @@ class BaseTemplate(ABC):
     def resample(
         self,
         fwhm: SortedFloatVector,
-        inplace: bool = False,
         keep_x: bool = False,
     ) -> Self:
         """
         Resamples the Template to the specified FWHM values.
         """
-        obj = self if inplace else self.copy(with_matrices=True)
-        obj.fwhm = obj.fwhm[:1]
-        obj.data = obj.data[:1]
-        return obj.upsample(fwhm, inplace=True, keep_x=keep_x)
+        return self[:1].upsample(fwhm, inplace=True, keep_x=keep_x)
 
     ### I/O: Abstract methods ###
 
@@ -262,10 +268,61 @@ class BaseTemplate(ABC):
     @abstractmethod
     def load(
         cls,
-        path: AbsoluteFITSPath,
-        info: Info | None = None,
+        *,
+        path: str | AbsoluteFITSPath,
+        info: Info,
     ) -> Self:
         pass
+
+    ### Serialization
+
+    def serialize(self, info: Info) -> dict[str, Any]:
+        wave_unit = str(info.units.wavelength_unit)
+        kms_unit = "km/s"
+        return {
+            "name": self.name,
+            "is_logspace": self.is_logspace,
+            "sigma_res": self.sigma_res,
+            "n_scales": self.n_scales,
+            "x": serialize_array(self.x, wave_unit),
+            "fwhm": serialize_array(self.fwhm, kms_unit),
+            "x_norm": serialize_quantity(self.x_norm, wave_unit),
+            "fwhm_norm": serialize_quantity(self.fwhm_norm, kms_unit),
+            "normalisation": self.normalisation,
+        }
+
+    @classmethod
+    def _deserialize_helper(cls, data: dict[str, Any], info: Info) -> Self:
+        return cls.load(path=data["name"], info=info)
+
+    @classmethod
+    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
+        wave_unit = str(info.units.wavelength_unit)
+        kms_unit = "km/s"
+
+        x = deserialize_array(data["x"], wave_unit)
+        fwhm = deserialize_array(data["fwhm"], kms_unit)
+        x_norm = deserialize_quantity(data["x_norm"], wave_unit)
+        fwhm_norm = deserialize_quantity(data["fwhm_norm"], kms_unit)
+        normalisation = data["normalisation"]
+
+        template = cls._deserialize_helper(data, info)
+        template.x_norm = x_norm
+        template.fwhm_norm = fwhm_norm
+        template.normalisation = normalisation
+
+        if data["is_logspace"] and not template.is_logspace:
+            template = template.createLogspace(
+                sigma_res=data["sigma_res"],
+                xr=x,
+                keep_x=True,
+            )
+        elif data["is_logspace"] == template.is_logspace:
+            template = template.interpolate(x)
+
+        if not array_equal(template.fwhm, fwhm):
+            template = template.upsample(fwhm)
+        return template
 
     ### Space transformations ###
 
@@ -295,7 +352,7 @@ class BaseTemplate(ABC):
             The logspace-equivalent template.
         """
         if self.is_logspace:
-            return self.interpolate(xr, inplace=False)
+            return self.interpolate(xr)
 
         dx = lin_dx(self.x)
         x_edges = empty(self.x.size + 1, dtype=float)
@@ -409,24 +466,18 @@ class BaseTemplate(ABC):
 
         return obj
 
-    def interpolate(
-        self,
-        x: FloatVector,
-        inplace: bool = False,
-    ) -> Self:
+    def interpolate(self, x: FloatVector) -> Self:
         """
         Interpolates the template to match the new x coordinates.
 
         If the new x coordinates match the current x coordinates, the same
         template is returned (or a copy if `inplace=False`).
         """
-        obj = self if inplace else self.copy(with_matrices=True)
-
+        obj = self.copy(with_matrices=False)
         if array_equal(x, self.x):
             return obj
 
         M, b = create_interp_matrix(self.x, x, left=0, right=0)
-
         obj.data = maximum(stack([M.dot(y) + b for y in self.data], axis=0), 0)
         obj.x = x
 
@@ -446,7 +497,7 @@ class BaseTemplate(ABC):
         Performs a raster fit of the template to the provided data returning the
         chi-square and flux value for each FWHM.
         """
-        obj = self.interpolate(x, inplace=False)
+        obj = self.interpolate(x)
         return rasterise.__wrapped__(
             y,
             dy,
@@ -469,3 +520,26 @@ class BaseTemplate(ABC):
             obj.data[i,mask] = 0.0
 
         return obj
+
+    def create1DTemplate(
+        self,
+        fwhm: float,
+    ) -> Self:
+        """
+        Creates a template with a single FWHM value. This is useful for 
+        template-based models with fixed FWHM values. 
+        """
+        assert fwhm >= self.fwhm[0]
+
+        idx = searchsorted(self.fwhm, fwhm, side="right") - 1
+        if idx == -1:
+            raise ValueError(
+                "FWHM is smaller than the smallest available FWHM in the "
+                f"template: {fwhm:.1f} < {self.fwhm[0]:.1f}"
+            )
+
+        if fwhm == self.fwhm[idx]:
+            return self[idx:idx+1]
+
+        # Create new column and return only the newly created column
+        return self.resample(array([self.fwhm[0], fwhm]), keep_x=True)[1:2]

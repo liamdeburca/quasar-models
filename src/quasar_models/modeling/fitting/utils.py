@@ -2,14 +2,23 @@ from collections.abc import Iterator
 from math import inf
 
 from emcee import State
-from numpy import dot, empty, float64, fromiter, ndim, stack, where
+from numpy import (
+    dot,
+    empty,
+    float64,
+    fromiter,
+    isfinite,
+    ndim,
+    stack,
+    where,
+)
 from quasar_typing.numpy import (
     BoolVector,
     FloatMatrix,
     FloatVector,
     RandomState_,
 )
-from scipy.linalg import det, inv
+from scipy.linalg import LinAlgError, inv, pinv
 from scipy.stats import multivariate_normal
 from tqdm import tqdm
 
@@ -92,15 +101,41 @@ def get_fisher_information_matrix(
 
 
 def get_covariance_matrix(fisher: FloatMatrix) -> FloatMatrix:
-    if det(fisher) == 0.0:
-        raise ValueError("Non-invertible Fisher information matrix.")
-    cov = inv(fisher)
-    if det(cov) == 0.0:
-        raise ValueError("Non-invertible covariance matrix.")
+    try:
+        cov = inv(fisher)
+    except LinAlgError:
+        cov = pinv(fisher)
 
-    return cov
+    # Ensure the covariance matrix is symmetric.
+    return cov + cov.T
 
-def get_parameter_samples(
+###
+
+def get_parameter_samples_uniform(
+    n_samples: int,
+    model: SequentialModel,
+    random_state: RandomState_,
+) -> Iterator[FloatVector]:
+    """
+    Create 'n_samples' samples of the model parameters from a uniform 
+    distribution within the parameter bounds of the model. If a parameter is 
+    unbounded, the parameter is not varied. 
+    """
+    x0 = model.x0
+    lb, ub = model.bounds
+    assert not (lb == ub).any()
+
+    mask = isfinite(lb) & isfinite(ub)
+    assert mask.any()
+
+    n = mask.sum()
+    for _ in range(n_samples):
+        x = x0.copy()
+        x[mask] = lb[mask] + (ub[mask] - lb[mask]) * random_state.rand(n)
+        yield x
+
+
+def get_parameter_samples_fisher(
     n_samples: int, 
     model: SequentialModel,
     data: dict[str, FloatVector],

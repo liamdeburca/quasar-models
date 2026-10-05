@@ -10,11 +10,10 @@ from time import perf_counter
 from typing import Any, Literal, Union
 from warnings import warn
 
-from astropy.modeling import CompoundModel
 from numpy import float64, ones
-from numpy.typing import NDArray
 from pydantic.dataclasses import dataclass
-from quasar_typing.numpy import FloatVector
+from quasar_typing.astropy import CompoundModel_
+from quasar_typing.numpy import BoolVector, FloatVector
 from quasar_typing.scipy import OptimizeResult_
 from scipy.optimize import least_squares
 
@@ -31,12 +30,13 @@ class Fitter:
 
     def __call__(
         self,
-        model: Union[BaseModel, CompoundModel, SequentialModel],
-        x: NDArray[float64],
-        y: NDArray[float64],
+        model: Union[BaseModel, CompoundModel_[BaseModel], SequentialModel],
+        x: FloatVector,
+        y: FloatVector,
         *,
-        dy: NDArray[float64] | None = None,
-        weights: NDArray[float64] | None = None,
+        dy: FloatVector | None = None,
+        weights: FloatVector | None = None,
+        where: BoolVector | None = None,
         get_model: bool = False,
         inplace: bool | None = None,
         method: Literal["lm", "trf", "dogbox"] = "trf",
@@ -47,13 +47,14 @@ class Fitter:
         loss: str | Callable = "linear",
         f_scale: float = 1.0,
         max_nfev: int | None = None,
-    ) -> Union[BaseModel, CompoundModel, None]:
+        calc_jac: bool = True,
+    ) -> Union[BaseModel, CompoundModel_[BaseModel], None]:
         """
         Wrapper for `scipy.optimize.least_squares`.
 
         Parameters
         ----------
-        model : BaseModel | CompoundModel | SequentialModel
+        model : BaseModel | CompoundModel_[BaseModel] | SequentialModel
             The model to fit to the data. If this model is not an instance of 
             `SequentialModel`, an instance will be created.
         x : NDArray[float64]
@@ -92,7 +93,7 @@ class Fitter:
         if not isinstance(model, SequentialModel):
             model = SequentialModel(model)
 
-        data: dict[str, NDArray[float64]] = {
+        data: dict[str, FloatVector] = {
             "x": x,
             "y": y,
         }
@@ -103,14 +104,19 @@ class Fitter:
         else:
             data["w"] = 1.0 / dy
 
+        fun = lambda x: model.fun(x, data, where=where)
+        if calc_jac:
+            jac = lambda x: model.jac(x, data, where=where)
+        else:
+            jac = "2-point"
+
         t_start = perf_counter()
         res = least_squares(
-            model.fun,
+            fun,
             model.x0,
-            jac=model.jac,
+            jac=jac,
             bounds=model.bounds,
             method=method,
-            args=(data,),
             # Additional keyword arguments for least_squares
             ftol=ftol,
             xtol=xtol,
@@ -121,24 +127,6 @@ class Fitter:
             max_nfev=max_nfev,
         )
         t_elapsed: float = (perf_counter() - t_start) * 1e3
-        # except ValueError as e:
-        #     msg = "Fitting failed due to ValueError: "
-
-        #     bad_indices = []
-        #     for i, (val, lb, ub) in enumerate(zip(model.x0, model.bounds[0], model.bounds[1])):
-        #         if val < lb or val > ub:
-        #             bad_indices.append(i)
-
-        #     if bad_indices:
-        #         msg += f"found {len(bad_indices)} parameter(s) outside of bounds:"
-        #         for i in bad_indices:
-        #             param = model._free_params[i]
-        #             name = param.name
-        #             val = param.value
-        #             lb = param.bounds[0]
-        #             ub = param.bounds[1]
-        #             msg += f"\nParameter({name}): {val=} < {lb=}, {val=} > {ub=}; "
-        #     raise ValueError(msg) from e
 
         self.fit_info = OptimizeResult_.fromFitInfo(res)
         self.sol = model._get_full_parameter_array(self.fit_info.x)

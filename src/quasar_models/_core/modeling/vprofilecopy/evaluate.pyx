@@ -1,5 +1,6 @@
 from quasar_models._core.modeling.gaussian.evaluate cimport (
     _evaluate_v as _gaussian_evaluate_v,
+    _evaluate_x as _gaussian_evaluate_x,
 )
 
 cdef inline void _evaluate_v(
@@ -38,4 +39,42 @@ def evaluate_v(
         strength_scale,
         strengths, fwhm_vs, v_offs,
         wave, sigma_res,
+    )
+
+cdef inline void _evaluate_x(
+    double[::1] y,
+    const double[::1] x,
+    const double strength_scale,
+    const double[::1] strengths,
+    const double[::1] fwhm_vs,
+    const double[::1] v_offs,
+    const double wave,
+    const double dx,
+) noexcept nogil:
+    cdef Py_ssize_t i, n = strengths.shape[0]
+    for i in range(n):
+        _gaussian_evaluate_x(
+            y, x,
+            strengths[i] * strength_scale,
+            fwhm_vs[i],
+            v_offs[i],
+            wave,
+            dx,
+        )
+
+def evaluate_x(
+    double [::1] y,
+    const double[::1] x,
+    const double strength_scale,
+    const double[::1] strengths,
+    const double[::1] fwhm_vs,
+    const double[::1] v_offs,
+    const double wave,
+    const double dx,
+):
+    _evaluate_x(
+        y, x,
+        strength_scale,
+        strengths, fwhm_vs, v_offs,
+        wave, dx,
     )

@@ -7,6 +7,7 @@ __all__ = [
 
 from collections import Counter, defaultdict
 from collections.abc import Iterable
+from itertools import product
 
 from astropy.modeling.core import Fittable1DModel
 from numpy import clip, inf
@@ -27,6 +28,44 @@ def apply_bounds(
         a_min=bounds[0] if (bounds[0] is not None) else -inf,
         a_max=bounds[1] if (bounds[1] is not None) else inf,
     )
+
+
+@validate_call
+def get_largest_possible_bounds(
+    bounds: list[AstropyBounds],
+    min_val: float = -inf,
+    max_val: float = inf,
+) -> AstropyBounds:
+    """
+    Return the largest possible bounds created as a product of the input bounds.
+
+    If a lower bound is None, it is replaced with `min_val`. If an upper bound 
+    is None, it is replaced with `max_val`.
+
+    Example:
+    ```
+        get_largest_possible_bounds([(0, 2), (-5, 10)]) -> (-5, 20)
+    ```
+    """
+
+    def _lower(b: float | None) -> float:
+        return min_val if b is None else b
+
+    def _upper(b: float | None) -> float:
+        return max_val if b is None else b
+    
+    lb: float = _lower(bounds[0][0])
+    ub: float = _upper(bounds[0][1])
+
+    for i in range(1, len(bounds)):
+        combs = [
+            _lower(a) * _upper(b) 
+            for a, b in product((lb, ub), bounds[i])
+        ]
+        lb = min(combs)
+        ub = max(combs)
+
+    return lb, ub
 
 
 @validate_call
@@ -64,46 +103,31 @@ def separate_submodels(
     for submodel in order_submodels(submodels, combine=False):
         submodels_dict[submodel.model_type].append(submodel)
 
-    out = {key: submodels for key, submodels in submodels_dict.items()}
-    if combine:
-        for key, submodels in out.items():
-            out[key] = sum(submodels[1:], start=submodels[0])
-
-    return out
+    return {
+        key: sum(ms[1:], start=ms[0]) if combine else ms
+        for key, ms in submodels_dict.items()
+    }
 
 
 @validate_call
-def get_configuration(
-    model: Model_,
-) -> dict[float, int]:
+def get_configuration(model: Model_) -> dict[float, int]:
     """
-    ** PYDANTIC VALIDATED FUNCTION **
-
     Retrieves the configuration of a given Astropy model, defined as the count
     of submodels corresponding to each unique wavelength parameter value.
     """
-    if model.n_submodels == 1:
-        submodels = [model]
-    else:
-        submodels = model
-
-    return Counter(m.wave.value for m in submodels)
+    ms = (model,) if model.n_submodels == 1 else model
+    return Counter(m.wave.value for m in ms)
 
 
 @validate_call
-def get_model_parts(
-    model: Model_,
-) -> dict[FluxComponent, Model_ | None]:
-    """
-    ** PYDANTIC VALIDATED FUNCTION **
-    """
-    parts = dict(
-        pl=None,
-        fe=None,
-        ba=None,
-        hg=None,
-        em=None,
-    )
+def get_model_parts(model: Model_) -> dict[FluxComponent, Model_ | None]:
+    parts = {
+        "pl": None,
+        "fe": None,
+        "ba": None,
+        "hg": None,
+        "em": None,
+    }
     submodels = model if (model.n_submodels > 1) else [model]
 
     for submodel in submodels:
@@ -119,7 +143,7 @@ def get_model_parts(
 
 @validate_call
 def get_free_params(model: Model_) -> dict[str, bool]:
-    """
-    ** PYDANTIC VALIDATED FUNCTION **
-    """
-    return dict([(p, not (model.fixed[p] or model.tied[p])) for p in model.param_names])
+    return {
+        p: not (model.fixed[p] or model.tied[p])
+        for p in model.param_names
+    }

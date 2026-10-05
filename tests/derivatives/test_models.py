@@ -1,13 +1,13 @@
 import pytest
-from numpy import array, isclose, stack, allclose
+from numpy import allclose, array, isclose, stack
 from numpy.random import Generator
 from quasar_typing.numpy import FloatMatrix, FloatVector
 
 from quasar_models.continuum import PowerLawModel
 from quasar_models.host import HostGalaxyModel
-from quasar_models.iron import IronModel
 from quasar_models.line import GaussianModel, VProfileCopy1G
 from quasar_models.modeling import PrepareModel, SequentialModel
+from quasar_models.modeling.prepare_model import _is_logbinned
 
 
 def numerical_derivative(
@@ -47,11 +47,19 @@ def test_gaussian(
     deriv_atol: float,
     subtests: pytest.Subtests,
 ) -> None:
+    assert _is_logbinned(wavelength_array)
+
     gaussian_model.strength.fixed = False
     gaussian_model.fwhm_v.fixed = False
     gaussian_model.v_off.fixed = False
 
     with PrepareModel(x=wavelength_array, model=gaussian_model) as seq_model:
+        m = seq_model._model
+        assert m.dx is None
+        assert m.kwargs["wave"] == m.wave
+        assert m.kwargs["sigma_res"] == m.sigma_res
+        assert "dx" not in m.kwargs
+
         bounds = seq_model.bounds
         for _ in range(deriv_its):
             strength = rng.uniform(*gaussian_model.strength.bounds)
@@ -61,6 +69,43 @@ def test_gaussian(
             with subtests.test(msg=f"GaussianModel: {strength=:.1f}, {fwhm_v=:.1f}, {v_off=:.1f}"):
                 df_analytical = seq_model.partial_deriv(wavelength_array, params)
                 df_numerical = numerical_derivative(wavelength_array, seq_model, params, bounds, deriv_epsilon)
+                assert isclose(df_analytical[0], df_numerical[0], rtol=deriv_rtol, atol=deriv_atol).mean() == 1.0
+                assert isclose(df_analytical[1], df_numerical[1], rtol=deriv_rtol, atol=deriv_atol).mean() == 1.0
+                assert isclose(df_analytical[2], df_numerical[2], rtol=deriv_rtol, atol=deriv_atol).mean() == 1.0
+
+def test_gaussian_linear(
+    gaussian_model: GaussianModel,
+    wavelength_array_linear: FloatVector,
+    rng: Generator,
+    deriv_epsilon: float,
+    deriv_its: int,
+    deriv_rtol: float,
+    deriv_atol: float,
+    subtests: pytest.Subtests,
+) -> None:
+    assert not _is_logbinned(wavelength_array_linear)
+    
+    gaussian_model.strength.fixed = False
+    gaussian_model.fwhm_v.fixed = False
+    gaussian_model.v_off.fixed = False
+
+    with PrepareModel(x=wavelength_array_linear, model=gaussian_model) as seq_model:
+        m = seq_model._model
+        assert m.dx is not None
+        assert m.kwargs["wave"] == m.wave
+        assert m.kwargs["dx"] == m.dx
+        assert "sigma_res" not in m.kwargs
+
+        bounds = seq_model.bounds
+        for _ in range(deriv_its):
+            strength = rng.uniform(*gaussian_model.strength.bounds)
+            fwhm_v = rng.uniform(*gaussian_model.fwhm_v.bounds)
+            v_off = rng.uniform(*gaussian_model.v_off.bounds)
+            params = array([strength, fwhm_v, v_off])
+            with subtests.test(msg=f"GaussianModel: {strength=:.1f}, {fwhm_v=:.1f}, {v_off=:.1f}"):
+                df_analytical = seq_model.partial_deriv(wavelength_array_linear, params)
+                df_numerical = numerical_derivative(wavelength_array_linear, seq_model, params, bounds, deriv_epsilon)
+
                 assert isclose(df_analytical[0], df_numerical[0], rtol=deriv_rtol, atol=deriv_atol).mean() == 1.0
                 assert isclose(df_analytical[1], df_numerical[1], rtol=deriv_rtol, atol=deriv_atol).mean() == 1.0
                 assert isclose(df_analytical[2], df_numerical[2], rtol=deriv_rtol, atol=deriv_atol).mean() == 1.0
@@ -187,6 +232,9 @@ def test_host(
     wavelength_array = host_model.template.x
 
     with PrepareModel(x=wavelength_array, model=host_model) as seq_model:
+        m = seq_model._model
+        assert m.evaluate_func.rescaling
+
         bounds = seq_model.bounds
         for _ in range(deriv_its):
             flux = rng.uniform(*host_model.flux.bounds)

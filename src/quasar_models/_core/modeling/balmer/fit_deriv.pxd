@@ -143,3 +143,35 @@ cdef void _fit_deriv_interp_all(
     CyTemplate series_cytemplate,
     const double n_scales,
 )
+
+### By RESCALING
+
+cdef void _fit_deriv_rescale_only_flux(
+    double[:,::1] derivs,
+    const double flux,
+    const double fwhm,
+    const double ratio,
+    CyTemplate continuum_cytemplate,
+    CyTemplate series_cytemplate,
+    const double n_scales,
+)
+
+cdef void _fit_deriv_rescale_only_ratio(
+    double[:,::1] derivs,
+    const double flux,
+    const double fwhm,
+    const double ratio,
+    CyTemplate continuum_cytemplate,
+    CyTemplate series_cytemplate,
+    const double n_scales,
+)
+
+cdef void _fit_deriv_rescale_flux_and_ratio(
+    double[:,::1] derivs,
+    const double flux,
+    const double fwhm,
+    const double ratio,
+    CyTemplate continuum_cytemplate,
+    CyTemplate series_cytemplate,
+    const double n_scales,
+)

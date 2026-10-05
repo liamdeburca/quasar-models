@@ -1,4 +1,6 @@
 from math import floor, log
+from pathlib import Path
+from shutil import rmtree
 
 import pytest
 from astropy.units import Unit
@@ -71,20 +73,36 @@ def rng() -> Generator:
 @pytest.fixture(scope="session")
 def wavelength_array(info: Info) -> FloatVector:
     dv = info.loading.sigma_res
-
-    x0 = info.units.getWavelength(1000 * Unit("angstrom"))
-    x1 = info.units.getWavelength(10_000 * Unit("angstrom"))
+    x0 = info.units.getWavelength(3_000 * Unit("angstrom"))
+    x1 = info.units.getWavelength(9_000 * Unit("angstrom"))
     n = floor(log(x1 / x0) / log(1 + dv))
-
     return x0 * (1 + dv) ** arange(n + 1)
+
+@pytest.fixture(scope="session")
+def wavelength_array_linear() -> FloatVector:
+    dx = 0.25
+    x0 = 3_000.0
+    x1 = 9_000.0
+    n = floor((x1 - x0) / dx)
+    return x0 + dx * arange(n + 1)
+
+###
+
+_this_file: Path = Path(__file__).resolve()
+
+@pytest.fixture(scope="session")
+def temp_dir():
+    temp = _this_file.parent / "temp"
+    temp.mkdir(exist_ok=True)
+    yield temp
+    # rmtree(temp)
 
 ### Gaussian
 
 @pytest.fixture(scope="session")
 def gaussian_model(info: Info) -> GaussianModel:
     return GaussianModel.create(
-        6548.0,
-        info.loading.sigma_res,
+        6548.0, info.loading.sigma_res, "n",
         strength=1.0,
         fwhm_v=1000.0,
         v_off=0.0,
@@ -129,7 +147,7 @@ def iron_template(info: Info, wavelength_array: FloatVector) -> IronTemplate:
         info=info,
     ).createLogspace(
         sigma_res=info.loading.sigma_res,
-        # xr=wavelength_array,
+        xr=wavelength_array,
     )
 
 @pytest.fixture(scope="session")
@@ -170,7 +188,7 @@ def host_template(info: Info, wavelength_array: FloatVector) -> HostGalaxyTempla
         info=info,
     ).createLogspace(
         sigma_res=info.loading.sigma_res,
-        # xr=wavelength_array,
+        xr=wavelength_array,
     )
 
 @pytest.fixture(scope="session")
@@ -208,7 +226,7 @@ def balmer_continuum_template(info: Info, wavelength_array: FloatVector) -> Balm
         info=info,
     ).createLogspace(
         sigma_res=info.loading.sigma_res,
-        # xr=wavelength_array,
+        xr=wavelength_array,
     )
 
 @pytest.fixture(scope="session")
@@ -229,7 +247,7 @@ def balmer_series_template(info: Info, wavelength_array: FloatVector) -> BalmerS
         info=info,
     ).createLogspace(
         sigma_res=info.loading.sigma_res,
-        # xr=wavelength_array,
+        xr=wavelength_array,
     )
 
 @pytest.fixture(scope="session")

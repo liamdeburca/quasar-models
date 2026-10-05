@@ -5,13 +5,19 @@ __all__ = [
 ]
 
 from collections.abc import Iterable
-from dataclasses import dataclass
 from math import inf
-from typing import ClassVar, Literal, Self
+from typing import ClassVar, Literal, Self, TypeVar
 
-from astropy.modeling import CompoundModel, Parameter
+from numpy import einsum
+from pydantic.dataclasses import dataclass
+from quasar_typing.astropy import CompoundModel_, Parameter_
+from quasar_typing.numpy import FloatArray, FloatMatrix
+from quasar_utils.decorators import validate_call
 
 from .base_model import BaseModel
+
+N = TypeVar("N", bound=int)
+K = TypeVar("K", bound=int)
 
 
 @dataclass(kw_only=True, frozen=True)
@@ -25,7 +31,7 @@ class LinearTie:
     def __bool__(self) -> Literal[True]:
         return True
 
-    def __call__(self, model: CompoundModel) -> float:
+    def __call__(self, model: CompoundModel_) -> float:
         x = getattr(model[self.model_name], self.parameter_name).value
         return self.a * x + self.b
 
@@ -46,6 +52,7 @@ class IdenticalTie(LinearTie):
     b: ClassVar[Literal[0]] = 0.0
 
 
+@validate_call
 def chain_linear_ties(*ties: LinearTie) -> LinearTie:
     if len(ties) < 2:
         raise ValueError("At least two LinearTie instances are required to chain.")
@@ -76,8 +83,9 @@ class Param:
     fixed: bool
 
     @classmethod
-    def from_parameter(cls, param: Self | Parameter) -> Self:
-        if isinstance(param, cls): 
+    @validate_call
+    def from_parameter(cls, param: object | Parameter_) -> Self:
+        if isinstance(param, Param): 
             return param
         
         lb, ub = param.bounds
@@ -179,6 +187,6 @@ def get_param_type(
         # If the parameter is tied to a chain of parameters:
         # - Collapse the chain into a single tie.
         # - Update the parameter's tie to the new tie.
-        param.tied = chain_linear_ties(*tie_chain)
+        param.tied = chain_linear_ties.__wrapped__(*tie_chain)
 
     return 'tied'

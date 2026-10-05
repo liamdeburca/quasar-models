@@ -28,7 +28,7 @@ def plot_template(
 
     sel = slice(None, None, 5)
 
-    fig, axes = plt.subplots(2, 1, figsize=(8, 4), dpi=300, sharex=True, sharey=True)
+    _, axes = plt.subplots(2, 1, figsize=(8, 4), dpi=300, sharex=True, sharey=True)
     axes[0].set_title(
         f"Iron template: {template.name} from {base_template.name}", loc="left"
     )

@@ -1,15 +1,18 @@
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import field
 from functools import partial
 from logging import getLogger
 from time import perf_counter
 from typing import Union
 from warnings import warn
 
-from astropy.modeling import CompoundModel
 from emcee import EnsembleSampler
 from emcee.autocorr import AutocorrError
 from numpy import array, float64, int_, ndim, ones, stack
+from pydantic.dataclasses import dataclass
+from quasar_typing.astropy import CompoundModel_
+from quasar_typing.emcee import Backend_, EnsembleSampler_, Move_
+from quasar_typing.misc import MCMCSamplingMethod
 from quasar_typing.numpy import (
     FloatCube,
     FloatMatrix,
@@ -17,6 +20,7 @@ from quasar_typing.numpy import (
     RandomState_,
 )
 from quasar_typing.scipy import OptimizeResult_
+from quasar_utils.decorators import validate_call
 
 from ..base_model import BaseModel
 from ..sequential_model import SequentialModel
@@ -25,7 +29,8 @@ from ..stop_conditions import (
     xtol_stop_batched,
 )
 from .utils import (
-    get_parameter_samples,
+    get_parameter_samples_fisher,
+    get_parameter_samples_uniform,
     log_posterior,
     transform_samples_to_state,
 )
@@ -53,13 +58,14 @@ class MCMCFitter:
     fit_info: OptimizeResult_ | None = field(default=None, init=False)
     sol: FloatVector | None = field(default=None, init=False)
 
-    sampler: EnsembleSampler | None = field(default=None, init=False)
+    sampler: EnsembleSampler_ | None = field(default=None, init=False)
     samples: FloatCube | None = field(default=None, init=False)
     ps: FloatVector | None = field(default=None, init=False)
 
+    @validate_call
     def __call__(
         self,
-        model: Union[BaseModel, CompoundModel, SequentialModel],
+        model: Union[BaseModel, CompoundModel_[BaseModel], SequentialModel],
         x: FloatVector,
         y: FloatVector,
         *,
@@ -72,6 +78,8 @@ class MCMCFitter:
         progress: bool = False,
         vectorize: bool = True,
         pool: object | None = None,
+        backend: Backend_ | None = None,
+        moves: Move_ | list[Move_] | list[tuple[Move_, float]] | None = None,
 
         random_state: RandomState_,
         n_walkers: int = 100,
@@ -80,8 +88,9 @@ class MCMCFitter:
         batch_size: int = 100,
         ftol: float | None = 1e-4,
         xtol: float | None = 1e-4,
+        sampling_method: MCMCSamplingMethod = "uniform",
         max_attempts: int | None = None,
-    ) -> Union[BaseModel, CompoundModel, None]:
+    ) -> Union[BaseModel, CompoundModel_[BaseModel], None]:
         """
         Fit the model to the data using MCMC sampling.
         """
@@ -103,14 +112,16 @@ class MCMCFitter:
         else:
             data["w"] = 1.0 / dy
 
-        _samples = list(get_parameter_samples(
-            n_walkers,
-            model,
-            data,
-            random_state=random_state,
-            max_attempts=max_attempts,
-        ))
+        if sampling_method == "uniform":
+            _samples_itr = get_parameter_samples_uniform(
+                n_walkers, model, random_state,
+            )
+        else:
+            _samples_itr = get_parameter_samples_fisher(
+                n_walkers, model, data, random_state, max_attempts=max_attempts,
+            )
 
+        _samples = list(_samples_itr)
         _n = len(_samples)
         if _n == 0:
             msg = "Could not generate any valid initial parameter samples in "\
@@ -125,6 +136,9 @@ class MCMCFitter:
 
         n_walkers = min(n_walkers, _n)
         initial_state = transform_samples_to_state(_samples, model, data, bounds=bounds)
+        if backend is not None:
+            backend.reset(n_walkers, n_free)
+            assert backend.initialized
 
         t_start = perf_counter()
         self.sampler = EnsembleSampler(
@@ -133,6 +147,8 @@ class MCMCFitter:
             partial(_log_prob_fn, model=model, data=data, bounds=bounds),
             vectorize=vectorize,
             pool=pool,
+            backend=backend,
+            moves=moves,
         )
         self.autocorr_time = 1.0
         with suppress(AutocorrError):
@@ -144,11 +160,13 @@ class MCMCFitter:
                 batch_size = max_nfev
 
             count: int = 0
+            curr_state = initial_state
             while count < max_nfev:
-                _ = self.sampler.run_mcmc(
-                    initial_state, 
-                    n := min(batch_size, max_nfev - count),
+                n = min(batch_size, max_nfev - count)
+                curr_state = self.sampler.run_mcmc(
+                    curr_state, n,
                     progress=progress,
+                    store=True,
                 )
                 count += n
 

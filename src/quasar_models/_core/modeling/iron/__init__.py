@@ -1,49 +1,3 @@
-__all__ = [
-    "IronEvaluate",
-    "IronFitDeriv",
-    "choose_evaluate_func",
-    "choose_fit_deriv_func",
-    "evaluate_exact",
-    "evaluate_exact_no_split",
-    "evaluate_interp",
-    "fit_deriv_exact_all",
-    "fit_deriv_exact_all_except_flux",
-    "fit_deriv_exact_all_except_fwhm",
-    "fit_deriv_exact_all_except_left",
-    "fit_deriv_exact_all_except_right",
-    "fit_deriv_exact_all_except_split",
-    "fit_deriv_exact_flux_and_fwhm",
-    "fit_deriv_exact_flux_and_fwhm_and_left",
-    "fit_deriv_exact_flux_and_fwhm_and_right",
-    "fit_deriv_exact_flux_and_fwhm_and_split",
-    "fit_deriv_exact_flux_and_left",
-    "fit_deriv_exact_flux_and_left_and_right",
-    "fit_deriv_exact_flux_and_right",
-    "fit_deriv_exact_flux_and_split",
-    "fit_deriv_exact_flux_and_split_and_left",
-    "fit_deriv_exact_flux_and_split_and_right",
-    "fit_deriv_exact_fwhm_and_left",
-    "fit_deriv_exact_fwhm_and_left_and_right",
-    "fit_deriv_exact_fwhm_and_right",
-    "fit_deriv_exact_fwhm_and_split",
-    "fit_deriv_exact_fwhm_and_split_and_left",
-    "fit_deriv_exact_fwhm_and_split_and_right",
-    "fit_deriv_exact_left_and_right",
-    "fit_deriv_exact_no_split_all",
-    "fit_deriv_exact_no_split_only_flux",
-    "fit_deriv_exact_no_split_only_fwhm",
-    "fit_deriv_exact_only_flux",
-    "fit_deriv_exact_only_fwhm",
-    "fit_deriv_exact_only_left",
-    "fit_deriv_exact_only_right",
-    "fit_deriv_exact_only_split",
-    "fit_deriv_exact_split_and_left",
-    "fit_deriv_exact_split_and_left_and_right",
-    "fit_deriv_exact_split_and_right",
-    "fit_deriv_interp_all",
-    "fit_deriv_interp_only_flux",
-    "fit_deriv_interp_only_fwhm",
-]
 from .utils import (
     IronEvaluate,
     IronFitDeriv,
@@ -51,10 +5,7 @@ from .utils import (
 
 
 def _no_split(left: float, right: float, fixed: dict[str, bool]) -> bool:
-    return left == 1.0 \
-        and right == 1.0 \
-        and fixed.get("left", False) \
-        and fixed.get("right", False)
+    return left == 1.0 and right == 1.0 and fixed["left"] and fixed["right"]
 
 
 def choose_evaluate_func(
@@ -63,14 +14,144 @@ def choose_evaluate_func(
     allow_interp_fitting: bool,
     fixed: dict[str, bool],
 ) -> IronEvaluate:
-    match (_no_split(left, right, fixed), allow_interp_fitting):
-        case True, True:
+    if _no_split(left, right, fixed):
+        if fixed["fwhm"]:
+            return evaluate_rescale
+        elif allow_interp_fitting:
             return evaluate_interp
-        case True, False:
-            return evaluate_exact_no_split
-        case _:
-            return evaluate_exact
+        return evaluate_exact_no_split
+    return evaluate_exact
 
+
+def choose_fit_deriv_rescale_func(
+    fixed: dict[str, bool],
+) -> IronFitDeriv:
+    if fixed["fwhm"]:
+        return fit_deriv_rescale_only_flux
+    return does_nothing
+
+
+def choose_fit_deriv_interp_func(
+    fixed: dict[str, bool],
+) -> IronFitDeriv:
+    _case = (
+        bool(fixed["flux"]),
+        bool(fixed["fwhm"]),
+    )
+    match _case:
+        case (False, False):
+            return fit_deriv_interp_all
+        case (False, True):
+            return fit_deriv_interp_only_flux
+        case (True, False):
+            return fit_deriv_interp_only_fwhm
+        case (True, True):
+            return does_nothing
+
+
+def choose_fit_deriv_exact_no_split_func(
+    fixed: dict[str, bool],
+) -> IronFitDeriv:
+    _case = (
+        bool(fixed["flux"]),
+        bool(fixed["fwhm"]),
+    )
+    match _case:
+        case (False, False):
+            return fit_deriv_exact_no_split_all
+        case (False, True):
+            return fit_deriv_exact_no_split_only_flux
+        case (True, False):
+            return fit_deriv_exact_no_split_only_fwhm
+        case (True, True):
+            return does_nothing
+
+
+def choose_fit_deriv_exact_func(
+    fixed: dict[str, bool],
+) -> IronFitDeriv:
+    _case = (
+        bool(fixed["flux"]),
+        bool(fixed["fwhm"]),
+        bool(fixed["split"]),
+        bool(fixed["left"]),
+        bool(fixed["right"]),
+    )
+    match _case:
+        # General case
+        case (False, False, False, False, False):
+            return fit_deriv_exact_all
+
+        # All except one
+        case (True, False, False, False, False):
+            return fit_deriv_exact_all_except_flux
+        case (False, True, False, False, False):
+            return fit_deriv_exact_all_except_fwhm
+        case (False, False, True, False, False):
+            return fit_deriv_exact_all_except_split
+        case (False, False, False, True, False):
+            return fit_deriv_exact_all_except_left
+        case (False, False, False, False, True):
+            return fit_deriv_exact_all_except_right
+
+        # Three free
+        case (True, True, False, False, False):
+            return fit_deriv_exact_split_and_left_and_right
+        case (True, False, True, False, False):
+            return fit_deriv_exact_fwhm_and_left_and_right
+        case (True, False, False, True, False):
+            return fit_deriv_exact_fwhm_and_split_and_right
+        case (True, False, False, False, True):
+            return fit_deriv_exact_fwhm_and_split_and_left
+        case (False, True, True, False, False):
+            return fit_deriv_exact_flux_and_left_and_right
+        case (False, True, False, True, False):
+            return fit_deriv_exact_flux_and_split_and_right
+        case (False, True, False, False, True):
+            return fit_deriv_exact_flux_and_split_and_left
+        case (False, False, True, True, False):
+            return fit_deriv_exact_flux_and_fwhm_and_right
+        case (False, False, True, False, True):
+            return fit_deriv_exact_flux_and_fwhm_and_left
+        case (False, False, False, True, True):
+            return fit_deriv_exact_flux_and_fwhm_and_split
+
+        # Two free
+        case (True, True, True, False, False):
+            return fit_deriv_exact_left_and_right
+        case (True, True, False, True, False):
+            return fit_deriv_exact_split_and_right
+        case (True, True, False, False, True):
+            return fit_deriv_exact_split_and_left
+        case (True, False, True, True, False):
+            return fit_deriv_exact_fwhm_and_right
+        case (True, False, True, False, True):
+            return fit_deriv_exact_fwhm_and_left
+        case (True, False, False, True, True):
+            return fit_deriv_exact_fwhm_and_split
+        case (False, True, True, True, False):
+            return fit_deriv_exact_flux_and_right
+        case (False, True, True, False, True):
+            return fit_deriv_exact_flux_and_left
+        case (False, True, False, True, True):
+            return fit_deriv_exact_flux_and_split
+        case (False, False, True, True, True):
+            return fit_deriv_exact_flux_and_fwhm
+
+        # Exactly one free
+        case (True, True, True, True, False):
+            return fit_deriv_exact_only_right
+        case (True, True, True, False, True):
+            return fit_deriv_exact_only_left
+        case (True, True, False, True, True):
+            return fit_deriv_exact_only_split
+        case (True, False, True, True, True):
+            return fit_deriv_exact_only_fwhm
+        case (False, True, True, True, True):
+            return fit_deriv_exact_only_flux
+
+        case (True, True, True, True, True):
+            return does_nothing
 
 def choose_fit_deriv_func(
     left: float,
@@ -79,111 +160,12 @@ def choose_fit_deriv_func(
     fixed: dict[str, bool],
 ) -> IronFitDeriv:
     if _no_split(left, right, fixed):
-        _case = (fixed.get("flux", False), fixed.get("fwhm", False))
-        if allow_interp_fitting:
-            match _case:
-                case False, False:
-                    return fit_deriv_interp_all
-                case False, True:
-                    return fit_deriv_interp_only_flux
-                case True, False:
-                    return fit_deriv_interp_only_fwhm
-                case True, True:
-                    return does_nothing
-        else:
-            match _case:
-                case False, False:
-                    return fit_deriv_exact_no_split_all
-                case False, True:
-                    return fit_deriv_exact_no_split_only_flux
-                case True, False:
-                    return fit_deriv_exact_no_split_only_fwhm
-                case True, True:
-                    return does_nothing
-    else:
-        _case = (
-            fixed.get("flux", False),
-            fixed.get("fwhm", False),
-            fixed.get("split", False),
-            fixed.get("left", False),
-            fixed.get("right", False),
-        )
-        match _case:
-            # General case
-            case False, False, False, False, False:
-                return fit_deriv_exact_all
-
-            # All except one
-            case True, False, False, False, False:
-                return fit_deriv_exact_all_except_flux
-            case False, True, False, False, False:
-                return fit_deriv_exact_all_except_fwhm
-            case False, False, True, False, False:
-                return fit_deriv_exact_all_except_split
-            case False, False, False, True, False:
-                return fit_deriv_exact_all_except_left
-            case False, False, False, False, True:
-                return fit_deriv_exact_all_except_right
-
-            # Three free
-            case True, True, False, False, False:
-                return fit_deriv_exact_split_and_left_and_right
-            case True, False, True, False, False:
-                return fit_deriv_exact_fwhm_and_left_and_right
-            case True, False, False, True, False:
-                return fit_deriv_exact_fwhm_and_split_and_right
-            case True, False, False, False, True:
-                return fit_deriv_exact_fwhm_and_split_and_left
-            case False, True, True, False, False:
-                return fit_deriv_exact_flux_and_left_and_right
-            case False, True, False, True, False:
-                return fit_deriv_exact_flux_and_split_and_right
-            case False, True, False, False, True:
-                return fit_deriv_exact_flux_and_split_and_left
-            case False, False, True, True, False:
-                return fit_deriv_exact_flux_and_fwhm_and_right
-            case False, False, True, False, True:
-                return fit_deriv_exact_flux_and_fwhm_and_left
-            case False, False, False, True, True:
-                return fit_deriv_exact_flux_and_fwhm_and_split
-
-            # Two free
-            case True, True, True, False, False:
-                return fit_deriv_exact_left_and_right
-            case True, True, False, True, False:
-                return fit_deriv_exact_split_and_right
-            case True, True, False, False, True:
-                return fit_deriv_exact_split_and_left
-            case True, False, True, True, False:
-                return fit_deriv_exact_fwhm_and_right
-            case True, False, True, False, True:
-                return fit_deriv_exact_fwhm_and_left
-            case True, False, False, True, True:
-                return fit_deriv_exact_fwhm_and_split
-            case False, True, True, True, False:
-                return fit_deriv_exact_flux_and_right
-            case False, True, True, False, True:
-                return fit_deriv_exact_flux_and_left
-            case False, True, False, True, True:
-                return fit_deriv_exact_flux_and_split
-            case False, False, True, True, True:
-                return fit_deriv_exact_flux_and_fwhm
-
-            # Exactly one free
-            case True, True, True, True, False:
-                return fit_deriv_exact_only_right
-            case True, True, True, False, True:
-                return fit_deriv_exact_only_left
-            case True, True, False, True, True:
-                return fit_deriv_exact_only_split
-            case True, False, True, True, True:
-                return fit_deriv_exact_only_fwhm
-            case False, True, True, True, True:
-                return fit_deriv_exact_only_flux
-
-            case True, True, True, True, True:
-                return does_nothing
-
+        if fixed["fwhm"]:
+            return choose_fit_deriv_rescale_func(fixed)
+        elif allow_interp_fitting:
+            return choose_fit_deriv_interp_func(fixed)
+        return choose_fit_deriv_exact_no_split_func(fixed)
+    return choose_fit_deriv_exact_func(fixed)
 
 ### By CONVOLUTION // No split: Simplify template
 
@@ -359,6 +341,20 @@ fit_deriv_interp_only_fwhm = IronFitDeriv(
 fit_deriv_interp_all = IronFitDeriv(
     "fit_deriv_interp_all",
     simplify=False,
+)
+
+### By RESCALING
+
+evaluate_rescale = IronEvaluate(
+    "evaluate_rescale",
+    simplify=False,
+    rescaling=True
+)
+
+fit_deriv_rescale_only_flux = IronFitDeriv(
+    "fit_deriv_rescale_only_flux",
+    simplify=False,
+    rescaling=True
 )
 
 does_nothing = IronFitDeriv()

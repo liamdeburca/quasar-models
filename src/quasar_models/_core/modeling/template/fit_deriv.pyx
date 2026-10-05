@@ -8,6 +8,7 @@ from quasar_models._core.convolution.utils cimport (
 from quasar_models._core.modeling.template.evaluate cimport (
     _evaluate_exact,
     _evaluate_interp,
+    _evaluate_rescale,
 )
 from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
 
@@ -193,4 +194,38 @@ def fit_deriv_interp_all(
         derivs, 
         flux, fwhm, 
         cytemplate, n_scales
+    )
+
+###
+
+cdef void _fit_deriv_rescale_only_flux(
+    double[:,::1] derivs,
+    const double flux,
+    const double fwhm,
+    CyTemplate cytemplate,
+    const double n_scales,
+):
+    """
+    Special case: the FWHM is frozen so the template does not need to be 
+    convolved or interpolated. In this case, only the flux derivative is 
+    relevant.
+    """
+    _evaluate_rescale(
+        derivs[0, :],
+        1.0,
+        fwhm,
+        cytemplate, n_scales,
+    )
+
+def fit_deriv_rescale_only_flux(
+    double[:,::1] derivs,
+    const double flux,
+    const double fwhm,
+    CyTemplate cytemplate,
+    const double n_scales,
+):
+    _fit_deriv_rescale_only_flux(
+        derivs,
+        flux, fwhm,
+        cytemplate, n_scales,
     )

@@ -1,5 +1,5 @@
 from dataclasses import field
-from typing import ClassVar, Literal, Self
+from typing import Any, ClassVar, Literal, Self
 
 from pydantic.dataclasses import dataclass
 from quasar_typing.pathlib import AbsoluteDirPath, AbsoluteFITSPath
@@ -89,3 +89,14 @@ class HostGalaxyTemplate(BaseTemplate):
     ) -> Self:
         kwargs = load_from_cache(name=name, age=age, info=info)
         return HostGalaxyTemplate(**kwargs)
+
+    ### Serialization
+
+    def serialize(self, info: Info) -> dict[str, Any]:
+        data = super().serialize(info)
+        data["age"] = self.age
+        return data
+
+    @classmethod
+    def _deserialize_helper(cls, data: dict[str, Any], info: Info) -> Self:
+        return cls.load_from_cache(name=data["name"], age=data["age"], info=info)

@@ -1,7 +1,7 @@
 __all__ = ["BalmerContinuumTemplate"]
 
 from dataclasses import field
-from typing import ClassVar, Self
+from typing import Any, ClassVar, Self
 
 from pydantic.dataclasses import dataclass
 from quasar_typing.numpy import SortedFloatVector
@@ -11,6 +11,7 @@ from quasar_utils.setup import Info
 from quasar_models._core.modeling.balmer.continuum import evaluate
 from quasar_models.modeling.template import BaseTemplate
 
+from ...utils.serialization import deserialize_quantity, serialize_quantity
 from .io import PATH_TO_CACHE, load, load_from_cache, save, save_to_cache
 
 
@@ -170,3 +171,25 @@ class BalmerContinuumTemplate(BaseTemplate):
             info=info,
         )
         return BalmerContinuumTemplate(**kwargs)
+
+    ### Serialization
+
+    def serialize(self, info: Info) -> dict[str, Any]:
+        temp_unit = str(info.units.temp_unit)
+    
+        data = super().serialize(info)
+        data["temp"] = serialize_quantity(self.temp, temp_unit)
+        data["tau"] = self.tau
+        data["scale"] = self.scale
+
+        return data
+
+    @classmethod
+    def _deserialize_helper(cls, data: dict[str, Any], info: Info) -> dict[str, Any]:
+        temp_unit = str(info.units.temp_unit)
+        return BalmerContinuumTemplate.load_from_cache(
+            temp=deserialize_quantity(data["temp"], temp_unit), 
+            tau=data["tau"], 
+            scale=data["scale"], 
+            info=info,
+        )

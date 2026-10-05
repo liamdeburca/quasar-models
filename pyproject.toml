@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Spectral fitting models with Pydantic and AstroPy compatibility"
 readme = "README.md"
 requires-python = ">=3.12"
-license = {text = "MIT"}
+
 authors = [
     {name = "Liam", email = "liam_deburca@me.com"}
 ]
@@ -26,6 +26,7 @@ dependencies = [
     "pydantic>=2.12",
     "quasar-typing",
     "quasar-utils",
+    "click >= 8.0",
 ]
 
 [project.optional-dependencies]
@@ -35,6 +36,9 @@ dev = [
     "black",
     "isort",
 ]
+
+[project.scripts]
+quasar-models = "quasar_models.cli.main::cli"
 
 [project.urls]
 Repository = "https://github.com/liamdeburca/quasar-models"

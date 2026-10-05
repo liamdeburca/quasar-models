@@ -1,6 +1,7 @@
 from quasar_models._core.modeling.template.evaluate cimport (
     _evaluate_exact as _template_evaluate_exact,
     _evaluate_interp as _template_evaluate_interp,
+    _evaluate_rescale as _template_evaluate_rescale,
 )
 from quasar_models._core.modeling.template.fit_deriv cimport (
     _fit_deriv_exact_only_fwhm as _template_fit_deriv_exact_only_fwhm,
@@ -10,6 +11,7 @@ from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
 from quasar_models._core.modeling.balmer.evaluate cimport (
     _evaluate_exact,
     _evaluate_interp,
+    _evaluate_rescale,
 )
 
 ### By CONVOLUTION
@@ -344,6 +346,65 @@ cdef inline void _fit_deriv_interp_all(
         n_scales,
     )
 
+### By RESCALING
+
+cdef inline void _fit_deriv_rescale_only_flux(
+    double[:,::1] derivs,
+    const double flux,
+    const double fwhm,
+    const double ratio,
+    CyTemplate continuum_cytemplate,
+    CyTemplate series_cytemplate,
+    const double n_scales,
+):
+    _evaluate_rescale(
+        derivs[0, :],
+        flux, fwhm, ratio,
+        continuum_cytemplate,
+        series_cytemplate,
+        n_scales,
+    )
+
+cdef inline void _fit_deriv_rescale_only_ratio(
+    double[:,::1] derivs,
+    const double flux,
+    const double fwhm,
+    const double ratio,
+    CyTemplate continuum_cytemplate,
+    CyTemplate series_cytemplate,
+    const double n_scales,
+):
+    _template_evaluate_rescale(
+        derivs[2, :],
+        flux, fwhm,
+        series_cytemplate,
+        n_scales,
+    )
+
+cdef inline void _fit_deriv_rescale_flux_and_ratio(
+    double[:,::1] derivs,
+    const double flux,
+    const double fwhm,
+    const double ratio,
+    CyTemplate continuum_cytemplate,
+    CyTemplate series_cytemplate,
+    const double n_scales,
+):
+    _fit_deriv_rescale_only_flux(
+        derivs,
+        flux, fwhm, ratio,
+        continuum_cytemplate,
+        series_cytemplate,
+        n_scales,
+    )
+    _fit_deriv_rescale_only_ratio(
+        derivs,
+        flux, fwhm, ratio,
+        continuum_cytemplate,
+        series_cytemplate,
+        n_scales,
+    )
+
 # ======== PUBLIC PYTHON INTERFACE ========
 
 def fit_deriv_exact_only_flux(
@@ -577,6 +638,59 @@ def fit_deriv_interp_all(
     const double n_scales,
 ):
     _fit_deriv_interp_all(
+        derivs, 
+        flux, fwhm, ratio, 
+        continuum_cytemplate,
+        series_cytemplate,
+        n_scales,
+    )
+
+### By RESCALING
+
+def fit_deriv_rescale_only_flux(
+    double[:,::1] derivs,
+    const double flux,
+    const double fwhm,
+    const double ratio,
+    CyTemplate continuum_cytemplate,
+    CyTemplate series_cytemplate,
+    const double n_scales,
+):
+    _fit_deriv_rescale_only_flux(
+        derivs, 
+        flux, fwhm, ratio, 
+        continuum_cytemplate,
+        series_cytemplate,
+        n_scales,
+    )
+
+def fit_deriv_rescale_only_ratio(
+    double[:,::1] derivs,
+    const double flux,
+    const double fwhm,
+    const double ratio,
+    CyTemplate continuum_cytemplate,
+    CyTemplate series_cytemplate,
+    const double n_scales,
+):
+    _fit_deriv_rescale_only_ratio(
+        derivs, 
+        flux, fwhm, ratio, 
+        continuum_cytemplate,
+        series_cytemplate,
+        n_scales,
+    )
+
+def fit_deriv_rescale_flux_and_ratio(
+    double[:,::1] derivs,
+    const double flux,
+    const double fwhm,
+    const double ratio,
+    CyTemplate continuum_cytemplate,
+    CyTemplate series_cytemplate,
+    const double n_scales,
+):
+    _fit_deriv_rescale_flux_and_ratio(
         derivs, 
         flux, fwhm, ratio, 
         continuum_cytemplate,

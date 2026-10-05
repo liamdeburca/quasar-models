@@ -82,3 +82,35 @@ def evaluate_interp(
         flux, fwhm,
         cytemplate, n_scales,
     )
+
+###
+
+cdef void _evaluate_rescale(
+    double[::1] y,
+    const double flux,
+    const double fwhm,
+    CyTemplate cytemplate,
+    const double n_scales,
+):
+    """
+    Special case: the FWHM is frozen so the template does not need to be 
+    convolved or interpolated.
+    """
+    multiply_and_add_to(
+        y,
+        cytemplate.data[0, :],
+        flux,
+    )
+
+def evaluate_rescale(
+    double[::1] y,
+    const double flux,
+    const double fwhm,
+    CyTemplate cytemplate,
+    const double n_scales,
+):
+    _evaluate_rescale(
+        y,
+        flux, fwhm,
+        cytemplate, n_scales,
+    )

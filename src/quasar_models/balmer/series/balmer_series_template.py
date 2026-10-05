@@ -1,7 +1,7 @@
 __all__ = ["BalmerSeriesTemplate"]
 
 from dataclasses import field
-from typing import ClassVar, Literal, Self
+from typing import Any, ClassVar, Literal, Self
 
 from numpy import array, array_equal, float64, searchsorted, zeros
 from pydantic.dataclasses import dataclass
@@ -11,6 +11,8 @@ from quasar_utils.setup import Info
 
 from quasar_models._core.modeling.balmer.series import evaluate
 from quasar_models.modeling.template import BaseTemplate
+
+from ...utils.serialization import serialize_array, deserialize_array, serialize_quantity, deserialize_quantity
 
 from .io import PATH_TO_CACHE, load, load_from_cache, save, save_to_cache
 
@@ -269,3 +271,43 @@ class BalmerSeriesTemplate(BaseTemplate):
         )
         obj = BalmerSeriesTemplate(**kwargs)
         return obj if obj.n_u_range == n_u_range else obj.crop(n_u_range)
+
+    ### Serialization
+
+    def serialize(self, info: Info) -> dict[str, Any]:
+        wave_unit = str(info.units.wavelength_unit)
+        temp_unit = str(info.units.temp_unit)
+        dens_unit = str(info.units.dens_unit)
+
+        data = super().serialize(info)
+        data["waves"] = serialize_array(self.waves, wave_unit)
+        data["weights"] = serialize_array(self.weights, None)
+        data["temp"] = serialize_quantity(self.temp, temp_unit)
+        data["dens"] = serialize_quantity(self.dens, dens_unit)
+        data["n_u_range"] = list(self.n_u_range)
+
+        return data
+
+    @classmethod
+    def _deserialize_helper(cls, data: dict[str, Any], info: Info) -> dict[str, Any]:
+        temp_unit = str(info.units.temp_unit)
+        dens_unit = str(info.units.dens_unit)
+        return BalmerSeriesTemplate.load_from_cache(
+            name=data["name"],
+            temp=deserialize_quantity(data["temp"], temp_unit),
+            dens=deserialize_quantity(data["dens"], dens_unit),
+            n_u_range=tuple(data["n_u_range"]),
+            info=info,
+        )
+
+    @classmethod
+    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
+        wave_unit = str(info.units.wavelength_unit)
+
+        template = super().deserialize(data, info)
+        template.waves = deserialize_array(data["waves"], wave_unit)
+        template.weights = deserialize_array(data["weights"], None)
+        template.__post_init__()
+        
+        return template
+

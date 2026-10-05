@@ -2,12 +2,13 @@ __all__ = ["_VProfileCopy"]
 
 from collections.abc import Iterable
 from itertools import product
-from typing import ClassVar, Literal, Self, Union
+from typing import Any, ClassVar, Literal, Self, TypedDict, Union
 
 from astropy.constants import c
 from numpy import float64, fromiter
 from quasar_typing.astropy import CompoundModel_
 from quasar_typing.bounds import AstropyBounds
+from quasar_utils.setup import Info
 
 from quasar_models._core.modeling.vprofilecopy import (
     VProfileCopyEvaluate,
@@ -23,6 +24,16 @@ from quasar_models.modeling import BaseModel, LinearTie
 from ...utils.astropy import apply_bounds
 
 C_KMS: float = c.to("km/s").value  # Exact speed of light in km/s
+
+
+class MetaData(TypedDict):
+    wave: float
+    sigma_res: float
+    linetype: Literal["n", "b"]
+    dx: float | None
+    kwargs: dict[str, float]
+    master_name: str
+    n_sigmas: float
 
 
 class _VProfileCopy(BaseModel):
@@ -56,6 +67,50 @@ class _VProfileCopy(BaseModel):
         self.meta["sigma_res"] = value
 
     @property
+    def linetype(self) -> Literal["n", "b"]:
+        return self.meta["linetype"]
+
+    @linetype.setter
+    def linetype(self, value: Literal["n", "b"]) -> None:
+        self.meta["linetype"] = value
+
+    @property
+    def dx(self) -> float | None:
+        """
+        Wavelength resolution of the spectrum (near the rest wavelength).
+        """
+        return self.meta.get("dx", None)
+
+    @dx.setter
+    def dx(self, value: float) -> None:
+        self.meta["dx"] = value
+
+    @dx.deleter
+    def dx(self) -> None:
+        self.meta.pop("dx", None)
+
+    @property
+    def kwargs(self) -> dict[str, float]:
+        return self.meta.get(
+            "kwargs", 
+            {"wave": self.wave, "sigma_res": self.sigma_res},
+        )
+
+    @kwargs.setter
+    def kwargs(self, value: dict[str, float]) -> None:
+        self.meta["kwargs"] = value
+
+    @kwargs.deleter
+    def kwargs(self) -> None:
+        self.meta.pop("kwargs", None)
+
+    def _set_kwargs(self) -> None:
+        if self.dx is None:
+            self.kwargs = {"wave": self.wave, "sigma_res": self.sigma_res}
+        else:
+            self.kwargs = {"wave": self.wave, "dx": self.dx}
+
+    @property
     def v_res(self) -> float | None:
         """
         Velocity resolution of the spectrum (km/s).
@@ -85,6 +140,7 @@ class _VProfileCopy(BaseModel):
         cls,
         wave: float,
         name: str,
+        linetype: Literal["n", "b"],
         *gs: GaussianModel,
         strength_scale_value: float = 1.0,
         strength_scale_bounds: AstropyBounds | None = None,
@@ -92,15 +148,24 @@ class _VProfileCopy(BaseModel):
         sigma_res: float | None = None,
         master_name: str | None = None,
         n_sigmas: float | None = None,
+        dx: float | None = None,
         adapt: bool = True,
     ) -> Self:
+        if isinstance(gs, tuple) and len(gs) != cls.n_profiles:
+            raise ValueError(
+                "No. of Gaussian models does not match the number of profiles: "
+                f"n_profiles = {cls.n_profiles}, n_gaussians = {len(gs)}"
+            )
+
         meta = cls._get_metadata(
             wave,
             name,
+            linetype,
             *gs,
             sigma_res=sigma_res,
             master_name=master_name,
             n_sigmas=n_sigmas,
+            dx=dx,
         )
         model = cls(
             strength_scale_value,
@@ -126,6 +191,7 @@ class _VProfileCopy(BaseModel):
         cls,
         wave: float,
         name: str,
+        linetype: Literal["n", "b"],
         model: Union[GaussianModel, Iterable[GaussianModel]],
         *,
         strength_scale_value: float = 1.0,
@@ -143,6 +209,7 @@ class _VProfileCopy(BaseModel):
         model = cls.create(
             wave,
             name,
+            linetype,
             *model,
             strength_scale_value=strength_scale_value,
             strength_scale_bounds=strength_scale_bounds,
@@ -162,6 +229,7 @@ class _VProfileCopy(BaseModel):
         return self.from_model(
             self.wave,
             self.name,
+            self.linetype,
             master_model,
             strength_scale_value=strength_scale_value,
             strength_scale_bounds=strength_scale_bounds,
@@ -174,25 +242,35 @@ class _VProfileCopy(BaseModel):
         cls,
         wave: float,
         name: str,
+        linetype: Literal["n", "b"],
         *gs: GaussianModel,
         sigma_res: float | None = None,
         master_name: str | None = None,
         n_sigmas: float | None = None,
-    ) -> dict:
+        dx: float | None = None,
+    ) -> MetaData:
         meta = {
             "pure_name": name,
             "wave": wave,
+            "linetype": linetype,
         }
 
         if len(gs) == 0:
             # Used when copying
+            assert sigma_res is not None
+            assert master_name is not None
+            assert n_sigmas is not None
+
             meta["sigma_res"] = sigma_res
             meta["master_name"] = master_name
             meta["n_sigmas"] = n_sigmas
+            meta["dx"] = dx # Is allowed to be None
+
         elif len(gs) == cls.n_profiles:
             meta["sigma_res"] = gs[0].sigma_res
             meta["master_name"] = gs[0].pure_name
             meta["n_sigmas"] = gs[0].n_sigmas
+            meta["dx"] = gs[0].dx
 
         return meta
 
@@ -200,7 +278,10 @@ class _VProfileCopy(BaseModel):
         name = self.name
         master = self.master_name
         wave = self.wave
-        return f"{self.__class__.__name__}({name=}, {master=}, {wave=}"
+        scale = self.strength_scale.value
+        s = f"{self.__class__.__name__}({name=}, {master=}, "\
+            f"{wave=:.2f}, {scale=:.1f})"
+        return s
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -219,7 +300,7 @@ class _VProfileCopy(BaseModel):
         return self.evaluate_func(
             x,
             strength_scale, *params,
-            wave=self.wave, sigma_res=self.sigma_res,
+            **self.kwargs,
             y=y,
         )
 
@@ -229,7 +310,7 @@ class _VProfileCopy(BaseModel):
         return self.fit_deriv_func(
             x,
             strength_scale, *params,
-            wave=self.wave, sigma_res=self.sigma_res,
+            **self.kwargs,
             derivs=derivs,
         )
 
@@ -263,16 +344,37 @@ class _VProfileCopy(BaseModel):
         self.meta.pop("fit_deriv_func", None)
 
     def _choose_evaluate_func(self) -> None:
-        self.evaluate_func = choose_evaluate_func()
+        self.evaluate_func = choose_evaluate_func(self.dx is None)
 
-    def _choose_fit_deriv_func(self) -> None:
-        self.fit_deriv_func = choose_fit_deriv_func(self.fixed)
+    def _choose_fit_deriv_func(
+        self,
+        fixed: dict[str, bool] | None = None,
+    ) -> None:
+        self.fit_deriv_func = choose_fit_deriv_func(
+            self.dx is None, 
+            fixed or self.fixed,
+        )
+
+    def prepare_model(
+        self, 
+        dx: float | None = None,
+        fixed: dict[str, bool] | None = None,
+    ) -> None:
+        if dx is None:
+            del self.dx
+        else:
+            self.dx = dx
+        super().prepare_model(fixed=fixed)
+
+    def unprepare_model(self) -> None:
+        del self.dx
+        super().unprepare_model()
 
     ###
 
     @property
-    def sorting_key(self) -> tuple[float, float]:
-        return (4.0, self.wave)
+    def sorting_key(self) -> tuple[float, float, int]:
+        return (4.0, self.wave, 0 if self.linetype == "n" else 1)
 
     ### Utilities
 
@@ -298,6 +400,12 @@ class _VProfileCopy(BaseModel):
         -----
         Lorem ipsum.
         """
+        if len(gs) != self.n_profiles:
+            raise ValueError(
+                "No. of Gaussian models does not match the number of profiles: "
+                f"n_profiles={self.n_profiles} != {len(gs)}"
+            )
+        
         model = self if inplace else self.copy()
 
         for (i, g), pname in product(
@@ -366,8 +474,12 @@ class _VProfileCopy(BaseModel):
             else [self.pure_name + f"#{1 + i}" for i in range(self.n_profiles)]
         )
         for i, name in enumerate(names):
-            g = GaussianModel(self.wave, self.sigma_res, name=name)
-
+            g = GaussianModel.create(
+                self.wave, 
+                self.sigma_res, 
+                self.linetype,
+                name=name,
+            )
             for attr_name in ("strength", "fwhm_v", "v_off"):
                 getattr(g, attr_name).value = getattr(
                     self, f"{attr_name}_{i + 1}"
@@ -379,3 +491,12 @@ class _VProfileCopy(BaseModel):
             gaussian_models.append(g)
 
         return gaussian_models
+
+    ### Serialization
+
+    def serialize(self, info: Info) -> dict[str, dict[str, Any]]:
+        return {}
+
+    @classmethod
+    def deserialize(cls, data: dict[str, Any], name: str, info: Info) -> Self:
+        pass

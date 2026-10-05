@@ -32,6 +32,7 @@ from quasar_models._core.modeling.iron import (
 from quasar_models.modeling.template import TemplateModel
 
 from ..utils.astropy import apply_bounds
+from ..utils.serialization import deserialize_parameter, serialize_parameter
 from .iron_template import IronTemplate
 
 logger = getLogger(__name__)
@@ -190,7 +191,7 @@ class IronModel(TemplateModel):
         return self.evaluate_func(
             x,
             *self._transform_args_if_ndarray(flux, fwhm, split, left, right),
-            **self._kwargs,
+            **self.kwargs,
             y=y,
         )
 
@@ -198,7 +199,7 @@ class IronModel(TemplateModel):
         return self.fit_deriv_func(
             x,
             *self._transform_args_if_ndarray(flux, fwhm, split, left, right),
-            **self._kwargs,
+            **self.kwargs,
             derivs=derivs,
         )
 
@@ -206,11 +207,28 @@ class IronModel(TemplateModel):
         return list(self.partial_deriv(x, flux, fwhm, split, left, right, derivs=derivs))
 
     @property
-    def _kwargs(self) -> dict[str, Any]:
-        cytemplates = self.cytemplates
-        return {
-            "template": self.template,
-            "cytemplate": cytemplates["cytemplate"],
+    def kwargs(self) -> dict[str, Any]:
+        return self.meta.get(
+            "kwargs",
+            {
+                "template": self.template,
+                "scale": self.scale,
+                "n_scales": self.n_scales,
+                "interpolation_matrix": self.interpolation_matrix,
+            }
+        )
+
+    @kwargs.setter
+    def kwargs(self, value: dict[str, Any]) -> None:
+        self.meta["kwargs"] = value
+
+    @kwargs.deleter
+    def kwargs(self) -> None:
+        self.meta.pop("kwargs", None)
+
+    def _set_kwargs(self) -> None:
+        self.kwargs = {
+            "template": self.cytemplates["cytemplate"],
             "scale": self.scale,
             "n_scales": self.n_scales,
             "interpolation_matrix": self.interpolation_matrix,
@@ -242,20 +260,26 @@ class IronModel(TemplateModel):
     def fit_deriv_func(self) -> None:
         self.meta.pop("fit_deriv_func", None)
 
-    def _choose_evaluate_func(self) -> None:
+    def _choose_evaluate_func(
+        self,
+        fixed: dict[str, bool] | None = None,
+    ) -> None:
         self.evaluate_func = choose_evaluate_func(
             self.left.value,
             self.right.value,
             self.allow_interp_fitting,
-            self.fixed,
+            fixed or self.fixed,
         )
 
-    def _choose_fit_deriv_func(self) -> None:
+    def _choose_fit_deriv_func(
+        self,
+        fixed: dict[str, bool] | None = None,
+    ) -> None:
         self.fit_deriv_func = choose_fit_deriv_func(
             self.left.value,
             self.right.value,
             self.allow_interp_fitting,
-            self.fixed,
+            fixed or self.fixed,
         )
 
     @property
@@ -289,7 +313,7 @@ class IronModel(TemplateModel):
 
         template = self.template \
             if array_equal(x, self.template.x) \
-            else self.template.interpolate(x, inplace=False)
+            else self.template.interpolate(x)
 
         data = template.data / template.normalisation
 
@@ -382,3 +406,63 @@ class IronModel(TemplateModel):
                 self.left.fixed = False
 
         return self
+
+    ### Serialization
+
+    def serialize(self, info: Info) -> dict[str, dict[str, Any]]:
+        kms_unit = "km/s"
+        flux_unit = str(info.units.flux_unit)
+        wave_unit = str(info.units.wavelength_unit)
+        data = {
+            "name": self.name,
+            "flux": serialize_parameter(self.flux, flux_unit),
+            "fwhm": serialize_parameter(self.fwhm, kms_unit),
+            "split": serialize_parameter(self.split, wave_unit),
+            "left": serialize_parameter(self.left, None),
+            "right": serialize_parameter(self.right, None),
+            "template": self.template.serialize(info),
+        }
+        return {f"IronModel::{self.name}": data}
+
+    @classmethod
+    def deserialize(cls, data: dict[str, Any], name: str, info: Info) -> Self:
+        kms_unit = "km/s"
+        flux_unit = str(info.units.flux_unit)
+        wave_unit = str(info.units.wavelength_unit)
+
+        flux = deserialize_parameter(data["flux"], flux_unit)
+        fwhm = deserialize_parameter(data["fwhm"], kms_unit)
+        split = deserialize_parameter(data["split"], wave_unit)
+        left = deserialize_parameter(data["left"], None)
+        right = deserialize_parameter(data["right"], None)
+        template = IronTemplate.deserialize(data["template"], info)
+
+        model = IronModel.create(
+            flux["value"], fwhm["value"],
+            scale=info.iron.scale,
+            template=template,
+            info=info,
+            split=split["value"],
+            left=left["value"],
+            right=right["value"],
+            allow_interp_fitting=info.convolution.allow_interp_fitting,
+            flux_bounds=flux["bounds"],
+            fwhm_bounds=fwhm["bounds"],
+            split_bounds=split["bounds"],
+            left_bounds=left["bounds"],
+            right_bounds=right["bounds"],
+            flux_fixed=flux["fixed"],
+            fwhm_fixed=fwhm["fixed"],
+            split_fixed=split["fixed"],
+            left_fixed=left["fixed"],
+            right_fixed=right["fixed"],
+        )
+        model.flux.tied = flux["tied"]
+        model.fwhm.tied = fwhm["tied"]
+        model.split.tied = split["tied"]
+        model.left.tied = left["tied"]
+        model.right.tied = right["tied"]
+
+        model.name = data["name"]
+
+        return model

@@ -5,63 +5,75 @@ It currently supports data from the following:
 - Bruzual & Charlot (2003), a.k.a. 'bc2003'.
 """
 
-__all__ = ["BC2003"]
-
 from pathlib import Path
+from typing import ClassVar
 
 from astropy.io import fits
-from astropy.units import Unit
-from numpy import array, float64
-from quasar_typing.numpy import FloatVector
+from astropy.units import Quantity, Unit
+from numpy import float64
 from quasar_utils.setup import Info
 
+from quasar_models.host import io
 from quasar_models.host.host_galaxy_template import HostGalaxyTemplate
-from quasar_models.host.io import PATH_TO_CACHE, PATH_TO_DATA
+
+INFO: Info = Info()
 
 
 class BC2003:
-    name: str = "bc2003"
-    paths: list[Path] = sorted(PATH_TO_DATA.glob("tau06_z02_*_001.fits"))
+    NAME: ClassVar[str] = "bc2003"
+    X_BOUNDS: ClassVar[Quantity] = (1000.0, 9500.0) * Unit("angstrom")
+    PATH_TO_DATA: ClassVar[Path] = io.PATH_TO_DATA
 
-    x_lb: float = 1000.0
-    x_ub: float = 9500.0
+    @classmethod
+    def main(cls) -> None:
+        cls.init_basic()
 
-    def __init__(self):
-        self.info: Info = Info()
-        self.fwhm: FloatVector = array([0], dtype=float64)
+    @classmethod
+    def get_paths(cls) -> list[Path]:
+        return sorted(cls.PATH_TO_DATA.glob("tau06_z02_*_001.fits"))
 
     @classmethod
     def get_age_from_path(cls, path: Path) -> int:
-        return 1000 * int(
-            path.name.removeprefix("tau06_z02_").removesuffix("_001.fits")
-        )
+        return int(
+            path.name\
+                .removeprefix("tau06_z02_")\
+                .removesuffix("_001.fits")
+        ) * 1000
 
-    def main(self) -> None:
-        for path in self.paths:
-            age = self.get_age_from_path(path)
+    @classmethod
+    def create_template(cls, path: Path) -> None:
+        x_bounds = INFO.units.getUnitlessWavelength(cls.X_BOUNDS) 
+        age = cls.get_age_from_path(path)
 
-            with fits.open(path) as hdul:
-                x = hdul[1].data["WAVELENGTH"].astype(float64)
-                y = hdul[1].data["FLUX"].astype(float64)
-                mask = (self.x_lb <= x) & (x <= self.x_ub)
+        with fits.open(path) as hdul:
+            x = hdul[1].data["WAVELENGTH"].astype(float64)
+            x = INFO.units.getUnitlessWavelength(x * Unit("angstrom"))
 
-                x = x[mask]
-                y = y[mask]
+            fwhm = INFO.units.getUnitlessKMS([0] * Unit("km/s"))
 
-                template = HostGalaxyTemplate(
-                    fwhm=self.fwhm,
-                    x=self.info.units.getWavelength(x * Unit("angstrom")),
-                    data=y[None, :],
-                    is_logspace=False,
-                    name=self.name,
-                    x_norm=self.info.host.x_norm,
-                    fwhm_norm=self.info.host.fwhm_norm,
-                    age=age,
-                )
-                template.normalise(inplace=True)
-                template.save_to_cache(self.info)
-                del template
+            y = hdul[1].data["FLUX"].astype(float64)
+            mask = (x_bounds[0] <= x) & (x <= x_bounds[1])
 
+            x = x[mask]
+            y = y[mask]
+
+            template = HostGalaxyTemplate(
+                fwhm=fwhm,
+                x=x,
+                data=y[None, :],
+                is_logspace=False,
+                name=cls.NAME,
+                x_norm=INFO.host.x_norm,
+                fwhm_norm=INFO.host.fwhm_norm,
+                age=age,
+            )
+            template.normalise(inplace=True)
+            template.save_to_cache(INFO)
+
+    @classmethod
+    def init_basic(cls) -> None:
+        for path in cls.get_paths():
+            cls.create_template(path)
 
 def main() -> None:
     BC2003().main()
@@ -70,13 +82,10 @@ def main() -> None:
 def plot() -> None:
     import matplotlib.pyplot as plt
 
-    bc2003 = BC2003()
-    info = bc2003.info
-
     templates: list[HostGalaxyTemplate] = sorted(
         (
-            HostGalaxyTemplate.load(path=path, info=info)
-            for path in PATH_TO_CACHE.glob("bc2003*.fits")
+            HostGalaxyTemplate.load(path=path, info=INFO)
+            for path in io.PATH_TO_CACHE.glob("bc2003*.fits")
         ),
         key=lambda t: t.age,
     )
@@ -88,11 +97,12 @@ def plot() -> None:
         ax.plot(t.x, t.data[0], label=f"{t.age / 1_000_000_000:.0f} Gyr", lw=1)
 
     ax.set_xlabel(
-        r"$\lambda_{\mathrm{rest}}$ (" + info.units.wavelength_unit.to_string() + ")",
+        r"$\lambda_{\mathrm{rest}}$ (" + INFO.units.wavelength_unit.to_string() + ")",
         loc="right",
     )
     ax.set_ylabel("Flux density (a.u.)")
     ax.set_ylim(0)
+    ax.set_xlim(*INFO.units.getWavelength(BC2003.X_BOUNDS))
     ax.legend(loc="upper right")
 
     plt.show()

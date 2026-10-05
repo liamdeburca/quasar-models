@@ -13,7 +13,7 @@ the compiled core module.
 
 from collections.abc import Callable
 from logging import getLogger
-from typing import ClassVar, Literal, Self
+from typing import Any, ClassVar, Literal, Self
 
 from astropy.modeling import Parameter
 from numpy import exp, float64, log
@@ -23,6 +23,7 @@ from quasar_typing.bounds import AstropyBounds
 from quasar_typing.errors import OutsideBoundsError
 from quasar_typing.numpy import FloatMatrix, FloatVector
 from quasar_utils.decorators import validate_call
+from quasar_utils.setup import Info
 
 from quasar_models._core.modeling.powerlaw import (
     PowerLawEvaluate,
@@ -37,6 +38,12 @@ from quasar_models.modeling import BaseModel
 
 from ..utils.astropy import apply_bounds
 from ..utils.linear_regression import linreg
+from ..utils.serialization import (
+    deserialize_parameter,
+    deserialize_quantity,
+    serialize_parameter,
+    serialize_quantity,
+)
 
 logger = getLogger(__name__)
 
@@ -93,22 +100,22 @@ def perform_linear_regression(
     flux_lb, flux_ub = flux_bounds
     if flux_lb is not None and flux < flux_lb:
         msg = f"Derived flux value is below the lower bound: {flux=:.1f}<{flux_lb:.1f}"
-        logger.warning(msg)
+        logger.info(msg)
         raise OutsideBoundsError(msg)
     if flux_ub is not None and flux_ub < flux:
         msg = f"Derived flux value is above the upper bound: {flux=:.1f}>{flux_ub:.1f}"
-        logger.warning(msg)
+        logger.info(msg)
         raise OutsideBoundsError(msg)
 
     alpha = res[1]
     alpha_lb, alpha_ub = alpha_bounds
     if alpha_lb is not None and alpha < alpha_lb:
         msg = f"Derived alpha value is below the lower bound: {alpha=:.1f}<{alpha_lb:.1f}"
-        logger.warning(msg)
+        logger.info(msg)
         raise OutsideBoundsError(msg)
     if alpha_ub is not None and alpha_ub < alpha:
         msg = f"Derived alpha value is above the upper bound: {alpha=:.1f}>{alpha_ub:.1f}"
-        logger.warning(msg)
+        logger.info(msg)
         raise OutsideBoundsError(msg)
 
     return flux, alpha
@@ -213,7 +220,7 @@ class PowerLawModel(BaseModel):
         return self.evaluate_func(
             x, 
             *self._transform_args_if_ndarray(flux, alpha), 
-            x0=self.x0, 
+            **self.kwargs, 
             y=y,
         )
 
@@ -227,7 +234,7 @@ class PowerLawModel(BaseModel):
         return self.fit_deriv_func(
             x, 
             *self._transform_args_if_ndarray(flux, alpha),
-            x0=self.x0, 
+            **self.kwargs,
             derivs=derivs,
         )
 
@@ -245,7 +252,22 @@ class PowerLawModel(BaseModel):
 
         Delegates to the core ``inverse`` implementation.
         """
-        return inverse(y, flux, alpha, x0=self.x0, x=None)
+        return inverse(y, flux, alpha, **self.kwargs, x=None)
+
+    @property
+    def kwargs(self) -> dict[str, Any]:
+        return self.meta.get("kwargs", {"x0": self.x0})
+
+    @kwargs.setter
+    def kwargs(self, value: dict[str, Any]) -> None:
+        self.meta["kwargs"] = value
+
+    @kwargs.deleter
+    def kwargs(self) -> None:
+        self.meta.pop("kwargs", None)
+
+    def _set_kwargs(self) -> None:
+        self.kwargs = {"x0": self.x0}
 
     ### Model preparation
 
@@ -276,8 +298,11 @@ class PowerLawModel(BaseModel):
     def _choose_evaluate_func(self) -> None:
         self.evaluate_func = choose_evaluate_func()
 
-    def _choose_fit_deriv_func(self) -> None:
-        self.fit_deriv_func = choose_fit_deriv_func(self.fixed)
+    def _choose_fit_deriv_func(
+        self,
+        fixed: dict[str, bool] | None = None,
+    ) -> None:
+        self.fit_deriv_func = choose_fit_deriv_func(fixed or self.fixed)
 
     # Utilities
 
@@ -420,15 +445,15 @@ class PowerLawModel(BaseModel):
             logger.debug(msg)
         except OutsideBoundsError as e:
             msg = "Outside bounds error during linear regression (nonlinear optimisation recommended)"
-            logger.critical(msg)
+            logger.info(msg)
             raise OutsideBoundsError(msg) from e
         except ValidationError as e:
             msg = "Validation error during linear regression"
-            logger.critical(msg)
+            logger.info(msg)
             raise ValidationError(msg) from e
         except Exception as e:
             msg = f"Linear regression failed due to {type(e).__name__}: {e}"
-            logger.critical(msg)
+            logger.info(msg)
             raise ValueError(msg) from e
 
         return PowerLawModel.create(
@@ -482,3 +507,42 @@ class PowerLawModel(BaseModel):
         flux = self.flux.value
         alpha = self.alpha.value
         return lambda x: (1 / flux) * (x0 / x) ** alpha
+
+    ### Serialization
+
+    def serialize(self, info: Info) -> dict[str, dict[str, Any]]:
+        wave_unit = str(info.units.wavelength_unit)
+        flux_unit = str(info.units.flux_unit)
+        data = {
+            "x0": serialize_quantity(self.x0, wave_unit),
+            "y0": serialize_quantity(self.y0, flux_unit),
+            "flux": serialize_parameter(self.flux, flux_unit),
+            "alpha": serialize_parameter(self.alpha, None),
+        }
+        return {f"PowerLawModel::{self.name}": data}
+
+    @classmethod
+    def deserialize(cls, data: dict[str, Any], name: str, info: Info) -> Self:
+        wave_unit = str(info.units.wavelength_unit)
+        flux_unit = str(info.units.flux_unit)
+
+        x0: float = deserialize_quantity(data["x0"], wave_unit)
+        y0: float = deserialize_quantity(data["y0"], flux_unit)
+        flux = deserialize_parameter(data["flux"], flux_unit)
+        alpha = deserialize_parameter(data["alpha"], None)
+
+        out = PowerLawModel.create(
+            x0, y0, 
+            flux["value"], 
+            alpha["value"],
+            name=name,
+            flux_bounds=flux["bounds"],
+            alpha_bounds=alpha["bounds"],
+            flux_fixed=flux["fixed"],
+            alpha_fixed=alpha["fixed"],
+        )
+        out.flux.tied = flux["tied"]
+        out.alpha.tied = alpha["tied"]
+
+        return out
+        

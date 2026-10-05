@@ -1,8 +1,5 @@
-"""
-Lorem ipsum.
-"""
-
-from math import log, pi
+from math import log
+from typing import Literal
 
 from astropy.constants import c
 from numpy import argmax, argmin, argwhere, dot, float64, invert
@@ -102,13 +99,12 @@ def measure_sigma(
     else:
         x2 = x[-1]
 
-    sigma = (x2 - x1) / wave / (2 * (-2 * pi * r) ** 0.5)
-    sigma *= C_KMS  # Convert to km/s
-    return sigma
+    sigma = (x2 - x1) / wave / (2 * (-2 * log(r)) ** 0.5)
+    return sigma * C_KMS
 
 
 def instantiate_model(
-    line: float,
+    wave: float,
     x: NDArray[float64],
     y: NDArray[float64],
     y_smooth: NDArray[float64] | None = None,
@@ -116,6 +112,7 @@ def instantiate_model(
     v_off_bounds: AstropyBounds = (-C_KMS, C_KMS),
     fwhm_v_bounds: AstropyBounds = (0, None),
     strength_bounds: AstropyBounds = (0, None),
+    linetype: Literal["n", "b"] = "b",
 ) -> tuple[float, float, float]:
     """
     Lorem ipsum.
@@ -141,28 +138,28 @@ def instantiate_model(
     if y_smooth is None:
         y_smooth = y
 
-    # Guessing the velocity offset
-    # - Method 4 (lmfit) from thesis (smoothed preferred)
-    mask = y_smooth > 0.5 * (y_smooth.min() + y_smooth.max())
-
-    _x = x[mask]
-    _mu = x[argmax(y_smooth)] if _x.size <= 1 else _x.mean()
-
-    v_off = apply_bounds((_mu / line - 1) * C_KMS, v_off_bounds)
-    mu = line * (1 + v_off / C_KMS)
+    mu = wave
+    v_off = 0.0
+    if linetype == "n":
+        mu = wave
+        v_off = 0.0
+    else:
+        # Guessing the velocity offset
+        # - Method 4 (lmfit) from thesis (smoothed preferred)
+        mask = y_smooth > 0.5 * (y_smooth.min() + y_smooth.max())
+        # _x = x[mask]
+        # _mu = x[argmax(y_smooth)] if _x.size <= 1 else _x.mean()
+        # v_off = apply_bounds((_mu / wave - 1) * C_KMS, v_off_bounds)
+        # mu = wave * (1 + v_off / C_KMS)
 
     # Guessing the velocity dispersion
     # - Method 4 (FWQM) from thesis (smoothed preferred)
     sigma = measure_sigma(mu, x, y_smooth, 0.25)
     sigma_v = max(sigma**2 - v_res ** 2, 0) ** 0.5
-    fwhm_v = sigma_v * SIGMA_TO_FWHM
+    fwhm_v = apply_bounds(sigma_v * SIGMA_TO_FWHM, fwhm_v_bounds)
 
     # Guessing the line strength
     # - Method 2 (integral) from thesis (raw preferred)
-    strength = dot(y, x * sigma_res)
+    strength = apply_bounds(dot(y, x * sigma_res), strength_bounds)
 
-    return (
-        apply_bounds(strength, strength_bounds),
-        apply_bounds(fwhm_v, fwhm_v_bounds),
-        v_off,
-    )
+    return strength, fwhm_v, v_off

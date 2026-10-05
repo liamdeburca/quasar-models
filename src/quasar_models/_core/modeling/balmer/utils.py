@@ -1,43 +1,17 @@
 from collections.abc import Callable
+from typing import ClassVar, Literal
 
-from numpy import add, float64, zeros
 from quasar_typing.numpy import FloatMatrix, FloatVector
 
 from ..template.cytemplate import CyTemplate
-from ..utils import _interp, _interp2d, _interp2d_matrix, _interp_matrix
+from ..utils import (
+    _TemplateEvaluate,
+    _TemplateFitDeriv,
+)
 from . import evaluate, fit_deriv
 
 
-class _BalmerBase:
-    @classmethod
-    def _get_wrapped(cls, func_name: str | None) -> Callable:
-        raise NotImplementedError
-
-    def __init__(
-        self,
-        func_name: str | None = None,
-        simplify: bool = False,
-    ) -> None:
-        self.func_name: str | None = func_name
-        self.simplify: bool = simplify
-        self.__wrapped__: Callable | None = self._get_wrapped(func_name)
-
-    def __getstate__(self) -> dict:
-        return {
-            "func_name": self.func_name,
-            "simplify": self.simplify,
-        }
-
-    def __setstate__(self, state: dict) -> None:
-        self.func_name = state["func_name"]
-        self.simplify = state["simplify"]
-        self.__wrapped__ = self._get_wrapped(self.func_name)
-
-
-###
-
-
-class BalmerEvaluate(_BalmerBase):
+class BalmerEvaluate(_TemplateEvaluate):
     @classmethod
     def _get_wrapped(cls, func_name: str | None) -> Callable | None:
         return getattr(evaluate, func_name) if func_name else None
@@ -49,10 +23,8 @@ class BalmerEvaluate(_BalmerBase):
         fwhm: float,
         ratio: float,
         *,
-        continuum_template: object,
-        series_template: object,
-        continuum_cytemplate: CyTemplate | None = None,
-        series_cytemplate: CyTemplate | None = None,
+        continuum_template: object | CyTemplate,
+        series_template: object | CyTemplate,
         n_scales: float,
         interpolation_matrix: tuple | None = None,
         y: FloatVector | None = None,
@@ -70,12 +42,10 @@ class BalmerEvaluate(_BalmerBase):
             FWHM (km/s) of the template.
         ratio : float
             Cont./seri. flux ratio 
-         continuum_template : object
+        continuum_template : object | CyTemplate
             Continuum template object.
-        series_template : object
+        series_template : object | CyTemplate
             Series template object.
-        continuum_cytemplate : CyTemplate, optional
-        series_cytemplate : CyTemplate, optional
         n_scales : float
         interpolation_matrix : tuple, optional
         y : FloatVector, optional
@@ -86,37 +56,29 @@ class BalmerEvaluate(_BalmerBase):
         y : FloatVector
             Flux density array.
         """
-        if continuum_cytemplate is None:
-            continuum_cytemplate = CyTemplate.fromTemplate(
+        if not isinstance(continuum_template, CyTemplate):
+            continuum_template = CyTemplate.fromTemplate(
                 continuum_template,
                 simplify=self.simplify,
             )
-        if series_cytemplate is None:
-            series_cytemplate = CyTemplate.fromTemplate(
+        if not isinstance(series_template, CyTemplate):
+            series_template = CyTemplate.fromTemplate(
                 series_template,
                 simplify=self.simplify,
             )
 
-        _y = zeros(continuum_template.x.size, dtype=float64)
-        if self.__wrapped__ is not None:
-            self.__wrapped__(
-                _y,
-                flux,
-                fwhm,
-                ratio,
-                continuum_cytemplate,
-                series_cytemplate,
-                n_scales,
-            )
-        if interpolation_matrix is None:
-            _y = _interp(x, continuum_template.x, _y)
-        else:
-            _y = _interp_matrix(_y, interpolation_matrix)
-
-        return _y if y is None else add(y, _y, out=y)
+        return super().__call__(
+            x,
+            continuum_template.x,
+            (flux, fwhm, ratio, continuum_template, series_template, n_scales),
+            interpolation_matrix=interpolation_matrix,
+            y=y,
+        )
 
 
-class BalmerFitDeriv(_BalmerBase):
+class BalmerFitDeriv(_TemplateFitDeriv):
+    _ndim: ClassVar[Literal[3]] = 3
+
     @classmethod
     def _get_wrapped(cls, func_name: str | None) -> Callable | None:
         return getattr(fit_deriv, func_name) if func_name else None
@@ -128,10 +90,8 @@ class BalmerFitDeriv(_BalmerBase):
         fwhm: float,
         ratio: float,
         *,
-        continuum_template: object,
-        series_template: object,
-        continuum_cytemplate: CyTemplate | None = None,
-        series_cytemplate: CyTemplate | None = None,
+        continuum_template: object | CyTemplate,
+        series_template: object | CyTemplate,
         n_scales: float,
         interpolation_matrix: tuple | None = None,
         derivs: FloatMatrix | None = None,
@@ -150,12 +110,10 @@ class BalmerFitDeriv(_BalmerBase):
             FWHM (km/s) of the template.
         ratio : float
             Cont./seri. flux ratio 
-         continuum_template : object
+        continuum_template : object | CyTemplate
             Continuum template object.
-        series_template : object
+        series_template : object | CyTemplate
             Series template object.
-        continuum_cytemplate : CyTemplate, optional
-        series_cytemplate : CyTemplate, optional
         n_scales : float
         interpolation_matrix : tuple, optional
         derivs : FloatMatrix, optional
@@ -166,25 +124,21 @@ class BalmerFitDeriv(_BalmerBase):
         derivs : FloatMatrix
             Partial derivatives array.
         """
-        if continuum_cytemplate is None:
-            continuum_cytemplate = CyTemplate.fromTemplate(continuum_template)
-        if series_cytemplate is None:
-            series_cytemplate = CyTemplate.fromTemplate(series_template)
-
-        _derivs = zeros((3, continuum_template.x.size), dtype=float64)
-        if self.__wrapped__ is not None:
-            self.__wrapped__(
-                _derivs,
-                flux,
-                fwhm,
-                ratio,
-                continuum_cytemplate,
-                series_cytemplate,
-                n_scales,
+        if not isinstance(continuum_template, CyTemplate):
+            continuum_template = CyTemplate.fromTemplate(
+                continuum_template,
+                simplify=self.simplify,
             )
-        if interpolation_matrix is None:
-            _derivs = _interp2d(x, continuum_template.x, _derivs)
-        else:
-            _derivs = _interp2d_matrix(_derivs, interpolation_matrix)
+        if not isinstance(series_template, CyTemplate):
+            series_template = CyTemplate.fromTemplate(
+                series_template,
+                simplify=self.simplify,
+            )
 
-        return _derivs if derivs is None else add(derivs, _derivs, out=derivs)
+        return super().__call__(
+            x,
+            continuum_template.x,
+            (flux, fwhm, ratio, continuum_template, series_template, n_scales),
+            interpolation_matrix=interpolation_matrix,
+            derivs=derivs,
+        )
