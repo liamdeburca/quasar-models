@@ -38,9 +38,7 @@ from ..continuum import PowerLawModel
 from ..utils.astropy import apply_bounds
 from ..utils.serialization import (
     deserialize_parameter,
-    deserialize_quantity,
     serialize_parameter,
-    serialize_quantity,
 )
 from .continuum import BalmerContinuumTemplate
 from .series import BalmerSeriesTemplate
@@ -536,7 +534,6 @@ class BalmerModel(TemplateModel):
     ### Serialization
 
     def serialize(self, info: Info) -> dict[str, dict[str, Any]]:
-        wave_unit = str(info.units.wavelength_unit)
         flux_unit = str(info.units.flux_unit)
         kms_unit = "km/s"
         data = {
@@ -544,22 +541,20 @@ class BalmerModel(TemplateModel):
             "flux": serialize_parameter(self.flux, flux_unit),
             "fwhm": serialize_parameter(self.fwhm, kms_unit),
             "ratio": serialize_parameter(self.ratio, None),
-            "edge": serialize_quantity(self.edge, wave_unit),
             "continuum_template": self.continuum_template.serialize(info),
             "series_template": self.series_template.serialize(info),
         }
-        return {f"BalmerModel::{self.name}": data}
+        return self._serialize_helper(data)
 
     @classmethod
-    def deserialize(cls, data: dict[str, Any], name: str, info: Info) -> Self:
-        wave_unit = str(info.units.wavelength_unit)
+    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
         flux_unit = str(info.units.flux_unit)
         kms_unit = "km/s"
 
         flux = deserialize_parameter(data["flux"], flux_unit)
         fwhm = deserialize_parameter(data["fwhm"], kms_unit)
         ratio = deserialize_parameter(data["ratio"], None)
-        edge = deserialize_quantity(data["edge"], wave_unit)
+        edge = info.balmer.edge
 
         continuum_template = BalmerContinuumTemplate.deserialize(
             data["continuum_template"], 
@@ -588,6 +583,6 @@ class BalmerModel(TemplateModel):
         model.fwhm.tied = fwhm["tied"]
         model.ratio.tied = ratio["tied"]
 
-        model.name = name
+        model.name = data["name"]
 
         return model

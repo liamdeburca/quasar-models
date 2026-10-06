@@ -422,10 +422,10 @@ class IronModel(TemplateModel):
             "right": serialize_parameter(self.right, None),
             "template": self.template.serialize(info),
         }
-        return {f"IronModel::{self.name}": data}
+        return self._serialize_helper(data)
 
     @classmethod
-    def deserialize(cls, data: dict[str, Any], name: str, info: Info) -> Self:
+    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
         kms_unit = "km/s"
         flux_unit = str(info.units.flux_unit)
         wave_unit = str(info.units.wavelength_unit)
@@ -446,6 +446,7 @@ class IronModel(TemplateModel):
             left=left["value"],
             right=right["value"],
             allow_interp_fitting=info.convolution.allow_interp_fitting,
+            n_scales=info.convolution.n_scales,
             flux_bounds=flux["bounds"],
             fwhm_bounds=fwhm["bounds"],
             split_bounds=split["bounds"],

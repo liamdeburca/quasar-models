@@ -95,7 +95,7 @@ def temp_dir():
     temp = _this_file.parent / "temp"
     temp.mkdir(exist_ok=True)
     yield temp
-    # rmtree(temp)
+    rmtree(temp)
 
 ### Gaussian
 

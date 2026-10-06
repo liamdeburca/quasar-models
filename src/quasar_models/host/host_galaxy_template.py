@@ -98,5 +98,17 @@ class HostGalaxyTemplate(BaseTemplate):
         return data
 
     @classmethod
-    def _deserialize_helper(cls, data: dict[str, Any], info: Info) -> Self:
-        return cls.load_from_cache(name=data["name"], age=data["age"], info=info)
+    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
+        template =  cls.load_from_cache(
+            name=data["name"], 
+            age=data["age"], 
+            info=info,
+        )
+        template = cls._deserialize_helper(template, data, info)
+        
+        template.x_norm = info.host.x_norm
+        template.fwhm_norm = info.host.fwhm_norm
+        
+        template.normalisation = None
+        template.__post_init__()
+        return template

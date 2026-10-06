@@ -573,8 +573,8 @@ class GaussianModel(BaseModel):
     ) -> dict[str, dict[str, Any]]:
         wave_unit = str(info.units.wavelength_unit)
         strength_unit = str(info.units.strength_unit)
-
         data = {
+            "name": self.name,
             "wave": serialize_quantity(self.wave, wave_unit),
             "linetype": self.linetype,
             "n_sigmas": self.n_sigmas,
@@ -582,15 +582,10 @@ class GaussianModel(BaseModel):
             "fwhm_v": serialize_parameter(self.fwhm_v, None),
             "v_off": serialize_parameter(self.v_off, None),
         }
-        return {f"GaussianModel::{self.name}": data}
+        return self._serialize_helper(data)
 
     @classmethod
-    def deserialize(
-        cls,
-        data: dict[str, Any],
-        name: str,
-        info: Info,
-    ) -> Self:
+    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
         wave_unit = str(info.units.wavelength_unit)
         strength_unit = str(info.units.strength_unit)
 
@@ -603,7 +598,7 @@ class GaussianModel(BaseModel):
 
         out = GaussianModel.create(
             wave, info.loading.sigma_res, linetype,
-            name=name,
+            name=data["name"],
             strength=strength["value"],
             fwhm_v=fwhm_v["value"],
             v_off=v_off["value"],

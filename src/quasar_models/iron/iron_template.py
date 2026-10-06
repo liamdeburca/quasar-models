@@ -142,3 +142,15 @@ class IronTemplate(BaseTemplate):
     ) -> Self:
         kwargs = load_from_cache(name=name, info=info)
         return IronTemplate(**kwargs)
+
+    ### Serialization
+
+    @classmethod
+    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
+        template = cls.load_from_cache(name=data["name"], info=info)
+        template = cls._deserialize_helper(template, data, info)
+        
+        template.fwhm_norm = info.iron.fwhm_norm
+        template.normalisation = None
+        template.__post_init__()
+        return template

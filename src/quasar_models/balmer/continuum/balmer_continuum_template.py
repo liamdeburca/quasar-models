@@ -185,11 +185,19 @@ class BalmerContinuumTemplate(BaseTemplate):
         return data
 
     @classmethod
-    def _deserialize_helper(cls, data: dict[str, Any], info: Info) -> dict[str, Any]:
+    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
         temp_unit = str(info.units.temp_unit)
-        return BalmerContinuumTemplate.load_from_cache(
+        template = BalmerContinuumTemplate.load_from_cache(
             temp=deserialize_quantity(data["temp"], temp_unit), 
             tau=data["tau"], 
             scale=data["scale"], 
             info=info,
         )
+        template = cls._deserialize_helper(template, data, info)
+            
+        template.x_norm = info.balmer.edge
+        template.fwhm_norm = info.balmer.fwhm_norm
+        
+        template.normalisation = None
+        template.__post_init__()
+        return template

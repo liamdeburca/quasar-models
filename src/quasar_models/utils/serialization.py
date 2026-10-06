@@ -14,17 +14,18 @@ from ..modeling.utils import LinearTie
 
 def serialize_quantity(value: float, unit: str) -> dict[str, Any]:
     return {
-        "value": value,
-        "unit": unit
+        "value": float(value),
+        "unit": str(unit),
     }
 
 def deserialize_quantity(
     data: dict[str, Any], 
     unit: str | None,
 ) -> float:
+    value = float(data["value"])
     if unit is None:
-        return data["value"]
-    return (data["value"] * Unit(data["unit"])).to(unit).value
+        return value
+    return (value * Unit(data["unit"])).to(unit).value
 
 ###
 
@@ -122,39 +123,51 @@ def serialize_tied(tied: Callable | LinearTie | None) -> dict[str, Any]:
         return {"tied": None}
     return {
         "tied": {
-            "a": tied.a, 
-            "b": tied.b,
-            "model_name": tied.model_name, 
-            "parameter_name": tied.parameter_name,
+            "a": float(tied.a),
+            "b": float(tied.b),
+            "model_name": str(tied.model_name), 
+            "parameter_name": str(tied.parameter_name),
         }
     }
 
 
 def deserialize_tied(data: dict[str, Any]) -> LinearTie | None:
     tied_data = data.get("tied")
-    return None if tied_data is None else LinearTie(**tied_data)
+    if tied_data is None:
+        return None
+    return LinearTie(
+        a=float(tied_data["a"]),
+        b=float(tied_data["b"]),
+        model_name=str(tied_data["model_name"]),
+        parameter_name=str(tied_data["parameter_name"])
+    )
 
 ### Dimensionless Parameter
 
 def serialize_scalar_parameter(param: Parameter) -> dict[str, Any]:
     """Create a dictionary representation of a Parameter instance."""
-    return {
-        "name": param.name,
-        "value": param.value,
-        "fixed": param.fixed,
-        "min": param.bounds[0],
-        "max": param.bounds[1],
-        "tied": serialize_tied(param.tied)
+    data = {
+        "name": str(param.name),
+        "value": float(param.value),
+        "fixed": bool(param.fixed),
+        "min": float(param.bounds[0]),
+        "max": float(param.bounds[1]),
     }
+    if param.tied:
+        data |= serialize_tied(param.tied)
+    return data
 
 
 def deserialize_scalar_parameter(data: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "value": data["value"],
-        "fixed": data["fixed"],
-        "bounds": (data["min"], data["max"]),
-        "tied": deserialize_tied(data["tied"]),
+    out = {
+        "value": float(data["value"]),
+        "fixed": bool(data["fixed"]),
+        "bounds": (float(data["min"]), float(data["max"])),
+        "tied": None,
     }
+    if "tied" in data:
+        out["tied"] = deserialize_tied(data["tied"])
+    return out
 
 ### Dimensional Parameter
 
@@ -173,11 +186,15 @@ def deserialize_parameter(data: dict[str, Any], unit: str | None) -> dict[str, A
     def transform(val: float | None) -> float | None:
         if val is None:
             return None
-        return (val * curr_unit).to(unit).value
+        val = float(val)
+        return (val * curr_unit).to(unit).value    
 
-    return {
+    out = {
         "value": transform(data["value"]),
         "fixed": data["fixed"],
         "bounds": (transform(data["min"]), transform(data["max"])),
-        "tied": deserialize_tied(data["tied"]),
+        "tied": None,
     }
+    if "tied" in data:
+        out["tied"] = deserialize_tied(data["tied"])
+    return out

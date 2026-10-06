@@ -501,21 +501,15 @@ class _VProfileCopy(BaseModel):
     ### Serialization
 
     def serialize(self, info: Info) -> dict[str, dict[str, Any]]:
-        # Follow GaussianModel's serialization scheme but handle multiple
-        # profile parameters based on cls.n_profiles.
         wave_unit = str(info.units.wavelength_unit)
         strength_unit = str(info.units.strength_unit)
-        kms_unit = "km/s"
 
         data: dict[str, Any] = {
+            "name": self.name,
             "wave": serialize_quantity(self.wave, wave_unit),
             "linetype": self.linetype,
             "n_sigmas": self.n_sigmas,
-            # Meta fields necessary to reconstruct the object without
-            # reference Gaussians
-            "sigma_res": self.sigma_res,
             "master_name": self.master_name,
-            "dx": self.dx,
             "strength_scale": serialize_parameter(self.strength_scale, None),
         }
 
@@ -531,47 +525,37 @@ class _VProfileCopy(BaseModel):
                 getattr(self, f"v_off_{i}"), None
             )
 
-        return {f"{self.__class__.__name__}::{self.name}": data}
+        return self._serialize_helper(data)
 
     @classmethod
-    def deserialize(cls, data: dict[str, Any], name: str, info: Info) -> Self:
-        # Expect the inner data dict (not the outer wrapper)
+    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
         wave_unit = str(info.units.wavelength_unit)
         strength_unit = str(info.units.strength_unit)
 
         wave = deserialize_quantity(data["wave"], wave_unit)
         linetype = data["linetype"]
         n_sigmas = data.get("n_sigmas")
-
-        sigma_res = data.get("sigma_res")
         master_name = data.get("master_name")
-        dx = data.get("dx")
+        strength_scale = deserialize_parameter(data["strength_scale"], None)
 
-        strength_scale_ser = deserialize_parameter(data["strength_scale"], None)
-
-        # Build metadata required by create when no source Gaussians are
-        # available (len(gs) == 0 branch).
-        meta = cls._get_metadata(
-            wave,
-            name,
-            linetype,
-            sigma_res=sigma_res,
-            master_name=master_name,
-            n_sigmas=n_sigmas,
-            dx=dx,
-        )
-
-        # Instantiate the object and populate parameters
         model = cls(
-            strength_scale_ser["value"],
-            name=name,
-            meta=meta,
+            strength_scale["value"],
+            name=data["name"],
+            meta=cls._get_metadata(
+                wave,
+                data["name"],
+                linetype,
+                sigma_res=info.loading.sigma_res,
+                master_name=master_name,
+                n_sigmas=n_sigmas,
+                dx=None,
+            ),
         )
 
         # Restore bounds/fixed/tied for strength_scale
-        model.strength_scale.bounds = strength_scale_ser["bounds"]
-        model.strength_scale.fixed = strength_scale_ser["fixed"]
-        model.strength_scale.tied = strength_scale_ser["tied"]
+        model.strength_scale.bounds = strength_scale["bounds"]
+        model.strength_scale.fixed = strength_scale["fixed"]
+        model.strength_scale.tied = strength_scale["tied"]
 
         # Per-profile parameters
         for i in range(1, cls.n_profiles + 1):

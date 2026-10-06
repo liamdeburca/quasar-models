@@ -276,10 +276,10 @@ class HostGalaxyModel(TemplateModel):
             "fwhm": serialize_parameter(self.fwhm, kms_unit),
             "template": self.template.serialize(info),
         }
-        return {f"HostGalaxyModel::{self.name}": data}
+        return self._serialize_helper(data)
 
     @classmethod
-    def deserialize(cls, data: dict[str, Any], name: str, info: Info) -> Self:
+    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
         kms_unit = "km/s"
         flux_unit = str(info.units.flux_unit)
 
@@ -291,13 +291,16 @@ class HostGalaxyModel(TemplateModel):
             flux["value"], fwhm["value"],
             info=info,
             template=template,
+            allow_interp_fitting=info.convolution.allow_interp_fitting,
+            n_scales=info.convolution.n_scales,
             flux_bounds=flux["bounds"],
             fwhm_bounds=fwhm["bounds"],
             flux_fixed=flux["fixed"],
             fwhm_fixed=fwhm["fixed"],
         )
-        model.name = name
         model.flux.tied = flux["tied"]
         model.fwhm.tied = fwhm["tied"]
 
+        model.name = data["name"]
+        
         return model

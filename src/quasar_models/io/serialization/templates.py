@@ -1,9 +1,9 @@
 from quasar_utils.setup import Info
 
-from quasar_models.iron import IronTemplate
-from quasar_models.host import HostGalaxyTemplate
-from quasar_models.balmer.series import BalmerSeriesTemplate
 from quasar_models.balmer.continuum import BalmerContinuumTemplate
+from quasar_models.balmer.series import BalmerSeriesTemplate
+from quasar_models.host import HostGalaxyTemplate
+from quasar_models.iron import IronTemplate
 
 
 def serialize_iron_template(template: IronTemplate, info: Info):

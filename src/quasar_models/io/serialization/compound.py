@@ -1,12 +1,30 @@
-from typing import Any
+from collections.abc import Iterable
+from typing import Any, Union
 
+from quasar_typing.astropy import CompoundModel_
 from quasar_utils.setup import Info
 
+from quasar_models import (
+    BalmerModel,
+    GaussianModel,
+    HostGalaxyModel,
+    IronModel,
+    PowerLawModel,
+)
+from quasar_models.line import (
+    VProfileCopy1G,
+    VProfileCopy2G,
+    VProfileCopy3G,
+    VProfileCopy4G,
+    VProfileCopy5G,
+)
 from quasar_models.modeling.base_model import BaseModel
-from quasar_models.utils.serialization import serialize_parameter, serialize_quantity
 
 
-def serialize_compound_model(model: BaseModel, info: Info) -> dict[str, Any]:
+def serialize_compound_model(
+    model: Union[BaseModel, CompoundModel_[BaseModel]], 
+    info: Info,
+) -> dict[str, Any]:
     """Serialize a single model or an additive compound model.
 
     If `model` has `n_submodels` > 1 it is treated as a compound model and
@@ -17,12 +35,9 @@ def serialize_compound_model(model: BaseModel, info: Info) -> dict[str, Any]:
     entries (or a single entry for non-compound models).
     """
     out: dict[str, Any] = {}
-    if getattr(model, "n_submodels", 1) > 1:
-        # Compound model: iterate submodels (they should be additive)
-        for sub in sorted((m for m in model), key=lambda m: m.sorting_key):
-            out.update(sub.serialize(info))
-    else:
-        out.update(model.serialize(info))
+    ms: Iterable[BaseModel] = (model,) if model.n_submodels == 1 else model
+    for m in sorted(ms, key=lambda m: m.sorting_key):
+        out.update(m.serialize(info))
     return out
 
 
@@ -42,24 +57,26 @@ def deserialize_compound_model(data: dict[str, Any], info: Info) -> BaseModel:
 
     models: list[BaseModel] = []
     for key, val in items:
-        cls_name, name = key.split("::", 1)
-        # Locate the class from the global quasar_models package
-        # We import lazily to avoid circular imports at module load time
-        import importlib
-
-        package = importlib.import_module("quasar_models")
-        cls = getattr(package, cls_name)
-        model = cls.deserialize(val, name, info)
-        models.append(model)
+        try:
+            cls_: type[BaseModel] = {
+                "BalmerModel": BalmerModel,
+                "PowerLawModel": PowerLawModel,
+                "IronModel": IronModel,
+                "HostGalaxyModel": HostGalaxyModel,
+                "GaussianModel": GaussianModel,
+                "VProfileCopy1G": VProfileCopy1G,
+                "VProfileCopy2G": VProfileCopy2G,
+                "VProfileCopy3G": VProfileCopy3G,
+                "VProfileCopy4G": VProfileCopy4G,
+                "VProfileCopy5G": VProfileCopy5G,
+            }[key]
+        except KeyError as exc:
+            raise KeyError(f"Unknown model class: {key}") from exc
+        
+        models.append(cls_.deserialize(val, info))
 
     if len(models) == 1:
         return models[0]
 
-    # Sort submodels by sorting_key
     models = sorted(models, key=lambda m: m.sorting_key)
-
-    # Sum (add) models to create an additive compound model
-    compound = models[0]
-    for m in models[1:]:
-        compound = compound + m
-    return compound
+    return sum(models[1:], start=models[0])

@@ -12,8 +12,12 @@ from quasar_utils.setup import Info
 from quasar_models._core.modeling.balmer.series import evaluate
 from quasar_models.modeling.template import BaseTemplate
 
-from ...utils.serialization import serialize_array, deserialize_array, serialize_quantity, deserialize_quantity
-
+from ...utils.serialization import (
+    deserialize_array,
+    deserialize_quantity,
+    serialize_array,
+    serialize_quantity,
+)
 from .io import PATH_TO_CACHE, load, load_from_cache, save, save_to_cache
 
 
@@ -275,13 +279,10 @@ class BalmerSeriesTemplate(BaseTemplate):
     ### Serialization
 
     def serialize(self, info: Info) -> dict[str, Any]:
-        wave_unit = str(info.units.wavelength_unit)
         temp_unit = str(info.units.temp_unit)
         dens_unit = str(info.units.dens_unit)
 
         data = super().serialize(info)
-        data["waves"] = serialize_array(self.waves, wave_unit)
-        data["weights"] = serialize_array(self.weights, None)
         data["temp"] = serialize_quantity(self.temp, temp_unit)
         data["dens"] = serialize_quantity(self.dens, dens_unit)
         data["n_u_range"] = list(self.n_u_range)
@@ -289,25 +290,23 @@ class BalmerSeriesTemplate(BaseTemplate):
         return data
 
     @classmethod
-    def _deserialize_helper(cls, data: dict[str, Any], info: Info) -> dict[str, Any]:
+    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
         temp_unit = str(info.units.temp_unit)
         dens_unit = str(info.units.dens_unit)
-        return BalmerSeriesTemplate.load_from_cache(
+
+        template = BalmerSeriesTemplate.load_from_cache(
             name=data["name"],
             temp=deserialize_quantity(data["temp"], temp_unit),
             dens=deserialize_quantity(data["dens"], dens_unit),
             n_u_range=tuple(data["n_u_range"]),
             info=info,
         )
+        template = cls._deserialize_helper(template, data, info)
 
-    @classmethod
-    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
-        wave_unit = str(info.units.wavelength_unit)
+        template.x_norm = info.balmer.edge
+        template.fwhm_norm = info.balmer.fwhm_norm
 
-        template = super().deserialize(data, info)
-        template.waves = deserialize_array(data["waves"], wave_unit)
-        template.weights = deserialize_array(data["weights"], None)
+        template.normalisation = None
         template.__post_init__()
-        
         return template
 

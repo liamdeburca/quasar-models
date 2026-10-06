@@ -148,6 +148,12 @@ class BaseModel(ABC, Fittable1DModel):
 
     ### Serialization
 
+    @classmethod
+    def _serialize_helper(cls, data: dict[str, Any]) -> dict[str, Any]:
+        if "name" not in data:
+            raise ValueError("Missing 'name' key in serialization data.")
+        return {cls.__name__: data}
+
     @abstractmethod
     def serialize(self, info: Info) -> dict[str, Any]:
         """

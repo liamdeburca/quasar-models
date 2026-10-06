@@ -35,13 +35,6 @@ from quasar_utils.interpolation import create_interp_matrix
 from quasar_utils.raster import rasterise
 from quasar_utils.setup import Info
 
-from quasar_models.utils.serialization import (
-    deserialize_array,
-    deserialize_quantity,
-    serialize_array,
-    serialize_quantity,
-)
-
 from ..._core.convolution import convolve_signal, kernel
 
 templates_dir: Path = Path(__file__).parent / "templates"
@@ -277,52 +270,31 @@ class BaseTemplate(ABC):
     ### Serialization
 
     def serialize(self, info: Info) -> dict[str, Any]:
-        wave_unit = str(info.units.wavelength_unit)
-        kms_unit = "km/s"
         return {
             "name": self.name,
+            "path": str(self.path),
             "is_logspace": self.is_logspace,
-            "sigma_res": self.sigma_res,
-            "n_scales": self.n_scales,
-            "x": serialize_array(self.x, wave_unit),
-            "fwhm": serialize_array(self.fwhm, kms_unit),
-            "x_norm": serialize_quantity(self.x_norm, wave_unit),
-            "fwhm_norm": serialize_quantity(self.fwhm_norm, kms_unit),
-            "normalisation": self.normalisation,
         }
-
+    
     @classmethod
-    def _deserialize_helper(cls, data: dict[str, Any], info: Info) -> Self:
-        return cls.load(path=data["name"], info=info)
-
-    @classmethod
-    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
-        wave_unit = str(info.units.wavelength_unit)
-        kms_unit = "km/s"
-
-        x = deserialize_array(data["x"], wave_unit)
-        fwhm = deserialize_array(data["fwhm"], kms_unit)
-        x_norm = deserialize_quantity(data["x_norm"], wave_unit)
-        fwhm_norm = deserialize_quantity(data["fwhm_norm"], kms_unit)
-        normalisation = data["normalisation"]
-
-        template = cls._deserialize_helper(data, info)
-        template.x_norm = x_norm
-        template.fwhm_norm = fwhm_norm
-        template.normalisation = normalisation
-
-        if data["is_logspace"] and not template.is_logspace:
+    def _deserialize_helper(
+        cls, 
+        template: Self, 
+        data: dict[str, Any], 
+        info: Info,
+    ) -> Self:
+        if data["is_logspace"]:
             template = template.createLogspace(
-                sigma_res=data["sigma_res"],
-                xr=x,
+                sigma_res=info.loading.sigma_res,
                 keep_x=True,
             )
-        elif data["is_logspace"] == template.is_logspace:
-            template = template.interpolate(x)
-
-        if not array_equal(template.fwhm, fwhm):
-            template = template.upsample(fwhm)
         return template
+
+    @classmethod
+    @abstractmethod
+    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
+        pass
+
 
     ### Space transformations ###
 
@@ -351,10 +323,7 @@ class BaseTemplate(ABC):
         template : Template
             The logspace-equivalent template.
         """
-        if self.is_logspace:
-            return self.interpolate(xr)
-
-        dx = lin_dx(self.x)
+        dx = self.x * self.sigma_res if self.is_logspace else lin_dx(self.x)
         x_edges = empty(self.x.size + 1, dtype=float)
         x_edges[:-1] = self.x - dx / 2
         x_edges[-1] = self.x[-1] + dx[-1] / 2
@@ -371,6 +340,9 @@ class BaseTemplate(ABC):
             logxr_edges[:-1] = logxr - dlogxr / 2
             logxr_edges[-1] = logxr[-1] + dlogxr[-1] / 2
             xr_edges = exp(logxr_edges)
+
+        if self.is_logspace:
+            return self.interpolate(xr)
 
         dxr = xr * sigma_res
 

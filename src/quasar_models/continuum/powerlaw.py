@@ -38,12 +38,7 @@ from quasar_models.modeling import BaseModel
 
 from ..utils.astropy import apply_bounds
 from ..utils.linear_regression import linreg
-from ..utils.serialization import (
-    deserialize_parameter,
-    deserialize_quantity,
-    serialize_parameter,
-    serialize_quantity,
-)
+from ..utils.serialization import deserialize_parameter, serialize_parameter
 
 logger = getLogger(__name__)
 
@@ -511,31 +506,25 @@ class PowerLawModel(BaseModel):
     ### Serialization
 
     def serialize(self, info: Info) -> dict[str, dict[str, Any]]:
-        wave_unit = str(info.units.wavelength_unit)
         flux_unit = str(info.units.flux_unit)
         data = {
-            "x0": serialize_quantity(self.x0, wave_unit),
-            "y0": serialize_quantity(self.y0, flux_unit),
+            "name": self.name,
             "flux": serialize_parameter(self.flux, flux_unit),
             "alpha": serialize_parameter(self.alpha, None),
         }
-        return {f"PowerLawModel::{self.name}": data}
+        return self._serialize_helper(data)
 
     @classmethod
-    def deserialize(cls, data: dict[str, Any], name: str, info: Info) -> Self:
-        wave_unit = str(info.units.wavelength_unit)
+    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
         flux_unit = str(info.units.flux_unit)
-
-        x0: float = deserialize_quantity(data["x0"], wave_unit)
-        y0: float = deserialize_quantity(data["y0"], flux_unit)
         flux = deserialize_parameter(data["flux"], flux_unit)
         alpha = deserialize_parameter(data["alpha"], None)
 
         out = PowerLawModel.create(
-            x0, y0, 
+            info.continuum.x0, info.continuum.y0, 
             flux["value"], 
             alpha["value"],
-            name=name,
+            name=data["name"],
             flux_bounds=flux["bounds"],
             alpha_bounds=alpha["bounds"],
             flux_fixed=flux["fixed"],
