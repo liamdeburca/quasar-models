@@ -37,6 +37,7 @@ def numerical_derivative(
 
     return stack(derivs, axis=0)
 
+
 def test_gaussian(
     gaussian_model: GaussianModel,
     wavelength_array: FloatVector,
@@ -53,25 +54,56 @@ def test_gaussian(
     gaussian_model.fwhm_v.fixed = False
     gaussian_model.v_off.fixed = False
 
-    with PrepareModel(x=wavelength_array, model=gaussian_model) as seq_model:
-        m = seq_model._model
+    with PrepareModel(x=wavelength_array, model=gaussian_model):
+        m = gaussian_model
         assert m.dx is None
         assert m.kwargs["wave"] == m.wave
         assert m.kwargs["sigma_res"] == m.sigma_res
         assert "dx" not in m.kwargs
 
-        bounds = seq_model.bounds
+        bounds = gaussian_model.bounds
         for _ in range(deriv_its):
             strength = rng.uniform(*gaussian_model.strength.bounds)
             fwhm_v = rng.uniform(*gaussian_model.fwhm_v.bounds)
             v_off = rng.uniform(*gaussian_model.v_off.bounds)
             params = array([strength, fwhm_v, v_off])
-            with subtests.test(msg=f"GaussianModel: {strength=:.1f}, {fwhm_v=:.1f}, {v_off=:.1f}"):
-                df_analytical = seq_model.partial_deriv(wavelength_array, params)
-                df_numerical = numerical_derivative(wavelength_array, seq_model, params, bounds, deriv_epsilon)
-                assert isclose(df_analytical[0], df_numerical[0], rtol=deriv_rtol, atol=deriv_atol).mean() == 1.0
-                assert isclose(df_analytical[1], df_numerical[1], rtol=deriv_rtol, atol=deriv_atol).mean() == 1.0
-                assert isclose(df_analytical[2], df_numerical[2], rtol=deriv_rtol, atol=deriv_atol).mean() == 1.0
+            with subtests.test(
+                msg=f"GaussianModel: {strength=:.1f}, {fwhm_v=:.1f}, {v_off=:.1f}"
+            ):
+                df_analytical = gaussian_model.partial_deriv(
+                    wavelength_array, params
+                )
+                df_numerical = numerical_derivative(
+                    wavelength_array, gaussian_model, params, bounds, deriv_epsilon
+                )
+                assert (
+                    isclose(
+                        df_analytical[0],
+                        df_numerical[0],
+                        rtol=deriv_rtol,
+                        atol=deriv_atol,
+                    ).mean()
+                    == 1.0
+                )
+                assert (
+                    isclose(
+                        df_analytical[1],
+                        df_numerical[1],
+                        rtol=deriv_rtol,
+                        atol=deriv_atol,
+                    ).mean()
+                    == 1.0
+                )
+                assert (
+                    isclose(
+                        df_analytical[2],
+                        df_numerical[2],
+                        rtol=deriv_rtol,
+                        atol=deriv_atol,
+                    ).mean()
+                    == 1.0
+                )
+
 
 def test_gaussian_linear(
     gaussian_model: GaussianModel,
@@ -84,31 +116,65 @@ def test_gaussian_linear(
     subtests: pytest.Subtests,
 ) -> None:
     assert not _is_logbinned(wavelength_array_linear)
-    
+
     gaussian_model.strength.fixed = False
     gaussian_model.fwhm_v.fixed = False
     gaussian_model.v_off.fixed = False
 
-    with PrepareModel(x=wavelength_array_linear, model=gaussian_model) as seq_model:
+    with PrepareModel(x=wavelength_array_linear, model=gaussian_model) as (seq_model, _):
         m = seq_model._model
         assert m.dx is not None
         assert m.kwargs["wave"] == m.wave
         assert m.kwargs["dx"] == m.dx
         assert "sigma_res" not in m.kwargs
 
-        bounds = seq_model.bounds
         for _ in range(deriv_its):
             strength = rng.uniform(*gaussian_model.strength.bounds)
             fwhm_v = rng.uniform(*gaussian_model.fwhm_v.bounds)
             v_off = rng.uniform(*gaussian_model.v_off.bounds)
             params = array([strength, fwhm_v, v_off])
-            with subtests.test(msg=f"GaussianModel: {strength=:.1f}, {fwhm_v=:.1f}, {v_off=:.1f}"):
-                df_analytical = seq_model.partial_deriv(wavelength_array_linear, params)
-                df_numerical = numerical_derivative(wavelength_array_linear, seq_model, params, bounds, deriv_epsilon)
+            with subtests.test(
+                msg=f"GaussianModel: {strength=:.1f}, {fwhm_v=:.1f}, {v_off=:.1f}"
+            ):
+                df_analytical = gaussian_model.partial_deriv(
+                    wavelength_array_linear, params
+                )
+                df_numerical = numerical_derivative(
+                    wavelength_array_linear,
+                    seq_model,
+                    params,
+                    seq_model.bounds,
+                    deriv_epsilon,
+                )
 
-                assert isclose(df_analytical[0], df_numerical[0], rtol=deriv_rtol, atol=deriv_atol).mean() == 1.0
-                assert isclose(df_analytical[1], df_numerical[1], rtol=deriv_rtol, atol=deriv_atol).mean() == 1.0
-                assert isclose(df_analytical[2], df_numerical[2], rtol=deriv_rtol, atol=deriv_atol).mean() == 1.0
+                assert (
+                    isclose(
+                        df_analytical[0],
+                        df_numerical[0],
+                        rtol=deriv_rtol,
+                        atol=deriv_atol,
+                    ).mean()
+                    == 1.0
+                )
+                assert (
+                    isclose(
+                        df_analytical[1],
+                        df_numerical[1],
+                        rtol=deriv_rtol,
+                        atol=deriv_atol,
+                    ).mean()
+                    == 1.0
+                )
+                assert (
+                    isclose(
+                        df_analytical[2],
+                        df_numerical[2],
+                        rtol=deriv_rtol,
+                        atol=deriv_atol,
+                    ).mean()
+                    == 1.0
+                )
+
 
 def test_sequential(
     gaussian_model: GaussianModel,
@@ -132,7 +198,10 @@ def test_sequential(
     mask = (6400.0 < wavelength_array) & (wavelength_array < 6700.0)
     x = wavelength_array[mask]
 
-    with PrepareModel(x=x, model=gaussian_model + v_profile_copy) as seq_model:
+    with PrepareModel(
+        x=x, 
+        model=gaussian_model + v_profile_copy,
+    ) as (seq_model, _):
         bounds = seq_model.bounds
         for _ in range(deriv_its):
             strength = rng.uniform(*gaussian_model.strength.bounds)
@@ -141,22 +210,47 @@ def test_sequential(
             strength_scale = rng.uniform(*v_profile_copy.strength_scale.bounds)
 
             params = array([strength, fwhm_v, v_off, strength_scale])
-            with subtests.test(msg=f"GaussianModel: {strength=:.1f}, {fwhm_v=:.1f}, {v_off=:.1f}, {strength_scale=:.1f}"):
+            with subtests.test(
+                msg=f"GaussianModel: {strength=:.1f}, {fwhm_v=:.1f}, {v_off=:.1f}, {strength_scale=:.1f}"
+            ):
                 f_analytical = seq_model.evaluate(x, params)
-                f_theoretical = gaussian_model.evaluate(x, strength, fwhm_v, v_off) \
-                    + v_profile_copy.evaluate(x, strength_scale, strength, fwhm_v, v_off)
-                assert allclose(f_analytical, f_theoretical, rtol=deriv_rtol, atol=deriv_atol)
+                f_theoretical = gaussian_model.evaluate(
+                    x, strength, fwhm_v, v_off
+                ) + v_profile_copy.evaluate(
+                    x, strength_scale, strength, fwhm_v, v_off
+                )
+                assert allclose(
+                    f_analytical,
+                    f_theoretical,
+                    rtol=deriv_rtol,
+                    atol=deriv_atol,
+                )
 
-                df_analytical = seq_model.partial_deriv(x, params)[seq_model._free_indices]
-                df_numerical = numerical_derivative(x, seq_model, params, bounds, deriv_epsilon)
+                df_analytical = seq_model.partial_deriv(x, params)[
+                    seq_model._free_indices
+                ]
+                df_numerical = numerical_derivative(
+                    x, seq_model, params, bounds, deriv_epsilon
+                )
 
                 assert df_analytical.shape == (4, x.size)
                 assert df_numerical.shape == (4, x.size)
 
-                assert allclose(df_analytical[0], df_numerical[0], rtol=deriv_rtol, atol=deriv_atol)
-                assert allclose(df_analytical[1], df_numerical[1], rtol=deriv_rtol, atol=deriv_atol)
+                assert allclose(
+                    df_analytical[0],
+                    df_numerical[0],
+                    rtol=deriv_rtol,
+                    atol=deriv_atol,
+                )
+                assert allclose(
+                    df_analytical[1],
+                    df_numerical[1],
+                    rtol=deriv_rtol,
+                    atol=deriv_atol,
+                )
                 # assert allclose(df_analytical[2], df_numerical[2], rtol=deriv_rtol, atol=deriv_atol)
                 # assert allclose(df_analytical[3], df_numerical[3], rtol=deriv_rtol, atol=deriv_atol)
+
 
 def test_powerlaw(
     powerlaw_model: PowerLawModel,
@@ -171,18 +265,40 @@ def test_powerlaw(
     powerlaw_model.flux.fixed = False
     powerlaw_model.alpha.fixed = False
 
-    with PrepareModel(x=wavelength_array, model=powerlaw_model) as seq_model:
+    with PrepareModel(x=wavelength_array, model=powerlaw_model) as (seq_model, _):
         for _ in range(deriv_its):
             flux = rng.uniform(*powerlaw_model.flux.bounds)
             alpha = rng.uniform(*powerlaw_model.alpha.bounds)
             params = array([flux, alpha])
             bounds = seq_model.bounds
-            with subtests.test(msg=f"PowerLawModel: {flux=:.1f}, {alpha=:.1f}"):
-                df_analytical = seq_model.partial_deriv(wavelength_array, params)
-                df_numerical = numerical_derivative(wavelength_array, seq_model, params, bounds, deriv_epsilon)
-                assert isclose(df_analytical[0], df_numerical[0], rtol=deriv_rtol, atol=deriv_atol).mean() == 1.0
-                assert isclose(df_analytical[1], df_numerical[1], rtol=deriv_rtol, atol=deriv_atol).mean() == 1.0
-    
+            with subtests.test(
+                msg=f"PowerLawModel: {flux=:.1f}, {alpha=:.1f}"
+            ):
+                df_analytical = seq_model.partial_deriv(
+                    wavelength_array, params
+                )
+                df_numerical = numerical_derivative(
+                    wavelength_array, seq_model, params, bounds, deriv_epsilon
+                )
+                assert (
+                    isclose(
+                        df_analytical[0],
+                        df_numerical[0],
+                        rtol=deriv_rtol,
+                        atol=deriv_atol,
+                    ).mean()
+                    == 1.0
+                )
+                assert (
+                    isclose(
+                        df_analytical[1],
+                        df_numerical[1],
+                        rtol=deriv_rtol,
+                        atol=deriv_atol,
+                    ).mean()
+                    == 1.0
+                )
+
 
 # def test_iron(
 #     iron_model: IronModel,
@@ -231,7 +347,7 @@ def test_host(
 
     wavelength_array = host_model.template.x
 
-    with PrepareModel(x=wavelength_array, model=host_model) as seq_model:
+    with PrepareModel(x=wavelength_array, model=host_model) as (seq_model, _):
         m = seq_model._model
         assert m.evaluate_func.rescaling
 
@@ -240,6 +356,18 @@ def test_host(
             flux = rng.uniform(*host_model.flux.bounds)
             params = array([flux])
             with subtests.test(msg=f"HostModel: {params=}"):
-                df_analytical = seq_model.partial_deriv(wavelength_array, params)
-                df_numerical = numerical_derivative(wavelength_array, seq_model, params, bounds, deriv_epsilon)
-                assert isclose(df_analytical[0], df_numerical[0], rtol=deriv_rtol, atol=deriv_atol).mean() == 1.0
+                df_analytical = seq_model.partial_deriv(
+                    wavelength_array, params
+                )
+                df_numerical = numerical_derivative(
+                    wavelength_array, seq_model, params, bounds, deriv_epsilon
+                )
+                assert (
+                    isclose(
+                        df_analytical[0],
+                        df_numerical[0],
+                        rtol=deriv_rtol,
+                        atol=deriv_atol,
+                    ).mean()
+                    == 1.0
+                )

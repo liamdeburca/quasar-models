@@ -49,9 +49,7 @@ def test_powerlaw_hdf5_list_single(powerlaw_model, info, temp_dir: Path):
 
     with h5py.File(path, "w") as f:
         powerlaws_to_hdf5(
-            models, f, info,
-            group_name="pl_list",
-            force=True,
+            models, f, info, group_name="pl_list", force=True,
         )
 
     with h5py.File(path, "r") as f:
@@ -81,9 +79,7 @@ def test_powerlaw_hdf5_list_multiple(powerlaw_model, info, temp_dir: Path):
     path = temp_dir / "powerlaw_list_multi.h5"
     with h5py.File(path, "w") as f:
         powerlaws_to_hdf5(
-            models, f, info,
-            group_name="pl_multi",
-            force=True,
+            models, f, info, group_name="pl_multi", force=True,
         )
 
     with h5py.File(path, "r") as f:

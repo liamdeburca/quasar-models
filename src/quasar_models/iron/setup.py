@@ -13,6 +13,7 @@ from quasar_models.iron.utils import _get_xlog
 INFO: Info = Info()
 PATH_TO_DATA: Path = io.PATH_TO_DATA / "Fe_UVtmplt_A_im.fits"
 
+
 class VW2001:
     X_BOUNDS: ClassVar[Quantity] = (1000.0, 3250.0) * Unit("angstrom")
     RED_BLUE_DIVIDE: ClassVar[Quantity] = 2150.0 * Unit("angstrom")
@@ -43,13 +44,15 @@ class VW2001:
                 if not key.startswith("APERT"):
                     continue
 
-                elems = [elem for elem in line.strip().split(" ") if len(elem) > 0]
+                elems = [
+                    elem for elem in line.strip().split(" ") if len(elem) > 0
+                ]
                 fwhm[int(elems[0]) - 1] = float(elems[1])
             fwhm = INFO.units.getUnitlessKMS(fwhm * Unit("km/s"))
 
             template = IronTemplate(
-                fwhm=fwhm, # Array already in km/s
-                x=x, 
+                fwhm=fwhm,  # Array already in km/s
+                x=x,
                 data=data,
                 is_logspace=False,
                 name="vw2001",
@@ -83,20 +86,22 @@ class VW2001:
             x = INFO.units.getUnitlessWavelength(x * Unit("angstrom"))
 
             # Modify data
-            data[:,red_blue_divide <= x] = 0.0
+            data[:, red_blue_divide <= x] = 0.0
 
             fwhm = empty(hdr["NAXIS2"], dtype=float64)
             for key, line in hdr.items():
                 if not key.startswith("APERT"):
                     continue
 
-                elems = [elem for elem in line.strip().split(" ") if len(elem) > 0]
+                elems = [
+                    elem for elem in line.strip().split(" ") if len(elem) > 0
+                ]
                 fwhm[int(elems[0]) - 1] = float(elems[1])
             fwhm = INFO.units.getUnitlessKMS(fwhm * Unit("km/s"))
 
             template = IronTemplate(
-                fwhm=fwhm, # Array already in km/s
-                x=x, 
+                fwhm=fwhm,  # Array already in km/s
+                x=x,
                 data=data,
                 is_logspace=False,
                 name="vw2001_blue",
@@ -112,7 +117,6 @@ class VW2001:
             template.simplifyData(tol=1e-8, inplace=True)
 
             template.save_to_cache(INFO)
-
 
     @classmethod
     def init_red(cls) -> None:
@@ -131,20 +135,22 @@ class VW2001:
             x = INFO.units.getUnitlessWavelength(x * Unit("angstrom"))
 
             # Modify data
-            data[:,x < red_blue_divide] = 0.0
+            data[:, x < red_blue_divide] = 0.0
 
             fwhm = empty(hdr["NAXIS2"], dtype=float64)
             for key, line in hdr.items():
                 if not key.startswith("APERT"):
                     continue
 
-                elems = [elem for elem in line.strip().split(" ") if len(elem) > 0]
+                elems = [
+                    elem for elem in line.strip().split(" ") if len(elem) > 0
+                ]
                 fwhm[int(elems[0]) - 1] = float(elems[1])
             fwhm = INFO.units.getUnitlessKMS(fwhm * Unit("km/s"))
 
             template = IronTemplate(
-                fwhm=fwhm, # Array already in km/s
-                x=x, 
+                fwhm=fwhm,  # Array already in km/s
+                x=x,
                 data=data,
                 is_logspace=False,
                 name="vw2001_red",
@@ -164,7 +170,9 @@ class VW2001:
 
 class V2003:
     X_BOUNDS: ClassVar[Quantity] = (3000.0, 8000.0) * Unit("angstrom")
-    PATH_TO_DATA: ClassVar[Path] = io.PATH_TO_DATA / "Fe2_Synth_Opt_tmplt_nrm.fits"
+    PATH_TO_DATA: ClassVar[Path] = (
+        io.PATH_TO_DATA / "Fe2_Synth_Opt_tmplt_nrm.fits"
+    )
     RED_BLUE_DIVIDE: ClassVar[Quantity] = 4800.0 * Unit("angstrom")
 
     @classmethod
@@ -193,7 +201,9 @@ class V2003:
                 if not key.startswith("APERT"):
                     continue
 
-                elems = [elem for elem in line.strip().split(" ") if len(elem) > 0]
+                elems = [
+                    elem for elem in line.strip().split(" ") if len(elem) > 0
+                ]
                 fwhm[int(elems[0]) - 1] = float(elems[1])
 
             fwhm = INFO.units.getUnitlessKMS(fwhm * Unit("km/s"))
@@ -234,14 +244,16 @@ class V2003:
             x = INFO.units.getUnitlessWavelength(x * Unit("angstrom"))
 
             # Modify data
-            data[:,red_blue_divide <= x] = 0.0
+            data[:, red_blue_divide <= x] = 0.0
 
             fwhm = empty(hdr["NAXIS2"], dtype=float64)
             for key, line in hdr.items():
                 if not key.startswith("APERT"):
                     continue
 
-                elems = [elem for elem in line.strip().split(" ") if len(elem) > 0]
+                elems = [
+                    elem for elem in line.strip().split(" ") if len(elem) > 0
+                ]
                 fwhm[int(elems[0]) - 1] = float(elems[1])
 
             fwhm = INFO.units.getUnitlessKMS(fwhm * Unit("km/s"))
@@ -282,14 +294,16 @@ class V2003:
             x = INFO.units.getUnitlessWavelength(x * Unit("angstrom"))
 
             # Modify data
-            data[:,x < red_blue_divide] = 0.0
+            data[:, x < red_blue_divide] = 0.0
 
             fwhm = empty(hdr["NAXIS2"], dtype=float64)
             for key, line in hdr.items():
                 if not key.startswith("APERT"):
                     continue
 
-                elems = [elem for elem in line.strip().split(" ") if len(elem) > 0]
+                elems = [
+                    elem for elem in line.strip().split(" ") if len(elem) > 0
+                ]
                 fwhm[int(elems[0]) - 1] = float(elems[1])
 
             fwhm = INFO.units.getUnitlessKMS(fwhm * Unit("km/s"))
@@ -313,9 +327,12 @@ class V2003:
 
             template.save_to_cache(INFO)
 
+
 class BW:
     X_BOUNDS: ClassVar[Quantity] = (2800, 3800) * Unit("angstrom")
-    PATH_TO_DATA: ClassVar[Path] = io.PATH_TO_DATA / "Fe_3100_izw1_BevWills.txt"
+    PATH_TO_DATA: ClassVar[Path] = (
+        io.PATH_TO_DATA / "Fe_3100_izw1_BevWills.txt"
+    )
 
     @classmethod
     def main(cls) -> None:
@@ -378,7 +395,15 @@ def plot() -> None:
 
     temps = [
         IronTemplate.load_from_cache(name=name, info=info)
-        for name in ["vw2001", "vw2001_blue", "vw2001_red", "bw", "v2003", "v2003_blue", "v2003_red"]
+        for name in [
+            "vw2001",
+            "vw2001_blue",
+            "vw2001_red",
+            "bw",
+            "v2003",
+            "v2003_blue",
+            "v2003_red",
+        ]
     ]
 
     norm = Normalize(
@@ -389,12 +414,21 @@ def plot() -> None:
 
     sel = slice(None, None, 10)
 
-    fig, axes = plt.subplots(len(temps), 1, sharex=True, sharey=True, dpi=300, figsize=(8, len(temps)))
+    fig, axes = plt.subplots(
+        len(temps),
+        1,
+        sharex=True,
+        sharey=True,
+        dpi=300,
+        figsize=(8, len(temps)),
+    )
     fig.subplots_adjust(hspace=0)
     axes[0].set_title("Iron Emission Templates [upsampled]", loc="left")
 
     for ax, t in zip(axes, temps):
-        ax.text(0.95, 0.95, t.name, ha="right", va="top", transform=ax.transAxes)
+        ax.text(
+            0.95, 0.95, t.name, ha="right", va="top", transform=ax.transAxes
+        )
 
         for y, fwhm in zip(t.data[sel], t.fwhm[sel]):
             ax.fill_between(

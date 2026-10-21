@@ -7,5 +7,7 @@ def serialize_vprofilecopy(model: _VProfileCopy, info: Info):
     return model.serialize(info)
 
 
-def deserialize_vprofilecopy(data: dict, name: str, info: Info) -> _VProfileCopy:
+def deserialize_vprofilecopy(
+    data: dict, name: str, info: Info
+) -> _VProfileCopy:
     return _VProfileCopy.deserialize(data, name, info)

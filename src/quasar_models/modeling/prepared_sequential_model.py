@@ -1,4 +1,3 @@
-
 from pydantic.dataclasses import dataclass
 from quasar_typing.numpy import BoolVector, FloatMatrix, FloatVector
 
@@ -9,17 +8,18 @@ from .sequential_model import SequentialModel
 class PreparedSequentialModel:
     """
     Wrapper class for `SequentialModel`.
-    
-    Includes the data to fit, including the wavelength grid used to prepare the 
+
+    Includes the data to fit, including the wavelength grid used to prepare the
     model, and a `where` mask indicating which data points to fit to.
     """
+
     seq_model: SequentialModel
     data: dict[str, FloatVector]
     where: BoolVector | None
 
     @property
     def x(self) -> FloatVector:
-        return self.data['x']
+        return self.data["x"]
 
     ### w/o instrumental correction
 

@@ -13,7 +13,10 @@ def test_func() -> None:
 
 
 def test_deriv() -> None:
-    from quasar_core.modelling.powerlaw import fit_deriv_all, choose_fit_deriv_func
+    from quasar_core.modelling.powerlaw import (
+        choose_fit_deriv_func,
+        fit_deriv_all,
+    )
 
     dy = fit_deriv_all(x, 1.0, -1.0, x0=1450.0)
 

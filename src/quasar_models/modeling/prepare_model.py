@@ -2,23 +2,23 @@ from collections.abc import Iterable
 from dataclasses import field
 from typing import Protocol, Self, TypedDict, TypeVar
 
-from numpy import allclose, diff, interp, median
+from numpy import allclose, bool_, diff, interp, median, ones_like
 from pydantic.dataclasses import dataclass
-from quasar_typing.astropy import CompoundModel_
+from quasar_typing.astropy.modeling import CompoundModelType
 from quasar_typing.numpy import BoolVector, FloatMatrix, FloatVector
-from quasar_typing.scipy import csr_matrix_
+from quasar_typing.scipy import CSRMatrix
 from quasar_utils.resolving import mask_kernels
 
 from .base_model import BaseModel
 from .sequential_model import SequentialModel
 
-M = TypeVar("M", BaseModel, CompoundModel_[BaseModel])
+M = TypeVar("M", BaseModel, CompoundModelType[BaseModel])
 
 
 def _is_logbinned(x: FloatVector) -> bool:
     """
-    Return True if the input array `x` is log-binned, i.e. if the relative 
-    differences between consecutive wavelength values are approximately 
+    Return True if the input array `x` is log-binned, i.e. if the relative
+    differences between consecutive wavelength values are approximately
     constant.
     """
     dv = diff(x) / x[:-1]
@@ -39,6 +39,7 @@ class _DataDict(TypedDict):
     y: FloatVector
     dy: FloatVector
 
+
 @dataclass
 class PrepareModel:
     # Rest wavelength grid
@@ -47,17 +48,22 @@ class PrepareModel:
     model: M = field(kw_only=True)
 
     # Mask: where to evaluate the model
-    eval_mask: BoolVector = field(kw_only=True)
+    eval_mask: BoolVector | None = field(default=None, kw_only=True)
     # Mask: where to compare the model and data
-    comp_mask: BoolVector = field(kw_only=True)
+    comp_mask: BoolVector | None = field(default=None, kw_only=True)
 
     # Resolution kernels for instrumental broadening
-    kernels: FloatMatrix | csr_matrix_ | None = field(default=None, kw_only=True)
+    kernels: FloatMatrix | CSRMatrix | None = field(default=None, kw_only=True)
 
     # Whether the wavelength array is log-binned
     is_logbinned: bool | None = field(default=None, kw_only=True)
 
     def __post_init__(self):
+        if self.eval_mask is None:
+            self.eval_mask = ones_like(self.x, dtype=bool_)
+        if self.comp_mask is None:
+            self.comp_mask = ones_like(self.x, dtype=bool_)
+
         if self.x.shape != self.eval_mask.shape:
             raise ValueError(
                 f"Shape mismatch between `x` ({self.x.shape}) and "
@@ -68,20 +74,22 @@ class PrepareModel:
                 f"Shape mismatch between `x`/`eval_mask` ({self.x.shape}) and "
                 f"`comp_mask` ({self.comp_mask.shape})."
             )
-        if self.kernels is not None \
-            and self.kernels.shape[0] != self.x.shape[0]:
+        if (
+            self.kernels is not None
+            and self.kernels.shape[0] != self.x.shape[0]
+        ):
             raise ValueError(
                 f"Dimension 0 mismatch between `x` ({self.x.shape}) and "
                 f"`kernels` ({self.kernels.shape})."
             )
-        
+
         if self.is_logbinned is None:
             self.is_logbinned = _is_logbinned(self.x)
 
     @classmethod
     def fromCoords(
-        cls, 
-        coords: _CoordsProtocol, 
+        cls,
+        coords: _CoordsProtocol,
         model: M,
     ) -> Self:
         return cls(
@@ -108,14 +116,14 @@ class PrepareModel:
         is_logbinned: bool | None = None,
         fixeds: dict[str, dict[str, bool]] | None = None,
     ) -> None:
-        """Prepare each submodel. 
-        
-        If a submodel is a subclass of `TemplateModel`, 
-        it is prepared with the full wavelength array to construct interpolation 
-        matrices. 
-        
-        If a submodel is a `GaussianModel` or a subclass of 
-        `_VProfileCopy`, and the wavelength array is NOT log-binned, the 
+        """Prepare each submodel.
+
+        If a submodel is a subclass of `TemplateModel`,
+        it is prepared with the full wavelength array to construct interpolation
+        matrices.
+
+        If a submodel is a `GaussianModel` or a subclass of
+        `_VProfileCopy`, and the wavelength array is NOT log-binned, the
         submodel's `dx` property is set.
 
         Parameters
@@ -125,11 +133,11 @@ class PrepareModel:
         submodels : Iterable[BaseModel]
             The submodels to be prepared.
         is_logbinned : bool | None, optional
-            Whether the wavelength array is log-binned. If None, it will be 
+            Whether the wavelength array is log-binned. If None, it will be
             inferred.
         fixeds : dict[str, dict[str, bool]] | None, optional
             A dictionary designating which parameters are fixed. This parameter
-            should be used with caution. 
+            should be used with caution.
         """
         _dx = diff(x)
         if is_logbinned is None:
@@ -147,8 +155,10 @@ class PrepareModel:
                     dx = None
                 else:
                     dx = interp(
-                        submodel.wave, x[:-1], _dx, 
-                        left=_dx[0], 
+                        submodel.wave,
+                        x[:-1],
+                        _dx,
+                        left=_dx[0],
                         right=_dx[-1],
                     )
                 submodel.prepare_model(dx, fixed=fixed)
@@ -165,9 +175,9 @@ class PrepareModel:
     ) -> None:
         submodels = (model,) if model.n_submodels == 1 else model
         cls.prepare_submodels(
-            x, 
-            submodels, 
-            is_logbinned=is_logbinned, 
+            x,
+            submodels,
+            is_logbinned=is_logbinned,
             fixeds=fixeds,
         )
 
@@ -191,12 +201,12 @@ class PrepareModel:
         """
         Enter the context manager, preparing the model for evaluation:
         1. Determine the evaluation and comparison grids based on the masks.
-        2. Prepare the sequential model for evaluation. 
-        3. Return the prepared sequential model and, if applicable, the 
+        2. Prepare the sequential model for evaluation.
+        3. Return the prepared sequential model and, if applicable, the
         comparison mask for the evaluation grid.
         """
         if self.kernels is None or self.kernels.shape[0] == 1:
-            # Instrumental broadening has no effect 
+            # Instrumental broadening has no effect
             # -> evaluate and compare on the same grid
             # -> set `kernels` to None
             # -> set `where` to None
@@ -217,8 +227,8 @@ class PrepareModel:
 
         seq_model = SequentialModel(self.model, kernels=kernels)
         self.prepare_model(
-            x_eval, 
-            self.model, 
+            x_eval,
+            self.model,
             is_logbinned=self.is_logbinned,
             fixeds=seq_model.get_true_fixed(),
         )

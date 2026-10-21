@@ -2,43 +2,29 @@
 Lorem ipsum.
 """
 
-from math import hypot, log, pi
+import math
 from typing import Any, ClassVar, Literal, Self
 
+import numpy as np
 from astropy.constants import c
 from astropy.modeling import Parameter
-from numpy import dot
+from pydantic import validate_call
 from quasar_typing.bounds import AstropyBounds
-from quasar_typing.logging import Logger_
+from quasar_typing.logging import LoggerType
 from quasar_typing.numpy import FittableFloatVector
-from quasar_utils.decorators import validate_call
 from quasar_utils.setup import Info
-from scipy.stats import norm
 
 from quasar_models._core.modeling.gaussian import (
     GaussianEvaluateV,
     GaussianEvaluateX,
     GaussianFitDerivV,
     GaussianFitDerivX,
-    choose_evaluate_func,
-    choose_fit_deriv_func,
-    evaluate_v,
-    fit_deriv_v_all,
 )
 from quasar_models.modeling import BaseModel
 
-from ..utils.astropy import apply_bounds
-from ..utils.serialization import (
-    deserialize_parameter,
-    deserialize_quantity,
-    serialize_parameter,
-    serialize_quantity,
-)
-from .utils import instantiate_model
-
 N_SIGMAS: float = 3.0
-GAUSS_AMP: float = 1 / (2 * pi) ** 0.5
-SIGMA_TO_FWHM: float = 2 * (2 * log(2)) ** 0.5
+GAUSS_AMP: float = 1 / (2 * math.pi) ** 0.5
+SIGMA_TO_FWHM: float = 2 * (2 * math.log(2)) ** 0.5
 FWHM_TO_SIGMA: float = 1 / SIGMA_TO_FWHM
 
 C_KMS: float = c.to("km/s").value  # Exact speed of light in km/s
@@ -94,12 +80,14 @@ class GaussianModel(BaseModel):
         strength = self.strength.value
         fwhm_v = self.fwhm_v.value
         v_off = self.v_off.value
-        return f"{self.__class__.__name__}"\
+        return (
+            f"{self.__class__.__name__}"
             f"({name=}, {strength=:.1f}, {fwhm_v=:.1f}, {v_off=:.1f})"
+        )
 
     def __repr__(self) -> str:
         return self.__str__()
-    
+
     @classmethod
     def create(
         cls,
@@ -111,11 +99,9 @@ class GaussianModel(BaseModel):
         fwhm_v: float = 1000.0,
         v_off: float = 0.0,
         n_sigmas: float = 3.0,
-
         strength_bounds: AstropyBounds | None = None,
         fwhm_v_bounds: AstropyBounds | None = None,
         v_off_bounds: AstropyBounds | None = None,
-
         strength_fixed: bool | None = None,
         fwhm_v_fixed: bool | None = None,
         v_off_fixed: bool | None = None,
@@ -136,35 +122,28 @@ class GaussianModel(BaseModel):
         v_off_bounds : tuple[float, float] | None, optional
         n_sigmas : float, optional
         """
+        from quasar_models.utils.astropy import _apply_bounds
+        
         model = GaussianModel(
             strength,
             fwhm_v,
             v_off,
             meta={
-                "wave": wave, 
-                "sigma_res": sigma_res, 
+                "wave": wave,
+                "sigma_res": sigma_res,
                 "n_sigmas": n_sigmas,
                 "linetype": linetype,
             },
             **kwargs,
         )
         if strength_bounds is not None:
-            model.strength.value = apply_bounds.__wrapped__(
-                strength, 
-                strength_bounds,
-            )
+            model.strength.value = _apply_bounds(strength, strength_bounds)
             model.strength.bounds = strength_bounds
         if fwhm_v_bounds is not None:
-            model.fwhm_v.value = apply_bounds.__wrapped__(
-                fwhm_v, 
-                fwhm_v_bounds,
-            )
+            model.fwhm_v.value = _apply_bounds(fwhm_v, fwhm_v_bounds)
             model.fwhm_v.bounds = fwhm_v_bounds
         if v_off_bounds is not None:
-            model.v_off.value = apply_bounds.__wrapped__(
-                v_off,
-                v_off_bounds,
-            )
+            model.v_off.value = _apply_bounds(v_off, v_off_bounds)
             model.v_off.bounds = v_off_bounds
 
         if strength_fixed is not None:
@@ -239,8 +218,7 @@ class GaussianModel(BaseModel):
     @property
     def kwargs(self) -> dict[str, float]:
         return self.meta.get(
-            "kwargs", 
-            {"wave": self.wave, "sigma_res": self.sigma_res},
+            "kwargs", {"wave": self.wave, "sigma_res": self.sigma_res},
         )
 
     @kwargs.setter
@@ -256,8 +234,8 @@ class GaussianModel(BaseModel):
             self.kwargs = {"wave": self.wave, "sigma_res": self.sigma_res}
         else:
             self.kwargs = {"wave": self.wave, "dx": self.dx}
-        
-    def evaluate(self, x, strength, fwhm_v, v_off, y=None):            
+
+    def evaluate(self, x, strength, fwhm_v, v_off, y=None):
         return self.evaluate_func(
             x,
             *self._transform_args_if_ndarray(strength, fwhm_v, v_off),
@@ -274,16 +252,23 @@ class GaussianModel(BaseModel):
         )
 
     def fit_deriv(self, x, strength, fwhm_v, v_off, derivs=None):
-        return list(self.partial_deriv(x, strength, fwhm_v, v_off, derivs=derivs))
+        return list(
+            self.partial_deriv(x, strength, fwhm_v, v_off, derivs=derivs)
+        )
 
     ### Model preparation
 
     @property
     def evaluate_func(self) -> GaussianEvaluateV | GaussianEvaluateX:
-        return self.meta.get("evaluate_func", evaluate_v)
+        if not (stored := self.meta.get("evaluate_func")):
+            from quasar_models._core.modeling.gaussian import evaluate_v
+            return evaluate_v
+        return stored
 
     @evaluate_func.setter
-    def evaluate_func(self, value: GaussianEvaluateV | GaussianEvaluateX) -> None:
+    def evaluate_func(
+        self, value: GaussianEvaluateV | GaussianEvaluateX
+    ) -> None:
         self.meta["evaluate_func"] = value
 
     @evaluate_func.deleter
@@ -292,41 +277,65 @@ class GaussianModel(BaseModel):
 
     @property
     def fit_deriv_func(self) -> GaussianFitDerivV | GaussianFitDerivX:
-        return self.meta.get("fit_deriv_func", fit_deriv_v_all)
+        if not (stored := self.meta.get("fit_deriv_func")):
+            from quasar_models._core.modeling.gaussian import fit_deriv_v_all
+            return fit_deriv_v_all
+        return stored
 
     @fit_deriv_func.setter
-    def fit_deriv_func(self, value: GaussianFitDerivV | GaussianFitDerivX) -> None:
+    def fit_deriv_func(
+        self, value: GaussianFitDerivV | GaussianFitDerivX
+    ) -> None:
         self.meta["fit_deriv_func"] = value
 
     @fit_deriv_func.deleter
     def fit_deriv_func(self) -> None:
         self.meta.pop("fit_deriv_func", None)
 
+    @property
+    def prime_func(self) -> GaussianEvaluateV | GaussianEvaluateX:
+        if not (stored := self.meta.get("prime_func")):
+            from quasar_models._core.modeling.gaussian import prime_v
+            return prime_v
+        return stored
+
+    @prime_func.setter
+    def prime_func(self, value: GaussianEvaluateV | GaussianEvaluateX) -> None:
+        self.meta["prime_func"] = value
+
+    @prime_func.deleter
+    def prime_func(self) -> None:
+        self.meta.pop("prime_func", None)
+
     def _choose_evaluate_func(self) -> None:
+        from quasar_models._core.modeling.gaussian import choose_evaluate_func
         self.evaluate_func = choose_evaluate_func(self.dx is None)
 
     def _choose_fit_deriv_func(
-        self,
-        fixed: dict[str, bool] | None = None,
+        self, fixed: dict[str, bool] | None = None,
     ) -> None:
+        from quasar_models._core.modeling.gaussian import choose_fit_deriv_func
         self.fit_deriv_func = choose_fit_deriv_func(
-            self.dx is None, 
-            fixed or self.fixed,
+            self.dx is None, fixed or self.fixed,
         )
 
+    def _choose_prime_func(self) -> None:
+        from quasar_models._core.modeling.gaussian import choose_prime_func
+        self.prime_func = choose_prime_func(self.dx is None)
+
     def prepare_model(
-        self, 
-        dx: float | None,
-        fixed: dict[str, bool] | None = None,
+        self, dx: float | None, fixed: dict[str, bool] | None = None,
     ) -> None:
         if dx is None:
             del self.dx
         else:
             self.dx = dx
+        self._choose_prime_func()
         super().prepare_model(fixed=fixed)
 
     def unprepare_model(self) -> None:
         del self.dx
+        del self.prime_func
         super().unprepare_model()
 
     @classmethod
@@ -347,8 +356,10 @@ class GaussianModel(BaseModel):
         strength_fixed: bool | None = None,
         v_off_fixed: bool | None = None,
         fwhm_v_fixed: bool | None = None,
-        logger: Logger_ | None = None,
+        logger: LoggerType | None = None,
     ) -> Self:
+        from .instantiation_utils import instantiate_model
+
         strength, fwhm_v, v_off = instantiate_model(
             wave,
             x,
@@ -358,7 +369,6 @@ class GaussianModel(BaseModel):
             strength_bounds=strength_bounds,
             v_off_bounds=v_off_bounds,
             fwhm_v_bounds=fwhm_v_bounds,
-            linetype=linetype,
         )
         model = GaussianModel.create(
             wave,
@@ -405,7 +415,7 @@ class GaussianModel(BaseModel):
 
     @property
     def sigma(self) -> float:
-        return self.mu * hypot(self.sigma_v * INV_C_KMS, self.sigma_res)
+        return self.mu * math.hypot(self.sigma_v * INV_C_KMS, self.sigma_res)
 
     @property
     def fwhm(self) -> float:
@@ -413,7 +423,7 @@ class GaussianModel(BaseModel):
 
     @property
     def peak(self) -> float:
-        return self.strength.value / (self.sigma * (2 * pi) ** 0.5)
+        return GAUSS_AMP * self.strength.value / self.sigma
 
     @property
     def sorting_key(self) -> tuple[float, float, int]:
@@ -437,9 +447,10 @@ class GaussianModel(BaseModel):
         -----
         Lorem ipsum.
         """
+        from scipy.stats import norm
         x, _, dy, _ = obj.getMaskedCoords(without_absorption=True)
         p = norm.pdf(x, self.mu, self.sigma) * (x * self.sigma_res)
-        return self.peak / dot(p, dy)
+        return self.peak / np.dot(p, dy)
 
     def getFluxSNR(self, obj: object) -> float:
         """
@@ -457,9 +468,10 @@ class GaussianModel(BaseModel):
         -----
         Lorem ipsum.
         """
+        from scipy.stats import norm
         x, y, dy, _ = obj.getMaskedCoords(without_absorption=True)
         p = norm.pdf(x, self.mu, self.sigma) * (x * self.sigma_res)
-        return dot(p, y) / dot(p, dy)
+        return np.dot(p, y) / np.dot(p, dy)
 
     def getLineSNR(self, obj: object) -> float:
         """
@@ -477,9 +489,10 @@ class GaussianModel(BaseModel):
         -----
         Lorem ipsum.
         """
+        from scipy.stats import norm
         x, _, dy, _ = obj.getMaskedCoords(without_absorption=True)
         p = norm.pdf(x, self.mu, self.sigma) * (x * self.sigma_res)
-        return self.strength.value / dot(p, dy)
+        return self.strength.value / np.dot(p, dy)
 
     def getWeightedAbsorption(self, obj: object) -> float:
         """
@@ -497,9 +510,10 @@ class GaussianModel(BaseModel):
         -----
         Lorem ipsum.
         """
+        from scipy.stats import norm
         x, _, _, _, is_absorbed = obj.getMaskedCoords(without_absorption=False)
         p = norm.pdf(x, self.mu, self.sigma) * (x * self.sigma_res)
-        return dot(p, is_absorbed)
+        return np.dot(p, is_absorbed)
 
     @validate_call
     def makeCopy(
@@ -525,21 +539,23 @@ class GaussianModel(BaseModel):
         -----
         Lorem ipsum.
         """
+        from quasar_models.utils.astropy import _apply_bounds
+        
         new = self.copy()
         if not (new.strength.fixed or new.strength.tied):
-            new.strength.value = apply_bounds(
-                dot(z * dy, x * new.sigma_res), 
+            new.strength.value = _apply_bounds(
+                np.dot(z * dy, x * new.sigma_res), 
                 new.strength.bounds,
             )
 
         if not (new.fwhm_v.fixed or new.fwhm_v.tied):
-            new.fwhm_v.value = apply_bounds(
-                0.5 * (new.fwhm_v.value + new.fwhm_v.bounds[0]), 
+            new.fwhm_v.value = _apply_bounds(
+                0.5 * (new.fwhm_v.value + new.fwhm_v.bounds[0]),
                 new.fwhm_v.bounds,
             )
 
         if not (new.v_off.fixed or new.v_off.tied):
-            new.v_off.value = apply_bounds(
+            new.v_off.value = _apply_bounds(
                 0.5 * new.v_off.value, 
                 new.v_off.bounds,
             )
@@ -567,10 +583,12 @@ class GaussianModel(BaseModel):
 
     ### Serialization
 
-    def serialize(
-        self,
-        info: Info,
-    ) -> dict[str, dict[str, Any]]:
+    def serialize(self, info: Info,) -> dict[str, dict[str, Any]]:
+        from quasar_models.utils.serialization import (
+            serialize_parameter,
+            serialize_quantity,
+        )
+        
         wave_unit = str(info.units.wavelength_unit)
         strength_unit = str(info.units.strength_unit)
         data = {
@@ -578,14 +596,21 @@ class GaussianModel(BaseModel):
             "wave": serialize_quantity(self.wave, wave_unit),
             "linetype": self.linetype,
             "n_sigmas": self.n_sigmas,
-            "strength": serialize_parameter(self.strength, strength_unit),
-            "fwhm_v": serialize_parameter(self.fwhm_v, None),
-            "v_off": serialize_parameter(self.v_off, None),
+            "strength": serialize_parameter(
+                self.strength, strength_unit, scientific=True
+            ),
+            "fwhm_v": serialize_parameter(self.fwhm_v, "km/s"),
+            "v_off": serialize_parameter(self.v_off, "km/s"),
         }
         return self._serialize_helper(data)
 
     @classmethod
     def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
+        from quasar_models.utils.serialization import (
+            deserialize_parameter,
+            deserialize_quantity,
+        )
+        
         wave_unit = str(info.units.wavelength_unit)
         strength_unit = str(info.units.strength_unit)
 
@@ -593,11 +618,13 @@ class GaussianModel(BaseModel):
         linetype = data["linetype"]
         n_sigmas = data["n_sigmas"]
         strength = deserialize_parameter(data["strength"], strength_unit)
-        fwhm_v = deserialize_parameter(data["fwhm_v"], None)
-        v_off = deserialize_parameter(data["v_off"], None)
+        fwhm_v = deserialize_parameter(data["fwhm_v"], "km/s")
+        v_off = deserialize_parameter(data["v_off"], "km/s")
 
         out = GaussianModel.create(
-            wave, info.loading.sigma_res, linetype,
+            wave,
+            info.loading.sigma_res,
+            linetype,
             name=data["name"],
             strength=strength["value"],
             fwhm_v=fwhm_v["value"],

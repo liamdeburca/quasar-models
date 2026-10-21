@@ -13,10 +13,7 @@ class _TemplateBase:
     def _get_wrapped(cls, func_name: str | None) -> Callable:
         raise NotImplementedError
 
-    def __init__(
-        self,
-        func_name: str | None = None,
-    ) -> None:
+    def __init__(self, func_name: str | None = None,) -> None:
         self.func_name: str | None = func_name
         self.__wrapped__: Callable | None = self._get_wrapped(func_name)
 
@@ -53,11 +50,7 @@ class TemplateEvaluate(_TemplateBase):
         _y = zeros(template.x.size, dtype=float64)
         if self.__wrapped__ is not None:
             self.__wrapped__(
-                _y,
-                flux,
-                fwhm,
-                cytemplate,
-                n_scales,
+                _y, flux, fwhm, cytemplate, n_scales,
             )
             if interpolation_matrix is None:
                 _y = _interp(x, template.x, _y)
@@ -90,11 +83,7 @@ class TemplateFitDeriv(_TemplateBase):
         _derivs = zeros((3, template.x.size), dtype=float64)
         if self.__wrapped__ is not None:
             self.__wrapped__(
-                _derivs,
-                flux,
-                fwhm,
-                cytemplate,
-                n_scales,
+                _derivs, flux, fwhm, cytemplate, n_scales,
             )
             if interpolation_matrix is None:
                 _derivs = _interp2d(x, template.x, _derivs)

@@ -15,10 +15,7 @@ from numpy.typing import NDArray
 
 
 def linear_get_lower_index(
-    x: NDArray[float64],
-    lb: float,
-    *,
-    dx: float | None = None,
+    x: NDArray[float64], lb: float, *, dx: float | None = None,
 ) -> int:
     """
     Returns the integer, 'i', s.t. 'x[i] >= lb'.
@@ -29,10 +26,7 @@ def linear_get_lower_index(
 
 
 def linear_get_upper_index(
-    x: NDArray[float64],
-    ub: float,
-    *,
-    dx: float | None = None,
+    x: NDArray[float64], ub: float, *, dx: float | None = None,
 ) -> int:
     """
     Returns the integer, 'i', s.t. 'x[i] <= ub'.
@@ -43,11 +37,7 @@ def linear_get_upper_index(
 
 
 def linear_get_slice(
-    x: NDArray[float64],
-    lb: float,
-    ub: float,
-    *,
-    dx: float | None = None,
+    x: NDArray[float64], lb: float, ub: float, *, dx: float | None = None,
 ) -> slice:
     if not dx:
         dx = x[1] - x[0]
@@ -58,11 +48,7 @@ def linear_get_slice(
 
 
 def linear_get_mask(
-    x: NDArray[float64],
-    lb: float,
-    ub: float,
-    *,
-    dx: float | None = None,
+    x: NDArray[float64], lb: float, ub: float, *, dx: float | None = None,
 ) -> NDArray[bool_]:
     mask = zeros(x.size, dtype=bool_)
     mask[linear_get_slice(x, lb, ub, dx=dx)] = True
@@ -70,10 +56,7 @@ def linear_get_mask(
 
 
 def logarithmic_get_lower_index(
-    x: NDArray[float64],
-    lb: float,
-    *,
-    v_res: float | None = None,
+    x: NDArray[float64], lb: float, *, v_res: float | None = None,
 ) -> int:
     if not v_res:
         v_res = x[1] / x[0] - 1

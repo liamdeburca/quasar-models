@@ -5,14 +5,13 @@ from typing import Any, ClassVar, Self
 
 from pydantic.dataclasses import dataclass
 from quasar_typing.numpy import SortedFloatVector
-from quasar_typing.pathlib import AbsoluteDirPath, AbsoluteFITSPath
+from quasar_typing.pathlib import DirPath, FITSPath
 from quasar_utils.setup import Info
 
 from quasar_models._core.modeling.balmer.continuum import evaluate
 from quasar_models.modeling.template import BaseTemplate
 
-from ...utils.serialization import deserialize_quantity, serialize_quantity
-from .io import PATH_TO_CACHE, load, load_from_cache, save, save_to_cache
+from .io import PATH_TO_CACHE
 
 
 @dataclass(eq=False)
@@ -22,7 +21,7 @@ class BalmerContinuumTemplate(BaseTemplate):
     scale: float = field(kw_only=True)
     boltz: float = field(kw_only=True)
 
-    PATH_TO_CACHE: ClassVar[AbsoluteDirPath] = PATH_TO_CACHE
+    PATH_TO_CACHE: ClassVar[DirPath] = PATH_TO_CACHE
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -131,9 +130,10 @@ class BalmerContinuumTemplate(BaseTemplate):
     def save(
         self,
         *,
-        path: str | AbsoluteFITSPath,
+        path: str | FITSPath,
         info: Info,
-    ) -> AbsoluteFITSPath:
+    ) -> FITSPath:
+        from .io import save
         return save(
             template=self,
             path=path,
@@ -144,15 +144,17 @@ class BalmerContinuumTemplate(BaseTemplate):
     def load(
         cls,
         *,
-        path: str | AbsoluteFITSPath,
+        path: str | FITSPath,
         info: Info,
     ) -> Self:
+        from .io import load
         kwargs = load(path=path, info=info)
         return BalmerContinuumTemplate(**kwargs)
 
     # I/O from '.cache' directory
 
-    def save_to_cache(self, info: Info) -> AbsoluteFITSPath:
+    def save_to_cache(self, info: Info) -> FITSPath:
+        from .io import save_to_cache
         return save_to_cache(template=self, info=info)
 
     @classmethod
@@ -164,6 +166,7 @@ class BalmerContinuumTemplate(BaseTemplate):
         scale: float,
         info: Info,
     ) -> Self:
+        from .io import load_from_cache
         kwargs = load_from_cache(
             temp=temp,
             tau=tau,
@@ -175,10 +178,13 @@ class BalmerContinuumTemplate(BaseTemplate):
     ### Serialization
 
     def serialize(self, info: Info) -> dict[str, Any]:
+        from quasar_models.utils.serialization import serialize_quantity
         temp_unit = str(info.units.temp_unit)
-    
+
         data = super().serialize(info)
-        data["temp"] = serialize_quantity(self.temp, temp_unit)
+        data["temp"] = serialize_quantity(
+            self.temp, temp_unit, scientific=True
+        )
         data["tau"] = self.tau
         data["scale"] = self.scale
 
@@ -186,18 +192,19 @@ class BalmerContinuumTemplate(BaseTemplate):
 
     @classmethod
     def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
+        from quasar_models.utils.serialization import deserialize_quantity
         temp_unit = str(info.units.temp_unit)
         template = BalmerContinuumTemplate.load_from_cache(
-            temp=deserialize_quantity(data["temp"], temp_unit), 
-            tau=data["tau"], 
-            scale=data["scale"], 
+            temp=deserialize_quantity(data["temp"], temp_unit),
+            tau=data["tau"],
+            scale=data["scale"],
             info=info,
         )
         template = cls._deserialize_helper(template, data, info)
-            
+
         template.x_norm = info.balmer.edge
         template.fwhm_norm = info.balmer.fwhm_norm
-        
+
         template.normalisation = None
         template.__post_init__()
         return template

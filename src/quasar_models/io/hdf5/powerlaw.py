@@ -7,7 +7,7 @@ from .utils import hdf5_to_model, hdf5_to_models, model_to_hdf5, models_to_hdf5
 
 
 def powerlaw_to_hdf5(
-    model: PowerLawModel, 
+    model: PowerLawModel,
     f: File | Group,
     info: Info,
     group_name: str | None = None,
@@ -30,6 +30,7 @@ def powerlaw_to_hdf5(
         compression_opts=compression_opts,
     )
     return grp
+
 
 def powerlaws_to_hdf5(
     models: list[PowerLawModel],
@@ -56,35 +57,29 @@ def powerlaws_to_hdf5(
     )
     return grp
 
-def hdf5_to_powerlaw(
-    grp: Group,
-    info: Info,
-) -> PowerLawModel:
+
+def hdf5_to_powerlaw(grp: Group, info: Info,) -> PowerLawModel:
     model = PowerLawModel()
     unit_map: dict[str, str] = {
         "flux": str(info.units.flux_unit),
     }
     hdf5_to_model(
-        model,
-        grp,
-        unit_map=unit_map,
+        model, grp, unit_map=unit_map,
     )
     model.x0 = info.continuum.x0
     model.y0 = info.continuum.y0
     return model
 
-def hdf5_to_powerlaws(
-    grp: Group,
-    info: Info,
-) -> list[PowerLawModel]:
+
+def hdf5_to_powerlaws(grp: Group, info: Info,) -> list[PowerLawModel]:
     n_models = grp.attrs["n_models"]
-    
+
     unit_map = {"flux": str(info.units.flux_unit)}
-    
+
     models = [PowerLawModel() for _ in range(n_models)]
     hdf5_to_models(models, grp, unit_map=unit_map)
     for model in models:
         model.x0 = info.continuum.x0
         model.y0 = info.continuum.y0
-        
+
     return models

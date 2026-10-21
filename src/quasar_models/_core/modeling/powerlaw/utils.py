@@ -11,10 +11,7 @@ class _PowerLawBase:
     def _get_wrapped(cls, func_name: str | None) -> Callable | None:
         raise NotImplementedError
 
-    def __init__(
-        self,
-        func_name: str | None = None,
-    ) -> None:
+    def __init__(self, func_name: str | None = None,) -> None:
         self.func_name: str | None = func_name
         self.__wrapped__: Callable | None = self._get_wrapped(func_name)
 

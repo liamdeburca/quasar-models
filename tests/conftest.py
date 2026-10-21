@@ -1,6 +1,5 @@
 from math import floor, log
 from pathlib import Path
-from shutil import rmtree
 
 import pytest
 from astropy.units import Unit
@@ -46,29 +45,36 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Absolute tolerance for numerical derivatives",
     )
 
+
 @pytest.fixture(scope="session")
 def deriv_epsilon(request: pytest.FixtureRequest) -> float:
     return request.config.getoption("--deriv-epsilon")
+
 
 @pytest.fixture(scope="session")
 def deriv_rtol(request: pytest.FixtureRequest) -> float:
     return request.config.getoption("--deriv-rtol")
 
+
 @pytest.fixture(scope="session")
 def deriv_atol(request: pytest.FixtureRequest) -> float:
     return request.config.getoption("--deriv-atol")
+
 
 @pytest.fixture(scope="session")
 def deriv_its(request: pytest.FixtureRequest) -> int:
     return request.config.getoption("--deriv-its")
 
+
 @pytest.fixture(scope="session")
 def info() -> Info:
     return Info()
 
+
 @pytest.fixture(scope="session")
 def rng() -> Generator:
     return default_rng(seed=42)
+
 
 @pytest.fixture(scope="session")
 def wavelength_array(info: Info) -> FloatVector:
@@ -78,6 +84,7 @@ def wavelength_array(info: Info) -> FloatVector:
     n = floor(log(x1 / x0) / log(1 + dv))
     return x0 * (1 + dv) ** arange(n + 1)
 
+
 @pytest.fixture(scope="session")
 def wavelength_array_linear() -> FloatVector:
     dx = 0.25
@@ -86,23 +93,29 @@ def wavelength_array_linear() -> FloatVector:
     n = floor((x1 - x0) / dx)
     return x0 + dx * arange(n + 1)
 
+
 ###
 
 _this_file: Path = Path(__file__).resolve()
+
 
 @pytest.fixture(scope="session")
 def temp_dir():
     temp = _this_file.parent / "temp"
     temp.mkdir(exist_ok=True)
     yield temp
-    rmtree(temp)
+    # rmtree(temp)
+
 
 ### Gaussian
+
 
 @pytest.fixture(scope="session")
 def gaussian_model(info: Info) -> GaussianModel:
     return GaussianModel.create(
-        6548.0, info.loading.sigma_res, "n",
+        6548.0,
+        info.loading.sigma_res,
+        "n",
         strength=1.0,
         fwhm_v=1000.0,
         v_off=0.0,
@@ -111,6 +124,7 @@ def gaussian_model(info: Info) -> GaussianModel:
         v_off_bounds=(-5000.0, 5000.0),
         name="test_gaussian",
     )
+
 
 @pytest.fixture(scope="session")
 def v_profile_copy(gaussian_model: GaussianModel) -> VProfileCopy1G:
@@ -125,12 +139,14 @@ def v_profile_copy(gaussian_model: GaussianModel) -> VProfileCopy1G:
         adapt=True,
     )
 
+
 ### Power law
+
 
 @pytest.fixture(scope="session")
 def powerlaw_model(info: Info) -> PowerLawModel:
     return PowerLawModel.create(
-        info.continuum.x0, 
+        info.continuum.x0,
         info.continuum.y0,
         sum(info.continuum.flux_bounds) / 2.0,
         sum(info.continuum.alpha_bounds) / 2.0,
@@ -139,25 +155,25 @@ def powerlaw_model(info: Info) -> PowerLawModel:
         alpha_bounds=info.continuum.alpha_bounds,
     )
 
+
 ### Iron
+
 
 @pytest.fixture(scope="session")
 def iron_template(info: Info, wavelength_array: FloatVector) -> IronTemplate:
     return IronTemplate.load_from_cache(
-        name="vw2001",
-        info=info,
-    ).createLogspace(
-        sigma_res=info.loading.sigma_res,
-        xr=wavelength_array,
-    )
+        name="vw2001", info=info,
+    ).createLogspace(sigma_res=info.loading.sigma_res, xr=wavelength_array,)
+
 
 @pytest.fixture(scope="session")
 def iron_template_cropped(iron_template: IronTemplate) -> IronTemplate:
     temp = iron_template.copy()
     temp.name = temp.name + "_cropped"
     temp.fwhm = iron_template.fwhm[:1].copy()
-    temp.data = iron_template.data[:1,:].copy()
+    temp.data = iron_template.data[:1, :].copy()
     return temp
+
 
 @pytest.fixture(scope="session")
 def iron_model(iron_template: IronTemplate, info: Info) -> IronModel:
@@ -179,29 +195,34 @@ def iron_model(iron_template: IronTemplate, info: Info) -> IronModel:
     model.fwhm.bounds = (template.fwhm[0], 20_000.0)
     return model
 
+
 ### Host galaxy
 
-@pytest.fixture(scope="session")
-def host_template(info: Info, wavelength_array: FloatVector) -> HostGalaxyTemplate:
-    return HostGalaxyTemplate.load_from_cache(
-        name=info.host.sources[0],
-        age=info.host.ages[0],
-        info=info,
-    ).createLogspace(
-        sigma_res=info.loading.sigma_res,
-        xr=wavelength_array,
-    )
 
 @pytest.fixture(scope="session")
-def host_template_cropped(host_template: HostGalaxyTemplate) -> HostGalaxyTemplate:
+def host_template(
+    info: Info, wavelength_array: FloatVector
+) -> HostGalaxyTemplate:
+    return HostGalaxyTemplate.load_from_cache(
+        name=info.host.sources[0], age=info.host.ages[0], info=info,
+    ).createLogspace(sigma_res=info.loading.sigma_res, xr=wavelength_array,)
+
+
+@pytest.fixture(scope="session")
+def host_template_cropped(
+    host_template: HostGalaxyTemplate,
+) -> HostGalaxyTemplate:
     temp = host_template.copy()
     temp.name = temp.name + "_cropped"
     temp.fwhm = host_template.fwhm[:1].copy()
-    temp.data = host_template.data[:1,:].copy()
+    temp.data = host_template.data[:1, :].copy()
     return temp
 
+
 @pytest.fixture(scope="session")
-def host_model(host_template: HostGalaxyTemplate, info: Info) -> HostGalaxyModel:
+def host_model(
+    host_template: HostGalaxyTemplate, info: Info
+) -> HostGalaxyModel:
     model = HostGalaxyModel.create(
         1.0,
         1000.0,
@@ -216,48 +237,56 @@ def host_model(host_template: HostGalaxyTemplate, info: Info) -> HostGalaxyModel
     model.name = "test_host"
     return model
 
+
 ### Balmer
 
+
 @pytest.fixture(scope="session")
-def balmer_continuum_template(info: Info, wavelength_array: FloatVector) -> BalmerContinuumTemplate:
+def balmer_continuum_template(
+    info: Info, wavelength_array: FloatVector
+) -> BalmerContinuumTemplate:
     return BalmerContinuumTemplate.load_from_cache(
         temp=info.balmer.temp,
         tau=info.balmer.tau,
         scale=info.balmer.scale,
         info=info,
-    ).createLogspace(
-        sigma_res=info.loading.sigma_res,
-        xr=wavelength_array,
-    )
+    ).createLogspace(sigma_res=info.loading.sigma_res, xr=wavelength_array,)
+
 
 @pytest.fixture(scope="session")
-def balmer_continuum_template_cropped(balmer_continuum_template: BalmerContinuumTemplate) -> BalmerContinuumTemplate:
+def balmer_continuum_template_cropped(
+    balmer_continuum_template: BalmerContinuumTemplate,
+) -> BalmerContinuumTemplate:
     temp = balmer_continuum_template.copy()
     temp.name = temp.name + "_cropped"
     temp.fwhm = balmer_continuum_template.fwhm[:1].copy()
-    temp.data = balmer_continuum_template.data[:1,:].copy()
+    temp.data = balmer_continuum_template.data[:1, :].copy()
     return temp
 
+
 @pytest.fixture(scope="session")
-def balmer_series_template(info: Info, wavelength_array: FloatVector) -> BalmerSeriesTemplate:
+def balmer_series_template(
+    info: Info, wavelength_array: FloatVector
+) -> BalmerSeriesTemplate:
     return BalmerSeriesTemplate.load_from_cache(
         name="sh1995",
         temp=info.balmer.temp,
         dens=info.balmer.dens,
         n_u_range=(info.balmer.n_u_min, info.balmer.n_u_max),
         info=info,
-    ).createLogspace(
-        sigma_res=info.loading.sigma_res,
-        xr=wavelength_array,
-    )
+    ).createLogspace(sigma_res=info.loading.sigma_res, xr=wavelength_array,)
+
 
 @pytest.fixture(scope="session")
-def balmer_series_template_cropped(balmer_series_template: BalmerSeriesTemplate) -> BalmerSeriesTemplate:
+def balmer_series_template_cropped(
+    balmer_series_template: BalmerSeriesTemplate,
+) -> BalmerSeriesTemplate:
     temp = balmer_series_template.copy()
     temp.name = temp.name + "_cropped"
     temp.fwhm = balmer_series_template.fwhm[:1].copy()
-    temp.data = balmer_series_template.data[:1,:].copy()
+    temp.data = balmer_series_template.data[:1, :].copy()
     return temp
+
 
 @pytest.fixture(scope="session")
 def balmer_model(

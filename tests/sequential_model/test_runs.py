@@ -41,26 +41,22 @@ def test_from_powerlaw_model(wavelength_grid):
     - _n_fixed == 0
     """
     x = wavelength_grid
-    
+
     # Create PowerLawModel
     model = PowerLawModel.create(
-        x0=1450.0,
-        y0=1.0,
-        flux=1.0,
-        alpha=-1.0,
-        name="powerlaw",
+        x0=1450.0, y0=1.0, flux=1.0, alpha=-1.0, name="powerlaw",
     )
-    
+
     # Create SequentialModel from PowerLawModel
     seq_model = SequentialModel(model)
-    
+
     # Verify properties
     assert seq_model.n_submodels == 1
     assert seq_model._n == 2
     assert seq_model._n_free == 2
     assert seq_model._n_tied == 0
     assert seq_model._n_fixed == 0
-    
+
     # Test evaluate method
     params = model.parameters
     baseline = model.evaluate(x, *params)
@@ -80,7 +76,7 @@ def test_from_gaussian_model(wavelength_grid):
     - _n_fixed == 0
     """
     x = wavelength_grid
-    
+
     # Create GaussianModel
     model = GaussianModel.create(
         wave=1549.0,
@@ -90,10 +86,10 @@ def test_from_gaussian_model(wavelength_grid):
         v_off=0.0,
         name="gaussian",
     )
-    
+
     # Create SequentialModel from GaussianModel
     seq_model = SequentialModel(model)
-    
+
     # Verify properties
     assert seq_model.n_submodels == 1
     assert seq_model._n == 3
@@ -120,13 +116,13 @@ def test_from_iron_model(wavelength_grid):
     - _n_fixed == 3 (split, left, right parameters)
     """
     x = wavelength_grid
-    
+
     # Load and adapt template
     _template = IronTemplate.load(path="vw2001", info=INFO)
     template = _template.createLogspace(sigma_res=V_RES, xr=x, keep_x=True)
-    
+
     scale = INFO.iron["scale"]
-    
+
     # Create IronModel
     model = IronModel.create(
         flux=1.0,
@@ -136,24 +132,24 @@ def test_from_iron_model(wavelength_grid):
         name="iron",
         allow_interp_fitting=False,
     )
-    
+
     # Create SequentialModel from IronModel
     seq_model = SequentialModel(model)
-    
+
     # Verify properties
     assert seq_model.n_submodels == 1
     assert seq_model._n == 5
     assert seq_model._n_free == 2
     assert seq_model._n_tied == 0
     assert seq_model._n_fixed == 3
-    
+
     # Test evaluate method
     params = model.parameters
     baseline = model.evaluate(x, *params)
     result = seq_model.evaluate(x, params[seq_model._free_indices])
 
     assert np.array_equal(baseline, result)
-    
+
 
 def test_from_balmer_model(wavelength_grid):
     """Test SequentialModel creation from a single BalmerModel.
@@ -166,7 +162,7 @@ def test_from_balmer_model(wavelength_grid):
     - _n_fixed == 1 (ratio parameter)
     """
     x = wavelength_grid
-    
+
     # Load templates
     continuum_template = BalmerContinuumTemplate.load_from_cache(
         temp=INFO.balmer.temp,
@@ -181,7 +177,7 @@ def test_from_balmer_model(wavelength_grid):
         n_u_range=(INFO.balmer.n_u_min, INFO.balmer.n_u_max),
         info=INFO,
     )
-    
+
     # Create BalmerModel
     model = BalmerModel.create(
         flux=INFO.balmer.flux,
@@ -194,17 +190,17 @@ def test_from_balmer_model(wavelength_grid):
         name="sh1995",
         allow_interp_fitting=False,
     )
-    
+
     # Create SequentialModel from BalmerModel
     seq_model = SequentialModel(model)
-    
+
     # Verify properties
     assert seq_model.n_submodels == 1
     assert seq_model._n == 3
     assert seq_model._n_free == 3
     assert seq_model._n_tied == 0
     assert seq_model._n_fixed == 0
-    
+
     # Test evaluate method
     params = model.parameters
     baseline = model.evaluate(x, *params)
@@ -224,15 +220,13 @@ def test_from_host_galaxy_model(wavelength_grid):
     - _n_fixed == 1 (fwhm parameter)
     """
     x = wavelength_grid
-    
+
     # Load template
     _template = HostGalaxyTemplate.load_from_cache(
-        name=INFO.host.sources[0],
-        age=INFO.host.ages[0],
-        info=INFO,
+        name=INFO.host.sources[0], age=INFO.host.ages[0], info=INFO,
     )
     template = _template.createLogspace(sigma_res=V_RES, xr=x, keep_x=True)
-    
+
     # Create HostGalaxyModel
     model = HostGalaxyModel.create(
         flux=INFO.host.flux,
@@ -243,10 +237,10 @@ def test_from_host_galaxy_model(wavelength_grid):
         age=INFO.host.ages[0],
         allow_interp_fitting=False,
     )
-    
+
     # Create SequentialModel from HostGalaxyModel
     seq_model = SequentialModel(model)
-    
+
     # Verify properties
     assert seq_model.n_submodels == 1
     assert seq_model._n == 2

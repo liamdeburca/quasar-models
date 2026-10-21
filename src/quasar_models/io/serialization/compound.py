@@ -1,7 +1,7 @@
 from collections.abc import Iterable
-from typing import Any, Union
+from typing import Any
 
-from quasar_typing.astropy import CompoundModel_
+from quasar_typing.astropy.modeling import CompoundModelType
 from quasar_utils.setup import Info
 
 from quasar_models import (
@@ -18,12 +18,11 @@ from quasar_models.line import (
     VProfileCopy4G,
     VProfileCopy5G,
 )
-from quasar_models.modeling.base_model import BaseModel
+from quasar_models.modeling import BaseModel
 
 
 def serialize_compound_model(
-    model: Union[BaseModel, CompoundModel_[BaseModel]], 
-    info: Info,
+    model: BaseModel | CompoundModelType[BaseModel], info: Info,
 ) -> dict[str, Any]:
     """Serialize a single model or an additive compound model.
 
@@ -57,6 +56,7 @@ def deserialize_compound_model(data: dict[str, Any], info: Info) -> BaseModel:
 
     models: list[BaseModel] = []
     for key, val in items:
+        cls_name, model_name = key.split("::", 1)
         try:
             cls_: type[BaseModel] = {
                 "BalmerModel": BalmerModel,
@@ -69,10 +69,11 @@ def deserialize_compound_model(data: dict[str, Any], info: Info) -> BaseModel:
                 "VProfileCopy3G": VProfileCopy3G,
                 "VProfileCopy4G": VProfileCopy4G,
                 "VProfileCopy5G": VProfileCopy5G,
-            }[key]
+            }[cls_name]
         except KeyError as exc:
             raise KeyError(f"Unknown model class: {key}") from exc
-        
+
+        assert val["name"] == model_name
         models.append(cls_.deserialize(val, info))
 
     if len(models) == 1:

@@ -13,17 +13,16 @@ def info() -> Info:
     info.iron.flux_bounds = (1.0, 10.0)
     return info
 
-@pytest.fixture
-def template(info: Info) -> IronTemplate:
-    return IronTemplate\
-        .load(path="vw2001", info=info)\
-        .createLogspace(sigma_res=info.loading.sigma_res)
 
 @pytest.fixture
-def model(
-    info: Info,
-    template: IronTemplate,
-) -> IronModel: 
+def template(info: Info) -> IronTemplate:
+    return IronTemplate.load(path="vw2001", info=info).createLogspace(
+        sigma_res=info.loading.sigma_res
+    )
+
+
+@pytest.fixture
+def model(info: Info, template: IronTemplate,) -> IronModel:
     model = IronModel.create(
         info.iron.flux_bounds[0],
         info.iron.fwhm_bounds[0],
@@ -33,6 +32,7 @@ def model(
     model.flux.bounds = info.iron.flux_bounds
     model.fwhm.bounds = info.iron.fwhm_bounds
     return model
+
 
 def test_main(
     subtests: pytest.Subtests,
@@ -58,10 +58,10 @@ def test_main(
         with PrepareModel(x=template.x, model=model) as _model:
             y = _model(template.x)
 
-        chi2s = rasterise.__wrapped__(
-            y, 
-            dy, 
-            template.fwhm, 
+        chi2s = rasterise(
+            y,
+            dy,
+            template.fwhm,
             template.data / template.normalisation,
             flux_bounds=model.flux.bounds,
             fwhm_bounds=model.fwhm.bounds,

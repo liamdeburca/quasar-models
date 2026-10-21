@@ -1,17 +1,15 @@
-from libc.math cimport (
-    expm1 as math_expm1,
-    pow as math_pow,
-)
-from numpy import (
-    array as np_array,
-    float64 as np_float64,
-    copy as np_copy,
-)
-from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
+from libc.math cimport expm1 as math_expm1
+from libc.math cimport pow as math_pow
 
+from numpy import array as np_array
+from numpy import copy as np_copy
+from numpy import float64 as np_float64
+
+from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
 from quasar_models._core.modeling.template.evaluate cimport (
     _evaluate_exact as _template_evaluate_exact,
 )
+
 
 cdef inline void _attenuation(
     double[::1] y,

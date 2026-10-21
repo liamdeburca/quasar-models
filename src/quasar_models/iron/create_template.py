@@ -28,7 +28,9 @@ def plot_template(
 
     sel = slice(None, None, 5)
 
-    _, axes = plt.subplots(2, 1, figsize=(8, 4), dpi=300, sharex=True, sharey=True)
+    _, axes = plt.subplots(
+        2, 1, figsize=(8, 4), dpi=300, sharex=True, sharey=True
+    )
     axes[0].set_title(
         f"Iron template: {template.name} from {base_template.name}", loc="left"
     )
@@ -82,7 +84,9 @@ def main(args: Namespace) -> None:
 
     new_fwhm = base_template.fwhm[:1].copy()
     new_x = base_template.x[max_mask].copy()
-    new_data = np.where(mask, base_template.data[0], 0.0)[max_mask][None, :].copy()
+    new_data = np.where(mask, base_template.data[0], 0.0)[max_mask][
+        None, :
+    ].copy()
 
     new_template = IronTemplate(
         fwhm=new_fwhm,

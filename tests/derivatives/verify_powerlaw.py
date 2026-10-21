@@ -1,5 +1,5 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from tqdm import tqdm
 
 from quasar_models.continuum import PowerLawModel
@@ -10,12 +10,7 @@ x = x0 * (1 + SIGMA_RES) ** np.arange(10_000)
 
 np.random.seed(42)
 
-MODEL = PowerLawModel.create(
-    1450.0,
-    1.0,
-    10.0,
-    -1.0,
-)
+MODEL = PowerLawModel.create(1450.0, 1.0, 10.0, -1.0,)
 MODEL.flux.bounds = (1.0, 100.0)
 MODEL.alpha.bounds = (-2.0, 0.0)
 
@@ -28,11 +23,7 @@ def jac_numeric(p):
     flux, alpha = p
 
     dflux = min(
-        [
-            1e-5,
-            MODEL.flux.bounds[1] - flux,
-            flux - MODEL.flux.bounds[0],
-        ]
+        [1e-5, MODEL.flux.bounds[1] - flux, flux - MODEL.flux.bounds[0],]
     )
     df_dflux = MODEL.evaluate(x, flux + dflux, alpha) - MODEL.evaluate(
         x, flux - dflux, alpha
@@ -40,11 +31,7 @@ def jac_numeric(p):
     df_dflux /= 2 * dflux
 
     dalpha = min(
-        [
-            1e-5,
-            MODEL.alpha.bounds[1] - alpha,
-            alpha - MODEL.alpha.bounds[0],
-        ]
+        [1e-5, MODEL.alpha.bounds[1] - alpha, alpha - MODEL.alpha.bounds[0],]
     )
     df_dalpha = MODEL.evaluate(x, flux, alpha + dalpha) - MODEL.evaluate(
         x, flux, alpha - dalpha

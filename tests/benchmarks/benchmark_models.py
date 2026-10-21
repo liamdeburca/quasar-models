@@ -119,11 +119,7 @@ def benchmark_powerlaw(x: np.ndarray) -> BenchmarkResult:
     print("=" * 70)
 
     model = PowerLawModel.create(
-        x0=1450.0,
-        y0=1.0,
-        flux=1.0,
-        alpha=-1.0,
-        name="powerlaw",
+        x0=1450.0, y0=1.0, flux=1.0, alpha=-1.0, name="powerlaw",
     )
     with PrepareModel(x=x, model=model):
         print("evaluate_func: ", model.evaluate_func.__wrapped__)
@@ -342,10 +338,7 @@ def benchmark_balmer(
         print(f"  Evaluating on {x.size} wavelengths...")
         mean_eval, std_eval = benchmark_method(
             lambda: model.evaluate(
-                x,
-                model.flux.value,
-                model.fwhm.value,
-                model.ratio.value,
+                x, model.flux.value, model.fwhm.value, model.ratio.value,
             ),
         )
         result_eval = BenchmarkResult(
@@ -363,10 +356,7 @@ def benchmark_balmer(
         print(f"  Computing fit_deriv on {x.size} wavelengths...")
         mean_deriv, std_deriv = benchmark_method(
             lambda: model.fit_deriv(
-                x,
-                model.flux.value,
-                model.fwhm.value,
-                model.ratio.value,
+                x, model.flux.value, model.fwhm.value, model.ratio.value,
             ),
         )
         result_deriv = BenchmarkResult(
@@ -396,9 +386,7 @@ def benchmark_hostgalaxy(
 
     # Load template
     _template = HostGalaxyTemplate.load_from_cache(
-        name=INFO.host.sources[0],
-        age=INFO.host.ages[0],
-        info=INFO,
+        name=INFO.host.sources[0], age=INFO.host.ages[0], info=INFO,
     )
     template = _template.createLogspace(sigma_res=V_RES, xr=x, keep_x=True)
 

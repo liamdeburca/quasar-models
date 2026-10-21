@@ -1,11 +1,10 @@
-from libc.math cimport (
-    hypot as math_hypot,
-    exp as math_exp,
-    sqrt as math_sqrt,
-    log as math_log,
-    pi as math_pi,
-    pow as math_pow,
-)
+from libc.math cimport exp as math_exp
+from libc.math cimport hypot as math_hypot
+from libc.math cimport log as math_log
+from libc.math cimport pi as math_pi
+from libc.math cimport pow as math_pow
+from libc.math cimport sqrt as math_sqrt
+
 
 cdef double GAUSS_AMP = 1 / math_sqrt(2 * math_pi)
 cdef double SIGMA_TO_FWHM = 2 * math_sqrt(2 * math_log(2))

@@ -2,8 +2,7 @@ from abc import ABC, abstractmethod
 from typing import ClassVar
 
 from quasar_typing.numpy import FloatVector
-from quasar_typing.scipy import csr_matrix_
-from quasar_utils.interpolation import create_interp_matrix
+from quasar_typing.scipy import CSRMatrix
 
 from quasar_models._core.modeling.template.cytemplate import CyTemplate
 from quasar_models._core.modeling.utils import (
@@ -34,13 +33,12 @@ class TemplateModel(BaseModel, ABC):
     @property
     def interpolation_matrix(
         self,
-    ) -> tuple[csr_matrix_, FloatVector] | None:
+    ) -> tuple[CSRMatrix, FloatVector] | None:
         return self.meta.get("interpolation_matrix", None)
 
     @interpolation_matrix.setter
     def interpolation_matrix(
-        self, 
-        value: tuple[csr_matrix_, FloatVector] | None
+        self, value: tuple[CSRMatrix, FloatVector] | None
     ) -> None:
         self.meta["interpolation_matrix"] = value
 
@@ -49,7 +47,7 @@ class TemplateModel(BaseModel, ABC):
         self.meta.pop("interpolation_matrix", None)
 
     def _set_interpolation_matrices(
-        self, 
+        self,
         x_out: FloatVector | None = None,
     ) -> None:
         """
@@ -57,10 +55,11 @@ class TemplateModel(BaseModel, ABC):
         interpolation is assumed to be unnecessary, i.e. the template is already
         on the desired grid.
         """
+        from quasar_utils.interpolation import _create_interp_matrix
         if x_out is None:
             self.interpolation_matrix = None
         else:
-            self.interpolation_matrix = create_interp_matrix.__wrapped__(
+            self.interpolation_matrix = _create_interp_matrix(
                 getattr(self, self.TEMPLATE_KEYS[0]).x,
                 x_out,
                 left=0.0,
@@ -85,7 +84,7 @@ class TemplateModel(BaseModel, ABC):
             self.meta.pop(k, None)
 
     def _set_cytemplates(
-        self, 
+        self,
         fwhm: float | None = None,
         x_out: FloatVector | None = None,
     ) -> None:
@@ -95,9 +94,7 @@ class TemplateModel(BaseModel, ABC):
             if fwhm is not None:
                 # Create simple, 1d template
                 assert x_out is not None
-                template = template \
-                    .create1DTemplate(fwhm) \
-                    .interpolate(x_out)
+                template = template.create1DTemplate(fwhm).interpolate(x_out)
 
             self.meta[k] = CyTemplate.fromTemplate(
                 template,
@@ -105,8 +102,7 @@ class TemplateModel(BaseModel, ABC):
             )
 
     @abstractmethod
-    def _set_kwargs(self) -> None:
-        ...
+    def _set_kwargs(self) -> None: ...
 
     # Interp fitting
 
@@ -135,14 +131,14 @@ class TemplateModel(BaseModel, ABC):
         pass
 
     def prepare_model(
-        self, 
+        self,
         x_out: FloatVector,
         fixed: dict[str, bool] | None = None,
     ) -> None:
         self._choose_evaluate_func(fixed=fixed)
         self._choose_fit_deriv_func(fixed=fixed)
         self._set_kwargs()
-        
+
         if self.evaluate_func.rescaling:
             self._set_cytemplates(
                 fwhm=self.fwhm.value,

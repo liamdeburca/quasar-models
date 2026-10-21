@@ -3,12 +3,13 @@ from h5py import File, Group, string_dtype
 from numpy import dtype, float32
 from quasar_utils.setup import Info
 
-from ...line import GaussianModel
+from quasar_models.line import GaussianModel
+
 from .utils import hdf5_to_model, hdf5_to_models, model_to_hdf5, models_to_hdf5
 
 
 def gaussian_to_hdf5(
-    model: GaussianModel, 
+    model: GaussianModel,
     f: File | Group,
     info: Info,
     group_name: str | None = None,
@@ -40,15 +41,16 @@ def gaussian_to_hdf5(
     grp.attrs["wavelength_unit"] = str(info.units.wavelength_unit)
     return grp
 
+
 def gaussians_to_hdf5(
-    models: list[GaussianModel], 
+    models: list[GaussianModel],
     f: File | Group,
     info: Info,
     group_name: str = "gaussians",
     _dtype: str | dtype = float32,
     force: bool = False,
     compression: str | None = None,
-    compression_opts: int | None = None,   
+    compression_opts: int | None = None,
 ) -> Group:
     unit_map: dict[str, str] = {
         "strength": str(info.units.strength_unit),
@@ -85,12 +87,11 @@ def gaussians_to_hdf5(
     grp.attrs["wavelength_unit"] = str(info.units.wavelength_unit)
     return grp
 
+
 ###
 
-def hdf5_to_gaussian(
-    grp: Group,
-    info: Info,
-) -> GaussianModel:
+
+def hdf5_to_gaussian(grp: Group, info: Info,) -> GaussianModel:
     model = GaussianModel()
     unit_map: dict[str, str] = {
         "strength": str(info.units.strength_unit),
@@ -98,29 +99,27 @@ def hdf5_to_gaussian(
         "v_off": "km/s",
     }
     hdf5_to_model(
-        model,
-        grp,
-        unit_map=unit_map,
+        model, grp, unit_map=unit_map,
     )
     # Read metadata stored as explicit attributes
     model.wave = (
-        grp.attrs["wave"] * Unit(grp.attrs["wavelength_unit"])
-    ).to(info.units.wavelength_unit).value
+        (grp.attrs["wave"] * Unit(grp.attrs["wavelength_unit"]))
+        .to(info.units.wavelength_unit)
+        .value
+    )
     model.sigma_res = info.loading.sigma_res
     model.linetype = grp.attrs["linetype"]
     model.n_sigmas = 3.0
     return model
 
-def hdf5_to_gaussians(
-    grp: Group,
-    info: Info,
-) -> list[GaussianModel]:
+
+def hdf5_to_gaussians(grp: Group, info: Info,) -> list[GaussianModel]:
     unit_map: dict[str, str] = {
         "strength": str(info.units.strength_unit),
         "fwhm_v": "km/s",
         "v_off": "km/s",
     }
-    
+
     n_models = grp.attrs["n_models"]
     models = [GaussianModel() for _ in range(n_models)]
     waves = grp["waves"][()]
@@ -129,8 +128,10 @@ def hdf5_to_gaussians(
     hdf5_to_models(models, grp, unit_map=unit_map)
     for model, wave, linetype in zip(models, waves, linetypes):
         model.wave = (
-            wave * Unit(grp.attrs["wavelength_unit"])
-        ).to(info.units.wavelength_unit).value
+            (wave * Unit(grp.attrs["wavelength_unit"]))
+            .to(info.units.wavelength_unit)
+            .value
+        )
         model.sigma_res = info.loading.sigma_res
         model.linetype = linetype
         model.n_sigmas = 3.0

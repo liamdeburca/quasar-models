@@ -10,7 +10,9 @@ from ...modeling.utils import LinearTie
 from ..utils import serialize_parameter
 
 
-def _validate_same_classes(objs: list[object], _cls: type | None = None) -> None:
+def _validate_same_classes(
+    objs: list[object], _cls: type | None = None
+) -> None:
     if _cls is None:
         _cls = objs[0].__class__
 
@@ -18,14 +20,19 @@ def _validate_same_classes(objs: list[object], _cls: type | None = None) -> None
     if _cls not in cls_counts:
         raise ValueError(f"Expected at least one instance of {_cls.__name__}!")
     if len(cls_counts) > 1:
-        raise ValueError(f"Expected all objects to be instances of {_cls.__name__}!")
+        raise ValueError(
+            f"Expected all objects to be instances of {_cls.__name__}!"
+        )
+
 
 def _validate_same_parameter_names(parameters: list[Parameter]) -> None:
     names = [p.name for p in parameters]
     if len(set(names)) != 1:
         raise ValueError("All parameters must have the same name!")
 
+
 ###
+
 
 def parameter_to_hdf5(
     parameter: Parameter,
@@ -45,7 +52,9 @@ def parameter_to_hdf5(
 
     if group_name in f:
         if not force:
-            raise ValueError(f"Group '{group_name}' already exists in the file.")
+            raise ValueError(
+                f"Group '{group_name}' already exists in the file."
+            )
         del f[group_name]
 
     grp = f.create_group(group_name)
@@ -54,17 +63,17 @@ def parameter_to_hdf5(
         grp.attrs["unit"] = serialized["unit"]
 
     ds = grp.create_dataset(
-        "value", 
-        data=serialized["value"], 
-        dtype=_dtype, 
-        compression=compression, 
+        "value",
+        data=serialized["value"],
+        dtype=_dtype,
+        compression=compression,
         compression_opts=compression_opts,
     )
     grp.create_dataset(
         "fixed",
         data=serialized["fixed"],
-        dtype=bool_, 
-        compression=compression, 
+        dtype=bool_,
+        compression=compression,
         compression_opts=compression_opts,
     )
     grp.create_dataset(
@@ -89,6 +98,7 @@ def parameter_to_hdf5(
 
     return grp
 
+
 def parameters_to_hdf5(
     parameters: list[Parameter],
     f: File | Group,
@@ -109,7 +119,9 @@ def parameters_to_hdf5(
 
     if group_name in f:
         if not force:
-            raise ValueError(f"Group '{group_name}' already exists in the file.")
+            raise ValueError(
+                f"Group '{group_name}' already exists in the file."
+            )
         del f[group_name]
 
     grp = f.create_group(group_name)
@@ -126,14 +138,14 @@ def parameters_to_hdf5(
 
     for i, p in enumerate(parameters):
         serialized = serialize_parameter(p, unit=unit)
-        
+
         values[i] = serialized["value"]
         fixed[i] = bool(serialized["fixed"])
-        bounds[i,:] = serialized["bounds"]
+        bounds[i, :] = serialized["bounds"]
 
         if serialized["tied"] is not None:
             tied_indices.append(i)
-            tied_abs.append((serialized["tied"]["a"], serialized["tied"]["b"])) 
+            tied_abs.append((serialized["tied"]["a"], serialized["tied"]["b"]))
             tied_model_names.append(serialized["tied"]["model_name"])
             tied_parameter_names.append(serialized["tied"]["parameter_name"])
 
@@ -143,27 +155,27 @@ def parameters_to_hdf5(
     # write datasets
     dt = string_dtype(encoding="utf-8")
     grp.create_dataset(
-        "values", 
-        data=values, 
+        "values",
+        data=values,
         shape=(n,),
         dtype=_dtype,
-        compression=compression, 
+        compression=compression,
         compression_opts=compression_opts,
     )
     grp.create_dataset(
-        "fixed", 
+        "fixed",
         data=fixed,
         shape=(n,),
         dtype=bool_,
-        compression=compression, 
+        compression=compression,
         compression_opts=compression_opts,
     )
     grp.create_dataset(
-        "bounds", 
-        data=bounds, 
-        shape=(n, 2), 
+        "bounds",
+        data=bounds,
+        shape=(n, 2),
         dtype=_dtype,
-        compression=compression, 
+        compression=compression,
         compression_opts=compression_opts,
     )
     if tied_indices:
@@ -203,7 +215,9 @@ def parameters_to_hdf5(
 
     return grp
 
+
 ###
+
 
 def model_to_hdf5(
     model: Model,
@@ -228,9 +242,10 @@ def model_to_hdf5(
 
     if group_name in f:
         if not force:
-            raise ValueError(f"Group '{group_name}' already exists in the file.")
+            raise ValueError(
+                f"Group '{group_name}' already exists in the file."
+            )
         del f[group_name]
-
 
     grp = f.create_group(group_name)
 
@@ -250,6 +265,7 @@ def model_to_hdf5(
         )
 
     return grp
+
 
 def models_to_hdf5(
     models: list[Model],
@@ -273,16 +289,18 @@ def models_to_hdf5(
 
     if group_name in f:
         if not force:
-            raise ValueError(f"Group '{group_name}' already exists in the file.")
+            raise ValueError(
+                f"Group '{group_name}' already exists in the file."
+            )
         del f[group_name]
 
     grp = f.create_group(group_name)
     grp.attrs["n_models"] = len(models)
 
     grp.create_dataset(
-        "names", 
+        "names",
         data=[m.name for m in models],
-        dtype=string_dtype(encoding='utf-8'),
+        dtype=string_dtype(encoding="utf-8"),
     )
     parameters = grp.create_group("parameters")
     for param_name in models[0].param_names:
@@ -299,30 +317,36 @@ def models_to_hdf5(
 
     return grp
 
+
 ###
 
+
 def hdf5_to_parameter(
-    parameter: Parameter,
-    grp: Group,
-    unit: str = "",
+    parameter: Parameter, grp: Group, unit: str = "",
 ) -> None:
 
     if unit and ("unit" in grp.attrs):
+
         def converter(val: float | None) -> float | None:
             if val is None:
                 return None
             return (val * Unit(grp.attrs["unit"])).to(unit).value
+
     elif (not unit) and ("unit" not in grp.attrs):
+
         def converter(val: float | None) -> float | None:
             if val is None:
                 return None
             return float(val)
+
     else:
-        raise ValueError(f"Unit mismatch: expected '{unit}', attrs '{grp.attrs}'")
-    
+        raise ValueError(
+            f"Unit mismatch: expected '{unit}', attrs '{grp.attrs}'"
+        )
+
     parameter.value = converter(grp["value"][()])
     parameter.fixed = bool(grp["fixed"][()])
-    
+
     if "bounds" in grp:
         parameter.bounds = tuple(
             b if isfinite(b) else None
@@ -341,10 +365,9 @@ def hdf5_to_parameter(
     else:
         parameter.tied = None
 
+
 def hdf5_to_parameters(
-    parameters: list[Parameter],
-    grp: Group,
-    unit: str = "",
+    parameters: list[Parameter], grp: Group, unit: str = "",
 ) -> None:
     """Restore parameters from a compact HDF5 group created by
     ``parameters_to_hdf5``. Parameters are matched by name.
@@ -352,17 +375,23 @@ def hdf5_to_parameters(
     _validate_same_parameter_names(parameters)
 
     if unit and ("unit" in grp.attrs):
+
         def converter(val: float | None) -> float | None:
             if val is None:
                 return None
             return (val * Unit(grp.attrs["unit"])).to(unit).value
+
     elif (not unit) and ("unit" not in grp.attrs):
+
         def converter(val: float | None) -> float | None:
             if val is None:
                 return None
             return float(val)
+
     else:
-        raise ValueError(f"Unit mismatch: expected '{unit}', attrs '{grp.attrs}'")
+        raise ValueError(
+            f"Unit mismatch: expected '{unit}', attrs '{grp.attrs}'"
+        )
 
     values = grp["values"][()]
     fixed = grp["fixed"][()]
@@ -380,8 +409,7 @@ def hdf5_to_parameters(
         parameter.value = converter(values[i])
         parameter.fixed = bool(fixed[i])
         parameter.bounds = tuple(
-            b if isfinite(b) else None
-            for b in map(converter, bounds[i])
+            b if isfinite(b) else None for b in map(converter, bounds[i])
         )
 
         if i in tied_indices:
@@ -397,9 +425,7 @@ def hdf5_to_parameters(
 
 
 def hdf5_to_model(
-    model: Model,
-    grp: Group,
-    unit_map: dict[str, str] | None = None,
+    model: Model, grp: Group, unit_map: dict[str, str] | None = None,
 ) -> None:
 
     if unit_map is None:
@@ -422,15 +448,13 @@ def hdf5_to_model(
 
 
 def hdf5_to_models(
-    models: list[Model],
-    grp: Group,
-    unit_map: dict[str, str] | None = None,
+    models: list[Model], grp: Group, unit_map: dict[str, str] | None = None,
 ) -> None:
     """Restore an iterable of Models from a compact HDF5 group created by
     ``models_to_hdf5``. Models are matched by name and parameters by order.
     """
     _validate_same_classes(models)
-    
+
     if unit_map is None:
         unit_map = {}
 

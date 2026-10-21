@@ -66,11 +66,12 @@ class QSFIT:
     @classmethod
     def init_basic(cls) -> None:
         for temp, tau, scale in product(
-            INFO.units.getUnitlessTemperature(cls.TEMPS), 
-            cls.TAUS, 
+            INFO.units.getUnitlessTemperature(cls.TEMPS),
+            cls.TAUS,
             cls.SCALES,
         ):
             cls.create_template(temp, tau, scale)
+
 
 def main():
     QSFIT.main()

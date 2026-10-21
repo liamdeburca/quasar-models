@@ -1,6 +1,7 @@
 import numpy as np
-from quasar_models.iron import IronModel, IronTemplate
 from quasar_utils.setup import Info
+
+from quasar_models.iron import IronTemplate
 
 info = Info()
 sigma_res: float = info.loading["sigma_res"]
@@ -86,8 +87,7 @@ def test_evaluate_with_interpolation() -> None:
     )
     assert _x.size == y.size
     assert np.isclose(
-        y,
-        np.interp(_x, template.x, template.data[0], left=0, right=0),
+        y, np.interp(_x, template.x, template.data[0], left=0, right=0),
     ).all()
 
 
@@ -97,21 +97,11 @@ def test_evaluate_interp() -> None:
     _template = IronTemplate.load("vw_2001", info)
     template = _template.createLogspace(xr=x, inplace=False, keep_x=True)
 
-    y = evaluate_interp(
-        x,
-        1.0,
-        template.fwhm[0],
-        template=template,
-    )
+    y = evaluate_interp(x, 1.0, template.fwhm[0], template=template,)
     assert x.size == y.size
     assert np.isclose(template.data[0], y).all()
 
-    y = evaluate_interp(
-        x,
-        1.0,
-        template.fwhm[:2].mean(),
-        template=template,
-    )
+    y = evaluate_interp(x, 1.0, template.fwhm[:2].mean(), template=template,)
     assert x.size == y.size
     assert np.isfinite(y).all()
 
@@ -153,7 +143,9 @@ def test_fit_deriv() -> None:
         sigma_res=sigma_res,
         scale=scale,
         template=template,
-        fixed=dict(flux=False, fwhm=False, split=False, left=False, right=False),
+        fixed=dict(
+            flux=False, fwhm=False, split=False, left=False, right=False
+        ),
     )
     assert all(_dy.size == x.size for _dy in dy)
     assert not all((_dy == 0).all() for _dy in dy)

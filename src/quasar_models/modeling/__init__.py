@@ -1,43 +1,27 @@
-__all__ = [
-    "BaseModel",
-    "Fitter",
-    "InterpolatedSequentialModel",
-    "LinearTie",
-    "MCMCFitter",
-    "PrepareModel",
-    "PreparedSequentialModel",
-    "SequentialModel",
-    "prepare_model",
-]
+import sys
+from typing import TYPE_CHECKING
 
-from collections.abc import Generator
-from contextlib import contextmanager
+from lazy_imports import LazyImporter
 
-from .base_model import BaseModel
-from .fitting import Fitter, MCMCFitter
-from .interpolated_sequential_model import InterpolatedSequentialModel
-from .prepare_model import M, PrepareModel, _CoordsProtocol
-from .prepared_sequential_model import PreparedSequentialModel
-from .sequential_model import SequentialModel
-from .utils import LinearTie
+_import_structure: dict[str, list[str]] = {
+    "base_model": ["BaseModel"],
+    "fitting": ["Fitter", "MCMCFitter"],
+    "prepare_model": ["PrepareModel"],
+    "sequential_model": ["SequentialModel"],
+    "template": ["BaseTemplate", "TemplateModel"],
+    "utils": ["LinearTie", "IdenticalTie"],
+}
 
-
-@contextmanager
-def prepare_model(
-    model: M,
-    coords: _CoordsProtocol,
-) -> Generator[PreparedSequentialModel, None, None]:
-    """
-    Model preparation pipeline intended for fitting contexts.
-    """
-    preparer = PrepareModel.fromCoords(coords, model)
-    data = preparer.createDataDict(coords)
-    try:
-        seq_model, where = preparer.__enter__()
-        yield PreparedSequentialModel(
-            seq_model=seq_model,
-            data=data,
-            where=where,
-        )
-    finally:
-        preparer.__exit__(None, None, None)
+if TYPE_CHECKING:
+    from .base_model import BaseModel  # noqa: F401
+    from .fitting import Fitter, MCMCFitter  # noqa: F401
+    from .prepare_model import PrepareModel  # noqa: F401
+    from .sequential_model import SequentialModel  # noqa: F401
+    from .template import BaseTemplate, TemplateModel  # noqa: F401
+    from .utils import IdenticalTie, LinearTie  # noqa: F401
+else:
+    sys.modules[__name__] = LazyImporter(
+        __name__,
+        __file__,
+        _import_structure,
+    )

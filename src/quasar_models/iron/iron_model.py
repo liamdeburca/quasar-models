@@ -5,34 +5,19 @@ AstroPy compatible model: IronModel.
 from logging import getLogger
 from typing import Any, ClassVar, Literal, Self
 
+import numpy as np
 from astropy.modeling import Parameter
-from numpy import (
-    argmin,
-    array_equal,
-    float64,
-    inf,
-    invert,
-    isfinite,
-    zeros_like,
-)
+from pydantic import validate_call
 from quasar_typing.bounds import AstropyBounds
 from quasar_typing.numpy import FloatVector
-from quasar_utils.decorators import validate_call
-from quasar_utils.raster import rasterise
 from quasar_utils.setup import Info
 
 from quasar_models._core.modeling.iron import (
     IronEvaluate,
     IronFitDeriv,
-    choose_evaluate_func,
-    choose_fit_deriv_func,
-    evaluate_exact,
-    fit_deriv_exact_all,
 )
 from quasar_models.modeling.template import TemplateModel
 
-from ..utils.astropy import apply_bounds
-from ..utils.serialization import deserialize_parameter, serialize_parameter
 from .iron_template import IronTemplate
 
 logger = getLogger(__name__)
@@ -86,20 +71,20 @@ class IronModel(TemplateModel):
         right: float = 1.0,
         allow_interp_fitting: bool = False,
         n_scales: float | None = None,
-        name: str | Literal["vw2001", "v2003", "bw"] | None = None,
-
+        name: str | None = None,
         flux_bounds: AstropyBounds | None = None,
         fwhm_bounds: AstropyBounds | None = None,
         split_bounds: AstropyBounds | None = None,
         left_bounds: AstropyBounds | None = None,
         right_bounds: AstropyBounds | None = None,
-
         flux_fixed: bool | None = None,
         fwhm_fixed: bool | None = None,
         split_fixed: bool | None = None,
         left_fixed: bool | None = None,
         right_fixed: bool | None = None,
     ) -> Self:
+        from quasar_models.utils.astropy import _apply_bounds
+
         if template is None:
             if info is None:
                 msg = "'info' cannot be None if 'template' is not provided."
@@ -128,26 +113,26 @@ class IronModel(TemplateModel):
             },
         )
         if flux_bounds is not None:
-            model.flux.value = apply_bounds.__wrapped__(flux, flux_bounds)
+            model.flux.value = _apply_bounds(flux, flux_bounds)
             model.flux.bounds = flux_bounds
 
         if fwhm_bounds is None and template.fwhm.shape[0] > 1:
             fwhm_bounds = (template.fwhm[0], template.fwhm[-1])
         if fwhm_bounds is not None:
-            model.fwhm.value = apply_bounds.__wrapped__(fwhm, fwhm_bounds)
+            model.fwhm.value = _apply_bounds(fwhm, fwhm_bounds)
             model.fwhm.bounds = fwhm_bounds
 
         if split_bounds is None:
             split_bounds = (template.x[0], template.x[-1])
         if split_bounds is not None:
-            model.split.value = apply_bounds.__wrapped__(split, split_bounds)
+            model.split.value = _apply_bounds(split, split_bounds)
             model.split.bounds = split_bounds
 
         if left_bounds is not None:
-            model.left.value = apply_bounds.__wrapped__(left, left_bounds)
+            model.left.value = _apply_bounds(left, left_bounds)
             model.left.bounds = left_bounds
         if right_bounds is not None:
-            model.right.value = apply_bounds.__wrapped__(right, right_bounds)
+            model.right.value = _apply_bounds(right, right_bounds)
             model.right.bounds = right_bounds
 
         if flux_fixed is not None:
@@ -204,7 +189,11 @@ class IronModel(TemplateModel):
         )
 
     def fit_deriv(self, x, flux, fwhm, split, left, right, derivs=None):
-        return list(self.partial_deriv(x, flux, fwhm, split, left, right, derivs=derivs))
+        return list(
+            self.partial_deriv(
+                x, flux, fwhm, split, left, right, derivs=derivs
+            )
+        )
 
     @property
     def kwargs(self) -> dict[str, Any]:
@@ -215,7 +204,7 @@ class IronModel(TemplateModel):
                 "scale": self.scale,
                 "n_scales": self.n_scales,
                 "interpolation_matrix": self.interpolation_matrix,
-            }
+            },
         )
 
     @kwargs.setter
@@ -238,6 +227,8 @@ class IronModel(TemplateModel):
 
     @property
     def evaluate_func(self) -> IronEvaluate:
+        from quasar_models._core.modeling.iron import evaluate_exact
+
         return self.meta.get("evaluate_func", evaluate_exact)
 
     @evaluate_func.setter
@@ -250,6 +241,8 @@ class IronModel(TemplateModel):
 
     @property
     def fit_deriv_func(self) -> IronFitDeriv:
+        from quasar_models._core.modeling.iron import fit_deriv_exact_all
+
         return self.meta.get("fit_deriv_func", fit_deriv_exact_all)
 
     @fit_deriv_func.setter
@@ -264,6 +257,8 @@ class IronModel(TemplateModel):
         self,
         fixed: dict[str, bool] | None = None,
     ) -> None:
+        from quasar_models._core.modeling.iron import choose_evaluate_func
+
         self.evaluate_func = choose_evaluate_func(
             self.left.value,
             self.right.value,
@@ -275,6 +270,8 @@ class IronModel(TemplateModel):
         self,
         fixed: dict[str, bool] | None = None,
     ) -> None:
+        from quasar_models._core.modeling.iron import choose_fit_deriv_func
+
         self.fit_deriv_func = choose_fit_deriv_func(
             self.left.value,
             self.right.value,
@@ -306,30 +303,36 @@ class IronModel(TemplateModel):
         corresponding goodness-of-fit (chi-square), identifying the best
         flux-FWHM pair.
         """
+        from quasar_utils.raster import rasterise
+
+        from quasar_models.utils.astropy import _apply_bounds
+
         if not inplace:
             cp = self.copy()
-            cp.rasterFit.__wrapped__(cp, x, y, dy, bias=bias, inplace=True)
+            cp.rasterFit(x, y, dy, bias=bias, inplace=True)
             return cp
 
-        template = self.template \
-            if array_equal(x, self.template.x) \
+        template = (
+            self.template
+            if np.array_equal(x, self.template.x)
             else self.template.interpolate(x)
+        )
 
         data = template.data / template.normalisation
 
         if self.left.fixed and self.right.fixed:
             # Perform a single raster fit
             if self.left.value != 1.0 or self.right.value != 1.0:
-                data = data[:1,:]
+                data = data[:1, :]
                 data *= template._get_split_weight(
                     x,
                     self.split.value,
                     self.left.value,
                     self.right.value,
                     self.scale,
-                )[None,:]
+                )[None, :]
 
-            chi2s, fluxs = rasterise.__wrapped__(
+            chi2s, fluxs = rasterise(
                 y,
                 dy,
                 template.fwhm,
@@ -338,30 +341,33 @@ class IronModel(TemplateModel):
                 fwhm_bounds=self.fwhm.bounds,
             )
 
-            if not isfinite(chi2s).any():
+            if not np.isfinite(chi2s).any():
                 # Failed rasterisation, possibly due to selected data not
                 # covering template.
                 return self
 
-            idx: int = argmin(chi2s)
+            idx: int = np.argmin(chi2s)
             self.flux.value = fluxs[idx]
             self.fwhm.value = template.fwhm[idx]
         else:
             # Perform separate raster fits for left and right halves
             is_left = self.template.x < self.split.value
-            is_right = invert(is_left)
+            is_right = np.invert(is_left)
 
             mask_left = x < self.split.value
-            mask_right = invert(mask_left)
+            mask_right = np.invert(mask_left)
 
-            chi2s = zeros_like(self.template.fwhm, dtype=float64)
+            chi2s = np.zeros_like(self.template.fwhm, dtype=np.float64)
             if cond_l := (is_left.any() and (mask_left.sum() >= 2)):
                 _y = y[mask_left]
                 _dy = dy[mask_left]
-                _data = data[:,mask_left]
+                _data = data[:, mask_left]
 
-                chi2s_left, fluxs_left = rasterise.__wrapped__(
-                    _y, _dy, self.template.fwhm, _data,
+                chi2s_left, fluxs_left = rasterise(
+                    _y,
+                    _dy,
+                    self.template.fwhm,
+                    _data,
                     flux_bounds=self.flux.bounds,
                     fwhm_bounds=self.fwhm.bounds,
                 )
@@ -369,19 +375,24 @@ class IronModel(TemplateModel):
             if cond_r := (is_right.any() and (mask_right.sum() >= 2)):
                 _y = y[mask_right]
                 _dy = dy[mask_right]
-                _data = data[:,mask_right]
-                chi2s_right, fluxs_right = rasterise.__wrapped__(
-                    _y, _dy, self.template.fwhm, _data,
+                _data = data[:, mask_right]
+                chi2s_right, fluxs_right = rasterise(
+                    _y,
+                    _dy,
+                    self.template.fwhm,
+                    _data,
                     flux_bounds=self.flux.bounds,
                     fwhm_bounds=self.fwhm.bounds,
                 )
                 chi2s += chi2s_right
 
-            chi2s[chi2s == 0] = inf
-            idx: int = argmin(chi2s)
+            chi2s[chi2s == 0] = np.inf
+            idx: int = np.argmin(chi2s)
 
             self.flux.value = fluxs[idx]
-            self.fwhm.value = apply_bounds(template.fwhm[idx], self.fwhm.bounds)
+            self.fwhm.value = _apply_bounds(
+                template.fwhm[idx], self.fwhm.bounds
+            )
 
             if bias == "left":
                 self.left.value = 1.0
@@ -391,7 +402,7 @@ class IronModel(TemplateModel):
                 flux = (fluxs_left if cond_l else fluxs_right)[idx]
                 right = fluxs_right[idx] / flux if cond_r else 1.0
 
-                self.right.value = apply_bounds(right, self.right.bounds)
+                self.right.value = _apply_bounds(right, self.right.bounds)
                 self.right.fixed = False
 
             else:
@@ -402,7 +413,7 @@ class IronModel(TemplateModel):
                 flux = (fluxs_right if cond_r else fluxs_left)[idx]
                 left = fluxs_left[idx] / flux if cond_l else 1.0
 
-                self.left.value = apply_bounds(left, self.left.bounds)
+                self.left.value = _apply_bounds(left, self.left.bounds)
                 self.left.fixed = False
 
         return self
@@ -410,12 +421,14 @@ class IronModel(TemplateModel):
     ### Serialization
 
     def serialize(self, info: Info) -> dict[str, dict[str, Any]]:
+        from quasar_models.utils.serialization import serialize_parameter
+
         kms_unit = "km/s"
         flux_unit = str(info.units.flux_unit)
         wave_unit = str(info.units.wavelength_unit)
         data = {
             "name": self.name,
-            "flux": serialize_parameter(self.flux, flux_unit),
+            "flux": serialize_parameter(self.flux, flux_unit, scientific=True),
             "fwhm": serialize_parameter(self.fwhm, kms_unit),
             "split": serialize_parameter(self.split, wave_unit),
             "left": serialize_parameter(self.left, None),
@@ -426,6 +439,8 @@ class IronModel(TemplateModel):
 
     @classmethod
     def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
+        from quasar_models.utils.serialization import deserialize_parameter
+
         kms_unit = "km/s"
         flux_unit = str(info.units.flux_unit)
         wave_unit = str(info.units.wavelength_unit)
@@ -438,7 +453,8 @@ class IronModel(TemplateModel):
         template = IronTemplate.deserialize(data["template"], info)
 
         model = IronModel.create(
-            flux["value"], fwhm["value"],
+            flux["value"],
+            fwhm["value"],
             scale=info.iron.scale,
             template=template,
             info=info,
@@ -467,3 +483,6 @@ class IronModel(TemplateModel):
         model.name = data["name"]
 
         return model
+
+
+type FeModel = IronModel

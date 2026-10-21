@@ -1,6 +1,7 @@
 """
 Fitter class designed for 'SequentialModel' instances.
 """
+
 __all__ = ["Fitter"]
 
 from collections.abc import Callable
@@ -12,9 +13,9 @@ from warnings import warn
 
 from numpy import float64, ones
 from pydantic.dataclasses import dataclass
-from quasar_typing.astropy import CompoundModel_
+from quasar_typing.astropy.modeling import CompoundModelType
 from quasar_typing.numpy import BoolVector, FloatVector
-from quasar_typing.scipy import OptimizeResult_
+from quasar_typing.scipy import OptimizeResultType
 from scipy.optimize import least_squares
 
 from ..base_model import BaseModel
@@ -25,12 +26,12 @@ logger = getLogger(__name__)
 
 @dataclass
 class Fitter:
-    fit_info: OptimizeResult_ | None = field(default=None, init=False)
+    fit_info: OptimizeResultType | None = field(default=None, init=False)
     sol: FloatVector | None = field(default=None, init=False)
 
     def __call__(
         self,
-        model: Union[BaseModel, CompoundModel_[BaseModel], SequentialModel],
+        model: Union[BaseModel, CompoundModelType[BaseModel], SequentialModel],
         x: FloatVector,
         y: FloatVector,
         *,
@@ -48,32 +49,32 @@ class Fitter:
         f_scale: float = 1.0,
         max_nfev: int | None = None,
         calc_jac: bool = True,
-    ) -> Union[BaseModel, CompoundModel_[BaseModel], None]:
+    ) -> Union[BaseModel, CompoundModelType[BaseModel], None]:
         """
         Wrapper for `scipy.optimize.least_squares`.
 
         Parameters
         ----------
-        model : BaseModel | CompoundModel_[BaseModel] | SequentialModel
-            The model to fit to the data. If this model is not an instance of 
+        model : BaseModel | CompoundModelType[BaseModel] | SequentialModel
+            The model to fit to the data. If this model is not an instance of
             `SequentialModel`, an instance will be created.
         x : NDArray[float64]
             The independent variable data.
         y : NDArray[float64]
             The data to fit the model to.
         dy : NDArray[float64] | None, optional
-            The uncertainties in the data. Only used if the `weights` argument 
+            The uncertainties in the data. Only used if the `weights` argument
             is not provided. If both `dy` and `weights` are None, no weights are
             applied.
         weights : NDArray[float64] | None, optional
-            The weights to apply to the data. If both `dy` and `weights` are 
+            The weights to apply to the data. If both `dy` and `weights` are
             None, no weights are applied.
         get_model : bool, optional
             If True and `inplace` is not None, the fitted Astropy model is returned.
         inplace : bool | None, optional
-            If True, the fitted Astropy model is returned as a copy. If False, 
-            the fitted Astropy model is returned in place. A boolean value must 
-            be provided if `get_model` is True. If a boolean value is provided, 
+            If True, the fitted Astropy model is returned as a copy. If False,
+            the fitted Astropy model is returned in place. A boolean value must
+            be provided if `get_model` is True. If a boolean value is provided,
             but `get_model` is False, a warning is raised.
         ftol : float, optional
             See `scipy.optimize.least_squares` documentation.
@@ -128,7 +129,7 @@ class Fitter:
         )
         t_elapsed: float = (perf_counter() - t_start) * 1e3
 
-        self.fit_info = OptimizeResult_.fromFitInfo(res)
+        self.fit_info = OptimizeResultType.fromFitInfo(res)
         self.sol = model._get_full_parameter_array(self.fit_info.x)
 
         chi2n = self.fit_info.reduced_chi2
@@ -144,17 +145,22 @@ class Fitter:
         else:
             msg = f"OptimizeResult [FAILURE ({status})]: "
             log = logger.info
-        log(msg + f"chi2/dof={chi2n:.1f}, {nfev=}/{max_nfev}, {n_lb=}, {n_ub=}, {message=}, {t_elapsed=:.1f} ms")
+        log(
+            msg
+            + f"chi2/dof={chi2n:.1f}, {nfev=}/{max_nfev}, {n_lb=}, {n_ub=}, {message=}, {t_elapsed=:.1f} ms"
+        )
 
         if get_model:
             if inplace is None:
                 msg = "'inplace' must be specified when 'get_model' is True."
                 raise ValueError(msg)
-            
+
             return model.get_final_model(
                 params=self.fit_info.x,
                 copy=not inplace,
             )
         elif inplace is not None:
-            msg = "'inplace' should only be specified when 'get_model' is True."
+            msg = (
+                "'inplace' should only be specified when 'get_model' is True."
+            )
             warn(msg, UserWarning)

@@ -1,15 +1,17 @@
-from libc.math cimport (
-    hypot as math_hypot,
-    exp as math_exp,
-    sqrt as math_sqrt,
-    pow as math_pow,
-    log as math_log,
-    pi as math_pi,
-)
+from libc.math cimport exp as math_exp
+from libc.math cimport hypot as math_hypot
+from libc.math cimport log as math_log
+from libc.math cimport pi as math_pi
+from libc.math cimport pow as math_pow
+from libc.math cimport sqrt as math_sqrt
+
 from quasar_models._core.modeling.gaussian.evaluate cimport (
     _evaluate_v as _gaussian_evaluate_v,
+)
+from quasar_models._core.modeling.gaussian.evaluate cimport (
     _evaluate_x as _gaussian_evaluate_x,
 )
+
 
 cdef double GAUSS_AMP = 1 / math_sqrt(2 * math_pi)
 cdef double SIGMA_TO_FWHM = 2 * math_sqrt(2 * math_log(2))

@@ -1,6 +1,7 @@
 """
 File containing utilities for stop conditions.
 """
+
 from numpy import diff, finfo, ndarray
 from quasar_typing.numpy import FloatMatrix, FloatVector
 from scipy.linalg import norm
@@ -24,7 +25,7 @@ def ftol_stop(
     f: float,
 ) -> bool:
     """
-    Check whether the relative decrease in the cost function is below the 
+    Check whether the relative decrease in the cost function is below the
     tolerance, 'ftol'.
 
     For further details, see: https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
@@ -46,8 +47,8 @@ def ftol_stop(
 
     Notes
     -----
-    The used 'ftol' parameter is the maximum of the input 'ftol' and the machine 
-    precision for double precision floating point numbers. 
+    The used 'ftol' parameter is the maximum of the input 'ftol' and the machine
+    precision for double precision floating point numbers.
     """
     ftol = max(ftol, PRECISION)
     return abs(df) < ftol * abs(f)
@@ -81,8 +82,8 @@ def xtol_stop(
 
     Notes
     -----
-    The used 'xtol' parameter is the maximum of the input 'xtol' and the machine 
-    precision for double precision floating point numbers. 
+    The used 'xtol' parameter is the maximum of the input 'xtol' and the machine
+    precision for double precision floating point numbers.
     """
     xtol = max(xtol, PRECISION)
     if isinstance(dx, float) and isinstance(x, float):
@@ -97,7 +98,7 @@ def fcrit_stop_batched(
     f: FloatVector,
 ) -> bool:
     """
-    Check whether the 'fcrit' stop condition is satisfied anywhere in an array of 
+    Check whether the 'fcrit' stop condition is satisfied anywhere in an array of
     cost function values.
     """
     return any(fcrit_stop(fcrit, _f) for _f in f)
@@ -110,7 +111,7 @@ def ftol_stop_batched(
     df: FloatVector | None = None,
 ) -> bool:
     """
-    Check whether the 'ftol' stop condition is satisfied anywhere in an array of 
+    Check whether the 'ftol' stop condition is satisfied anywhere in an array of
     cost function values.
     """
     if df is None:

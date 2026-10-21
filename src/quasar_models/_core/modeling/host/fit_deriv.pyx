@@ -1,15 +1,25 @@
+from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
+from quasar_models._core.modeling.template.fit_deriv cimport (
+    _fit_deriv_exact_all as _template_fit_deriv_exact_all,
+)
 from quasar_models._core.modeling.template.fit_deriv cimport (
     _fit_deriv_exact_only_flux as _template_fit_deriv_exact_only_flux,
+)
+from quasar_models._core.modeling.template.fit_deriv cimport (
     _fit_deriv_exact_only_fwhm as _template_fit_deriv_exact_only_fwhm,
-    _fit_deriv_exact_all as _template_fit_deriv_exact_all,
-
-    _fit_deriv_interp_only_flux as _template_fit_deriv_interp_only_flux,
-    _fit_deriv_interp_only_fwhm as _template_fit_deriv_interp_only_fwhm,
+)
+from quasar_models._core.modeling.template.fit_deriv cimport (
     _fit_deriv_interp_all as _template_fit_deriv_interp_all,
-
+)
+from quasar_models._core.modeling.template.fit_deriv cimport (
+    _fit_deriv_interp_only_flux as _template_fit_deriv_interp_only_flux,
+)
+from quasar_models._core.modeling.template.fit_deriv cimport (
+    _fit_deriv_interp_only_fwhm as _template_fit_deriv_interp_only_fwhm,
+)
+from quasar_models._core.modeling.template.fit_deriv cimport (
     _fit_deriv_rescale_only_flux as _template_fit_deriv_rescale_only_flux,
 )
-from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
 
 ### By CONVOLUTION
 

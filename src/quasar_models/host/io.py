@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal, Protocol
 
 from astropy.io import fits
-from quasar_typing.pathlib import AbsoluteFITSPath
+from quasar_typing.pathlib import FITSPath
 from quasar_utils.setup import Info
 
 from quasar_models.modeling.template.io import (
@@ -32,7 +32,7 @@ class HostGalaxyTemplateProtocol(BaseTemplateProtocol, Protocol):
     age: int
 
 
-def convert_path(path: str | AbsoluteFITSPath) -> AbsoluteFITSPath:
+def convert_path(path: str | FITSPath) -> FITSPath:
     if isinstance(path, str):
         path = Path(path.removesuffix(".fits") + ".fits")
         if "/" not in path.as_posix():
@@ -50,13 +50,16 @@ def convert_params_to_name(
 def convert_params_to_path(
     name: Literal["bc2003"],
     age: int,
-) -> AbsoluteFITSPath:
+) -> FITSPath:
     return PATH_TO_CACHE / (convert_params_to_name(name, age) + ".fits")
 
 
 def save(
-    *, template: HostGalaxyTemplateProtocol, path: str | AbsoluteFITSPath, info: Info
-) -> AbsoluteFITSPath:
+    *,
+    template: HostGalaxyTemplateProtocol,
+    path: str | FITSPath,
+    info: Info,
+) -> FITSPath:
     path = convert_path(path)
     hdul = _save(
         template=template,
@@ -71,7 +74,7 @@ def save_to_cache(
     *,
     template: HostGalaxyTemplateProtocol,
     info: Info,
-) -> AbsoluteFITSPath:
+) -> FITSPath:
     return save(
         template=template,
         path=convert_params_to_path(template.name, template.age),
@@ -81,7 +84,7 @@ def save_to_cache(
 
 def load(
     *,
-    path: str | AbsoluteFITSPath,
+    path: str | FITSPath,
     info: Info,
 ) -> dict:
     path = convert_path(path)

@@ -1,8 +1,8 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+from quasar_utils.setup import Info
 from tqdm import tqdm
 
-from quasar_utils.setup import Info
 from quasar_models.host import HostGalaxyModel, HostGalaxyTemplate
 
 SIGMA_RES: float = 2.3e-4
@@ -14,15 +14,10 @@ np.random.seed(42)
 INFO = Info()
 
 template = HostGalaxyTemplate.load_from_cache(
-    name=INFO.host.sources[0],
-    age=INFO.host.ages[0],
-    info=INFO,
+    name=INFO.host.sources[0], age=INFO.host.ages[0], info=INFO,
 )
 
-TEMPLATE = template.createLogspace(
-    sigma_res=SIGMA_RES,
-    xr=x,
-)
+TEMPLATE = template.createLogspace(sigma_res=SIGMA_RES, xr=x,)
 TEMPLATE.normalise(inplace=True)
 MODEL = HostGalaxyModel.create(
     flux=INFO.host.flux,
@@ -48,11 +43,7 @@ def jac_numeric(p):
     flux, fwhm = p
 
     dflux = min(
-        [
-            1e-5,
-            MODEL.flux.bounds[1] - flux,
-            flux - MODEL.flux.bounds[0],
-        ]
+        [1e-5, MODEL.flux.bounds[1] - flux, flux - MODEL.flux.bounds[0],]
     )
     df_dflux = MODEL.evaluate(x, flux + dflux, fwhm) - MODEL.evaluate(
         x, flux - dflux, fwhm

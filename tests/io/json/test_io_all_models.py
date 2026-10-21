@@ -28,7 +28,9 @@ def _compare_models(orig, loaded):
                 assert a.value == b.value
 
 
-def _roundtrip_and_check(subtests: pytest.Subtests, model, info: Info, temp_dir: Path):
+def _roundtrip_and_check(
+    subtests: pytest.Subtests, model, info: Info, temp_dir: Path
+):
     for ext in FORMATS:
         p = Path(temp_dir) / f"{model.__class__.__name__}{ext}"
         model_to_file(p, model, info)
@@ -43,25 +45,37 @@ def _roundtrip_and_check(subtests: pytest.Subtests, model, info: Info, temp_dir:
         _compare_models(model, loaded)
 
 
-def test_powerlaw_roundtrips(subtests: pytest.Subtests, powerlaw_model, info: Info, temp_dir: Path):
+def test_powerlaw_roundtrips(
+    subtests: pytest.Subtests, powerlaw_model, info: Info, temp_dir: Path
+):
     _roundtrip_and_check(subtests, powerlaw_model, info, temp_dir)
 
 
-def test_gaussian_roundtrips(subtests: pytest.Subtests, gaussian_model, info: Info, temp_dir: Path):
+def test_gaussian_roundtrips(
+    subtests: pytest.Subtests, gaussian_model, info: Info, temp_dir: Path
+):
     _roundtrip_and_check(subtests, gaussian_model, info, temp_dir)
 
 
-def test_vprofilecopy_roundtrips(subtests: pytest.Subtests, v_profile_copy, info: Info, temp_dir: Path):
+def test_vprofilecopy_roundtrips(
+    subtests: pytest.Subtests, v_profile_copy, info: Info, temp_dir: Path
+):
     _roundtrip_and_check(subtests, v_profile_copy, info, temp_dir)
 
 
-def test_iron_roundtrips(subtests: pytest.Subtests, iron_model, info: Info, temp_dir: Path):
+def test_iron_roundtrips(
+    subtests: pytest.Subtests, iron_model, info: Info, temp_dir: Path
+):
     _roundtrip_and_check(subtests, iron_model, info, temp_dir)
 
 
-def test_host_roundtrips(subtests: pytest.Subtests, host_model, info: Info, temp_dir: Path):
+def test_host_roundtrips(
+    subtests: pytest.Subtests, host_model, info: Info, temp_dir: Path
+):
     _roundtrip_and_check(subtests, host_model, info, temp_dir)
 
 
-def test_balmer_roundtrips(subtests: pytest.Subtests, balmer_model, info: Info, temp_dir: Path):
+def test_balmer_roundtrips(
+    subtests: pytest.Subtests, balmer_model, info: Info, temp_dir: Path
+):
     _roundtrip_and_check(subtests, balmer_model, info, temp_dir)

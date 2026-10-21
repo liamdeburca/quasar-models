@@ -3,16 +3,16 @@ from collections.abc import Callable, Iterator
 from typing import Any, ClassVar, Literal, Self
 
 from astropy.modeling import Fittable1DModel
-from numpy import float64, ndarray
-from numpy.typing import NDArray
+from numpy import ndarray
 from pydantic_core import PydanticCustomError
 from pydantic_core.core_schema import no_info_plain_validator_function
+from quasar_typing.numpy import FloatArray
 from quasar_utils.setup import Info
 
 
 class BaseModel(ABC, Fittable1DModel):
     model_type: ClassVar[Literal["pl", "fe", "ba", "hg", "em"]]
-    
+
     def __iter__(self) -> Iterator[Self]:
         yield self
 
@@ -28,25 +28,27 @@ class BaseModel(ABC, Fittable1DModel):
         """
 
     @classmethod
-    def _transform_if_ndarray(cls, param: float | NDArray[float64]) -> float:
+    def _transform_if_ndarray(cls, param: float | FloatArray) -> float:
         return param.item() if isinstance(param, ndarray) else param
 
     @classmethod
-    def _transform_args_if_ndarray(cls, *args: float | NDArray[float64]) -> tuple[float, ...]:
+    def _transform_args_if_ndarray(
+        cls, *args: float | FloatArray
+    ) -> tuple[float, ...]:
         return tuple(cls._transform_if_ndarray(arg) for arg in args)
 
     # Evaluation
 
     @property
     @abstractmethod
-    def evaluate_func(self) -> Callable[..., NDArray[float64]]: ...
+    def evaluate_func(self) -> Callable[..., FloatArray]: ...
 
     @abstractmethod
     def _choose_evaluate_func(self) -> None: ...
 
     @property
     @abstractmethod
-    def fit_deriv_func(self) -> Callable[..., NDArray[float64]]: ...
+    def fit_deriv_func(self) -> Callable[..., FloatArray]: ...
 
     @abstractmethod
     def _choose_fit_deriv_func(self) -> None: ...
@@ -61,34 +63,34 @@ class BaseModel(ABC, Fittable1DModel):
     @abstractmethod
     def evaluate(
         self,
-        x: NDArray[float64],
+        x: FloatArray,
         *params,
-        y: NDArray[float64] | None = None,
-    ) -> NDArray[float64]: ...
+        y: FloatArray | None = None,
+    ) -> FloatArray: ...
 
     @abstractmethod
     def fit_deriv(
         self,
-        x: NDArray[float64],
+        x: FloatArray,
         *args,
-        derivs: NDArray[float64] | None = None,
-    ) -> list[NDArray[float64]]: ...
+        derivs: FloatArray | None = None,
+    ) -> list[FloatArray]: ...
 
     @abstractmethod
     def partial_deriv(
         self,
-        x: NDArray[float64],
+        x: FloatArray,
         *args,
-        derivs: NDArray[float64] | None = None,
-    ) -> NDArray[float64]: ...
+        derivs: FloatArray | None = None,
+    ) -> FloatArray: ...
 
     # Instance evaluation
 
     def instance_evaluate(
         self,
-        x: NDArray[float64],
-        y: NDArray[float64] | None = None,
-    ) -> NDArray[float64]:
+        x: FloatArray,
+        y: FloatArray | None = None,
+    ) -> FloatArray:
         return self.evaluate(
             x,
             *self.parameters,
@@ -97,9 +99,9 @@ class BaseModel(ABC, Fittable1DModel):
 
     def instance_fit_deriv(
         self,
-        x: NDArray[float64],
-        derivs: NDArray[float64] | None = None,
-    ) -> NDArray[float64]:
+        x: FloatArray,
+        derivs: FloatArray | None = None,
+    ) -> list[FloatArray]:
         return self.fit_deriv(
             x,
             *self.parameters,
@@ -108,9 +110,9 @@ class BaseModel(ABC, Fittable1DModel):
 
     def instance_partial_deriv(
         self,
-        x: NDArray[float64],
-        derivs: NDArray[float64] | None = None,
-    ) -> NDArray[float64]:
+        x: FloatArray,
+        derivs: FloatArray | None = None,
+    ) -> FloatArray:
         return self.partial_deriv(
             x,
             *self.parameters,
@@ -137,8 +139,10 @@ class BaseModel(ABC, Fittable1DModel):
     @classmethod
     def _validate(cls, value: object) -> Self:
         if not isinstance(value, cls):
-            msg = f"Expected {cls.__name__} instance, "\
+            msg = (
+                f"Expected {cls.__name__} instance, "
                 f"got {type(value).__name__} instead."
+            )
             raise PydanticCustomError("validation_error", msg)
         return value
 

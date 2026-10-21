@@ -4,42 +4,22 @@ AstroPy compatible model: BalmerModel.
 
 from typing import Any, ClassVar, Literal, Self
 
+import numpy as np
 from astropy.constants import c
 from astropy.modeling import Parameter
 from astropy.units import Unit
-from numpy import (
-    argmin,
-    array,
-    array_equal,
-    concatenate,
-    float64,
-    inf,
-    unique,
-)
-from numpy.typing import NDArray
+from pydantic import validate_call
 from quasar_typing.bounds import AstropyBounds
 from quasar_typing.numpy import FittableFloatVector, FloatVector
-from quasar_utils.decorators import validate_call
-from quasar_utils.interpolation import create_interp_matrix
-from quasar_utils.raster import rasterise
 from quasar_utils.setup import Info
 
 from quasar_models._core.modeling.balmer import (
     BalmerEvaluate,
     BalmerFitDeriv,
-    choose_evaluate_func,
-    choose_fit_deriv_func,
-    evaluate_exact,
-    fit_deriv_exact_all,
 )
+from quasar_models.continuum import PowerLawModel
 from quasar_models.modeling.template import TemplateModel
 
-from ..continuum import PowerLawModel
-from ..utils.astropy import apply_bounds
-from ..utils.serialization import (
-    deserialize_parameter,
-    serialize_parameter,
-)
 from .continuum import BalmerContinuumTemplate
 from .series import BalmerSeriesTemplate
 
@@ -93,15 +73,15 @@ class BalmerModel(TemplateModel):
         allow_interp_fitting: bool = False,
         n_scales: float | None = None,
         name: str | Literal["SH1995"] | None = None,
-
         flux_bounds: AstropyBounds | None = None,
         fwhm_bounds: AstropyBounds | None = None,
         ratio_bounds: AstropyBounds | None = None,
         flux_fixed: bool | None = None,
         fwhm_fixed: bool | None = None,
         ratio_fixed: bool | None = None,
-
     ) -> Self:
+        from quasar_models.utils.astropy import _apply_bounds
+
         if continuum_template is None:
             if info is None:
                 msg = "'info' cannot be None if 'continuum_template' is not provided."
@@ -148,7 +128,7 @@ class BalmerModel(TemplateModel):
                 info=info,
             )
 
-        if not array_equal(continuum_template.x, series_template.x):
+        if not np.array_equal(continuum_template.x, series_template.x):
             msg = "The continuum and series templates do not have the same x arrays!"
             raise ValueError(msg)
 
@@ -169,19 +149,23 @@ class BalmerModel(TemplateModel):
                 "value."
             )
             # logger.info(msg)
-            n_scales = max(continuum_template.n_scales, series_template.n_scales)
+            n_scales = max(
+                continuum_template.n_scales, series_template.n_scales
+            )
             continuum_template.n_scales = n_scales
             series_template.n_scales = n_scales
 
-        if not array_equal(continuum_template.fwhm, series_template.fwhm):
-            fwhms = unique(
-                concatenate([continuum_template.fwhm, series_template.fwhm]),
+        if not np.array_equal(continuum_template.fwhm, series_template.fwhm):
+            fwhms = np.unique(
+                np.concatenate([continuum_template.fwhm, series_template.fwhm]),
             )
             continuum_template.upsample(fwhms, inplace=True)
             series_template.upsample(fwhms, inplace=True)
 
         model = BalmerModel(
-            flux, fwhm, ratio,
+            flux,
+            fwhm,
+            ratio,
             name=name or "balmer",
             meta={
                 "continuum_template": continuum_template,
@@ -191,19 +175,19 @@ class BalmerModel(TemplateModel):
             },
         )
         if flux_bounds is not None:
-            model.flux.value = apply_bounds.__wrapped__(flux, flux_bounds)
+            model.flux.value = _apply_bounds(flux, flux_bounds)
             model.flux.bounds = flux_bounds
 
         if fwhm_bounds is None:
             model.fwhm.bounds = (
-                continuum_template.fwhm[0], 
+                continuum_template.fwhm[0],
                 continuum_template.fwhm[-1],
             )
-        model.fwhm.value = apply_bounds.__wrapped__(fwhm, fwhm_bounds)
+        model.fwhm.value = _apply_bounds(fwhm, fwhm_bounds)
         model.fwhm.bounds = fwhm_bounds
 
         if ratio_bounds is not None:
-            model.ratio.value = apply_bounds.__wrapped__(ratio, ratio_bounds)
+            model.ratio.value = _apply_bounds(ratio, ratio_bounds)
             model.ratio.bounds = ratio_bounds
 
         if flux_fixed is not None:
@@ -294,7 +278,7 @@ class BalmerModel(TemplateModel):
     def scale(self) -> float:
         return self.continuum_template.scale
 
-    def evaluate(self, x,flux, fwhm, ratio, y=None):
+    def evaluate(self, x, flux, fwhm, ratio, y=None):
         return self.evaluate_func(
             x,
             *self._transform_args_if_ndarray(flux, fwhm, ratio),
@@ -322,7 +306,7 @@ class BalmerModel(TemplateModel):
                 "series_template": self.series_template,
                 "n_scales": self.n_scales,
                 "interpolation_matrix": self.interpolation_matrix,
-            }
+            },
         )
 
     @kwargs.setter
@@ -341,11 +325,11 @@ class BalmerModel(TemplateModel):
             "interpolation_matrix": self.interpolation_matrix,
         }
 
-
     ### Model preparation
 
     @property
     def evaluate_func(self) -> BalmerEvaluate:
+        from quasar_models._core.modeling.balmer import evaluate_exact
         return self.meta.get("evaluate_func", evaluate_exact)
 
     @evaluate_func.setter
@@ -358,6 +342,7 @@ class BalmerModel(TemplateModel):
 
     @property
     def fit_deriv_func(self) -> BalmerFitDeriv:
+        from quasar_models._core.modeling.balmer import fit_deriv_exact_all
         return self.meta.get("fit_deriv_func", fit_deriv_exact_all)
 
     @fit_deriv_func.setter
@@ -369,9 +354,10 @@ class BalmerModel(TemplateModel):
         self.meta.pop("fit_deriv_func", None)
 
     def _choose_evaluate_func(
-        self, 
+        self,
         fixed: dict[str, bool] | None = None,
     ) -> None:
+        from quasar_models._core.modeling.balmer import choose_evaluate_func
         self.evaluate_func = choose_evaluate_func(
             self.allow_interp_fitting,
             fixed or self.fixed,
@@ -381,6 +367,7 @@ class BalmerModel(TemplateModel):
         self,
         fixed: dict[str, bool] | None = None,
     ) -> None:
+        from quasar_models._core.modeling.balmer import choose_fit_deriv_func
         self.fit_deriv_func = choose_fit_deriv_func(
             self.allow_interp_fitting,
             fixed or self.fixed,
@@ -393,9 +380,10 @@ class BalmerModel(TemplateModel):
         """
         return (2.0, 0.0)
 
-    def _calculate_interpolation_matrices(self, x_out: NDArray[float64]) -> None:
+    def _calculate_interpolation_matrices(self, x_out: FloatVector) -> None:
+        from quasar_utils.interpolation import _create_interp_matrix
         self._interpolation_matrices["interpolation_matrix"] = (
-            create_interp_matrix.__wrapped__(
+            _create_interp_matrix(
                 self.continuum_template.x,
                 x_out,
                 left=0.0,
@@ -419,18 +407,25 @@ class BalmerModel(TemplateModel):
         -----
         'ratio' parameter is held fixed at the current value.
         """
+        from quasar_utils.raster import rasterise
+
+        from quasar_models._core.modeling.balmer import evaluate_exact
+        from quasar_models.utils.astropy import _apply_bounds
+
         assert not (self.flux.fixed and self.fwhm.fixed)
 
         if self.fwhm.fixed:
-            fwhm = array([self.fwhm.value], dtype=float64)
+            fwhm = np.array([self.fwhm.value], dtype=np.float64)
             data = evaluate_exact(
                 x,
-                1.0, self.fwhm.value, self.ratio.value,
-                **self._kwargs.update({'interpolation_matrix': None}),
+                1.0,
+                self.fwhm.value,
+                self.ratio.value,
+                **self._kwargs.update({"interpolation_matrix": None}),
                 y=None,
             )[None, :]
         else:
-            if array_equal(self.continuum_template.x, x):
+            if np.array_equal(self.continuum_template.x, x):
                 ctemp = self.continuum_template
                 stemp = self.series_template
             else:
@@ -450,7 +445,7 @@ class BalmerModel(TemplateModel):
 
         obj = self if inplace else self.copy()
         try:
-            chi2s, fluxs = rasterise.__wrapped__(
+            chi2s, fluxs = rasterise(
                 y,
                 dy,
                 fwhm,
@@ -465,13 +460,13 @@ class BalmerModel(TemplateModel):
             # ! Raise warning
             return obj
 
-        chi2s[chi2s == 0] = inf
-        idx = argmin(chi2s)
+        chi2s[chi2s == 0] = np.inf
+        idx = np.argmin(chi2s)
 
         if not self.flux.fixed:
             obj.flux.value = fluxs[idx]
         if not self.fwhm.fixed:
-            obj.fwhm.value = apply_bounds(fwhm[idx], self.fwhm.bounds)
+            obj.fwhm.value = _apply_bounds(fwhm[idx], self.fwhm.bounds)
 
         return obj
 
@@ -504,6 +499,9 @@ class BalmerModel(TemplateModel):
             If True, modifies this instance in-place. Otherwise, returns a copy.
             Default is False.
         """
+        from quasar_models._core.modeling.balmer import evaluate_exact
+        from quasar_models.utils.astropy import _apply_bounds
+
         wave = info.units.getWavelength(3000 * Unit("angstrom"))
         y_pl = model(wave)
 
@@ -511,7 +509,7 @@ class BalmerModel(TemplateModel):
         stemp = self.series_template
 
         y_ba = evaluate_exact(
-            array([wave], dtype=float64),
+            np.array([wave], dtype=np.float64),
             1.0,
             self.fwhm.value,
             self.ratio.value,
@@ -527,18 +525,19 @@ class BalmerModel(TemplateModel):
         )[0]
 
         obj = self if inplace else self.copy()
-        obj.flux.value = apply_bounds(a_qsfit * y_pl / y_ba, obj.flux.bounds)
+        obj.flux.value = _apply_bounds(a_qsfit * y_pl / y_ba, obj.flux.bounds)
 
         return obj
 
     ### Serialization
 
     def serialize(self, info: Info) -> dict[str, dict[str, Any]]:
+        from quasar_models.io.serialization import serialize_parameter
         flux_unit = str(info.units.flux_unit)
         kms_unit = "km/s"
         data = {
             "name": self.name,
-            "flux": serialize_parameter(self.flux, flux_unit),
+            "flux": serialize_parameter(self.flux, flux_unit, scientific=True),
             "fwhm": serialize_parameter(self.fwhm, kms_unit),
             "ratio": serialize_parameter(self.ratio, None),
             "continuum_template": self.continuum_template.serialize(info),
@@ -548,6 +547,7 @@ class BalmerModel(TemplateModel):
 
     @classmethod
     def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
+        from quasar_models.io.serialization import deserialize_parameter
         flux_unit = str(info.units.flux_unit)
         kms_unit = "km/s"
 
@@ -557,18 +557,20 @@ class BalmerModel(TemplateModel):
         edge = info.balmer.edge
 
         continuum_template = BalmerContinuumTemplate.deserialize(
-            data["continuum_template"], 
+            data["continuum_template"],
             info,
         )
         series_template = BalmerSeriesTemplate.deserialize(
-            data["series_template"], 
+            data["series_template"],
             info,
         )
 
         model = BalmerModel.create(
-            flux["value"], fwhm["value"], ratio["value"], 
-            edge=edge, 
-            continuum_template=continuum_template, 
+            flux["value"],
+            fwhm["value"],
+            ratio["value"],
+            edge=edge,
+            continuum_template=continuum_template,
             series_template=series_template,
             info=info,
             allow_interp_fitting=info.convolution.allow_interp_fitting,
@@ -586,3 +588,6 @@ class BalmerModel(TemplateModel):
         model.name = data["name"]
 
         return model
+
+
+type BaModel = BalmerModel

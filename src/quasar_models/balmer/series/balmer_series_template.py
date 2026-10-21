@@ -3,22 +3,16 @@ __all__ = ["BalmerSeriesTemplate"]
 from dataclasses import field
 from typing import Any, ClassVar, Literal, Self
 
-from numpy import array, array_equal, float64, searchsorted, zeros
+import numpy as np
 from pydantic.dataclasses import dataclass
 from quasar_typing.numpy import FloatVector, SortedFloatVector
-from quasar_typing.pathlib import AbsoluteDirPath, AbsoluteFITSPath
+from quasar_typing.pathlib import DirPath, FITSPath
 from quasar_utils.setup import Info
 
 from quasar_models._core.modeling.balmer.series import evaluate
 from quasar_models.modeling.template import BaseTemplate
 
-from ...utils.serialization import (
-    deserialize_array,
-    deserialize_quantity,
-    serialize_array,
-    serialize_quantity,
-)
-from .io import PATH_TO_CACHE, load, load_from_cache, save, save_to_cache
+from .io import PATH_TO_CACHE
 
 
 @dataclass(eq=False)
@@ -32,7 +26,7 @@ class BalmerSeriesTemplate(BaseTemplate):
     # Only series data from Storey&Hummer1995 is currently supported
     name: Literal["sh1995"] = field(default="sh1995", kw_only=True)
 
-    PATH_TO_CACHE: ClassVar[AbsoluteDirPath] = PATH_TO_CACHE
+    PATH_TO_CACHE: ClassVar[DirPath] = PATH_TO_CACHE
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -48,8 +42,8 @@ class BalmerSeriesTemplate(BaseTemplate):
     def __eq__(self, other: object) -> bool:
         return (
             super().__eq__(other)
-            and array_equal(self.waves, other.waves)
-            and array_equal(self.weights, other.weights)
+            and np.array_equal(self.waves, other.waves)
+            and np.array_equal(self.weights, other.weights)
             and (self.temp == other.temp)
             and (self.dens == other.dens)
             and (self.n_u_range == other.n_u_range)
@@ -114,8 +108,8 @@ class BalmerSeriesTemplate(BaseTemplate):
             waves.append(wave)
             weights.append(weight)
 
-        waves = array(waves, dtype=float64)
-        weights = array(weights, dtype=float64)
+        waves = np.array(waves, dtype=np.float64)
+        weights = np.array(weights, dtype=np.float64)
 
         return self.instantiate(
             self.fwhm.copy(),
@@ -153,18 +147,20 @@ class BalmerSeriesTemplate(BaseTemplate):
         is_logspace: bool = False,
         name: Literal["sh1995"] = "sh1995",
     ) -> Self:
-        from numpy import stack
-
         weights = weights / weights.sum()
-        data = stack([
+        data = np.stack(
+            [
                 evaluate(
-                    x, 1.0, _fwhm,
+                    x,
+                    1.0,
+                    _fwhm,
                     sigma_res=sigma_res,
                     waves=waves,
                     weights=weights,
                     edge=edge,
                     normalisation=1.0,
-                ) for _fwhm in fwhm
+                )
+                for _fwhm in fwhm
             ],
             axis=0,
         )
@@ -200,11 +196,14 @@ class BalmerSeriesTemplate(BaseTemplate):
         """
         obj = self if inplace else self.copy(with_matrices=True)
 
-        data = zeros(shape=(fwhm.size, self.x.size), dtype=float64)
-        indices = searchsorted(self.fwhm, fwhm)
+        data = np.zeros(shape=(fwhm.size, self.x.size), dtype=np.float64)
+        indices = np.searchsorted(self.fwhm, fwhm)
 
         for i, fwhm_curr in enumerate(fwhm):
-            if indices[i] < self.fwhm.size and self.fwhm[indices[i]] == fwhm_curr:
+            if (
+                indices[i] < self.fwhm.size
+                and self.fwhm[indices[i]] == fwhm_curr
+            ):
                 data[i, :] = self.data[indices[i], :]
             else:
                 evaluate(
@@ -219,6 +218,7 @@ class BalmerSeriesTemplate(BaseTemplate):
                     y=data[i, :],
                 )
                 import matplotlib.pyplot as plt
+
                 plt.figure()
                 plt.plot(self.x, data[i, :], label=fwhm_curr)
                 plt.show()
@@ -233,27 +233,30 @@ class BalmerSeriesTemplate(BaseTemplate):
     def save(
         self,
         *,
-        path: str | AbsoluteFITSPath,
+        path: str | FITSPath,
         info: Info,
-    ) -> AbsoluteFITSPath:
+    ) -> FITSPath:
         """
         Saves the BalmerSeriesTemplate to a FITS file.
         """
+        from .io import save
         return save(template=self, path=path, info=info)
 
     @classmethod
     def load(
         cls,
         *,
-        path: str | AbsoluteFITSPath,
+        path: str | FITSPath,
         info: Info,
     ) -> Self:
+        from .io import load
         kwargs = load(path=path, info=info)
         return BalmerSeriesTemplate(**kwargs)
 
     # I/O from '.cache' directory
 
-    def save_to_cache(self, info: Info) -> AbsoluteFITSPath:
+    def save_to_cache(self, info: Info) -> FITSPath:
+        from .io import save_to_cache
         return save_to_cache(template=self, info=info)
 
     @classmethod
@@ -266,6 +269,7 @@ class BalmerSeriesTemplate(BaseTemplate):
         n_u_range: tuple[int, int],
         info: Info,
     ) -> Self:
+        from .io import load_from_cache
         kwargs = load_from_cache(
             name=name,
             temp=temp,
@@ -279,18 +283,24 @@ class BalmerSeriesTemplate(BaseTemplate):
     ### Serialization
 
     def serialize(self, info: Info) -> dict[str, Any]:
+        from quasar_models.utils.serialization import serialize_quantity
         temp_unit = str(info.units.temp_unit)
         dens_unit = str(info.units.dens_unit)
 
         data = super().serialize(info)
-        data["temp"] = serialize_quantity(self.temp, temp_unit)
-        data["dens"] = serialize_quantity(self.dens, dens_unit)
+        data["temp"] = serialize_quantity(
+            self.temp, temp_unit, scientific=True
+        )
+        data["dens"] = serialize_quantity(
+            self.dens, dens_unit, scientific=True
+        )
         data["n_u_range"] = list(self.n_u_range)
 
         return data
 
     @classmethod
     def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
+        from quasar_models.utils.serialization import deserialize_quantity
         temp_unit = str(info.units.temp_unit)
         dens_unit = str(info.units.dens_unit)
 
@@ -309,4 +319,3 @@ class BalmerSeriesTemplate(BaseTemplate):
         template.normalisation = None
         template.__post_init__()
         return template
-

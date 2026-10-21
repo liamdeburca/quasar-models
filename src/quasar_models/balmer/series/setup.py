@@ -50,7 +50,9 @@ class SH1995:
 
         x0, x1 = self.info.units.getWavelength([1000, 4500] * Unit("angstrom"))
         n = int(log(x1 / x0) / log(1 + self.info.loading.sigma_res)) + 1
-        self.x: FloatVector = x0 * (1 + self.info.loading.sigma_res) ** arange(n + 1)
+        self.x: FloatVector = x0 * (1 + self.info.loading.sigma_res) ** arange(
+            n + 1
+        )
 
         self._temp: FloatVector = unique(self.data["temp"])
         self._dens: FloatVector = unique(self.data["dens"])
@@ -135,7 +137,6 @@ def plot() -> None:
     from matplotlib.cm import ScalarMappable
     from matplotlib.cm import rainbow as cmap
     from matplotlib.colors import Normalize
-
 
     sh1995 = SH1995()
     info = sh1995.info

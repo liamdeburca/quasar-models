@@ -1,7 +1,10 @@
 from quasar_models._core.modeling.gaussian.evaluate cimport (
     _evaluate_v as _gaussian_evaluate_v,
+)
+from quasar_models._core.modeling.gaussian.evaluate cimport (
     _evaluate_x as _gaussian_evaluate_x,
 )
+
 
 cdef inline void _evaluate_v(
     double[::1] y,

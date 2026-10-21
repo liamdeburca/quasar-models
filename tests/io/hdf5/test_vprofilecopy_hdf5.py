@@ -12,7 +12,9 @@ from quasar_models.io.hdf5.vprofilecopy import (
 from quasar_models.line import VProfileCopy1G
 
 
-def test_vprofilecopy_hdf5_roundtrip(v_profile_copy: VProfileCopy1G, info, temp_dir: Path):
+def test_vprofilecopy_hdf5_roundtrip(
+    v_profile_copy: VProfileCopy1G, info, temp_dir: Path
+):
     """Write a VProfileCopy to HDF5 and read it back, asserting parameters
     and metadata are preserved (within numerical tolerance).
     """
@@ -20,9 +22,7 @@ def test_vprofilecopy_hdf5_roundtrip(v_profile_copy: VProfileCopy1G, info, temp_
     # Write
     with h5py.File(path, "w") as f:
         vprofilecopy_to_hdf5(
-            v_profile_copy, f, info, 
-            group_name="vprofilecopy", 
-            force=True,
+            v_profile_copy, f, info, group_name="vprofilecopy", force=True,
         )
 
     # Read and verify
@@ -54,9 +54,7 @@ def test_vprofilecopy_hdf5_list_single(v_profile_copy, info, temp_dir: Path):
 
     with h5py.File(path, "w") as f:
         vprofilecopies_to_hdf5(
-            models, f, info, 
-            group_name="vprofilecopy_list",
-            force=True,
+            models, f, info, group_name="vprofilecopy_list", force=True,
         )
 
     with h5py.File(path, "r") as f:
@@ -88,9 +86,7 @@ def test_vprofilecopy_hdf5_list_multiple(v_profile_copy, info, temp_dir: Path):
     path = temp_dir / "gaussian_list_multi.h5"
     with h5py.File(path, "w") as f:
         vprofilecopies_to_hdf5(
-            models, f, info, 
-            group_name="vprofilecopy_multi", 
-            force=True,
+            models, f, info, group_name="vprofilecopy_multi", force=True,
         )
 
     with h5py.File(path, "r") as f:
@@ -103,7 +99,12 @@ def test_vprofilecopy_hdf5_list_multiple(v_profile_copy, info, temp_dir: Path):
         assert orig.linetype == new.linetype
         assert orig.sigma_res == pytest.approx(new.sigma_res)
 
-        for param_name in ["strength_scale", "strength_1", "fwhm_v_1", "v_off_1"]:
+        for param_name in [
+            "strength_scale",
+            "strength_1",
+            "fwhm_v_1",
+            "v_off_1",
+        ]:
             p = getattr(orig, param_name)
             q = getattr(new, param_name)
 

@@ -58,13 +58,11 @@ class BalmerEvaluate(_TemplateEvaluate):
         """
         if not isinstance(continuum_template, CyTemplate):
             continuum_template = CyTemplate.fromTemplate(
-                continuum_template,
-                simplify=self.simplify,
+                continuum_template, simplify=self.simplify,
             )
         if not isinstance(series_template, CyTemplate):
             series_template = CyTemplate.fromTemplate(
-                series_template,
-                simplify=self.simplify,
+                series_template, simplify=self.simplify,
             )
 
         return super().__call__(
@@ -126,13 +124,11 @@ class BalmerFitDeriv(_TemplateFitDeriv):
         """
         if not isinstance(continuum_template, CyTemplate):
             continuum_template = CyTemplate.fromTemplate(
-                continuum_template,
-                simplify=self.simplify,
+                continuum_template, simplify=self.simplify,
             )
         if not isinstance(series_template, CyTemplate):
             series_template = CyTemplate.fromTemplate(
-                series_template,
-                simplify=self.simplify,
+                series_template, simplify=self.simplify,
             )
 
         return super().__call__(

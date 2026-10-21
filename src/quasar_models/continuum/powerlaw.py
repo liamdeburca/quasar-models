@@ -11,34 +11,25 @@ The implementation keeps changes minimal and delegates heavy numeric work to
 the compiled core module.
 """
 
+import math
 from collections.abc import Callable
 from logging import getLogger
 from typing import Any, ClassVar, Literal, Self
 
+import numpy as np
 from astropy.modeling import Parameter
-from numpy import exp, float64, log
-from numpy.typing import NDArray
+from pydantic import validate_call
 from pydantic_core import ValidationError
 from quasar_typing.bounds import AstropyBounds
 from quasar_typing.errors import OutsideBoundsError
-from quasar_typing.numpy import FloatMatrix, FloatVector
-from quasar_utils.decorators import validate_call
+from quasar_typing.numpy import FloatArray, FloatMatrix, FloatVector
 from quasar_utils.setup import Info
 
 from quasar_models._core.modeling.powerlaw import (
     PowerLawEvaluate,
     PowerLawFitDeriv,
-    choose_evaluate_func,
-    choose_fit_deriv_func,
-    evaluate,
-    fit_deriv_all,
-    inverse,
 )
 from quasar_models.modeling import BaseModel
-
-from ..utils.astropy import apply_bounds
-from ..utils.linear_regression import linreg
-from ..utils.serialization import deserialize_parameter, serialize_parameter
 
 logger = getLogger(__name__)
 
@@ -89,9 +80,10 @@ def perform_linear_regression(
     OutsideBoundsError
         If the derived flux or alpha values are outside the specified bounds.
     """
+    from quasar_models.utils.linear_regression import linreg
     res: tuple[float, float] = linreg(x, y, dy)
 
-    flux = y0 * exp(res[0])
+    flux = y0 * math.exp(res[0])
     flux_lb, flux_ub = flux_bounds
     if flux_lb is not None and flux < flux_lb:
         msg = f"Derived flux value is below the lower bound: {flux=:.1f}<{flux_lb:.1f}"
@@ -115,6 +107,7 @@ def perform_linear_regression(
 
     return flux, alpha
 
+
 class PowerLawModel(BaseModel):
     """Power-law continuum model wrapper.
 
@@ -130,16 +123,9 @@ class PowerLawModel(BaseModel):
     The class delegates evaluation and derivative calculations to compiled
     functions from ``quasar_models._core.modeling.powerlaw`` for performance.
     """
-    flux = Parameter(
-        default=1.0,
-        bounds=(0.0, None),
-        fixed=False,
-    )
-    alpha = Parameter(
-        default=1.0,
-        bounds=(-10.0, 10.0),
-        fixed=False,
-    )
+
+    flux = Parameter(default=1.0, bounds=(0.0, None), fixed=False,)
+    alpha = Parameter(default=1.0, bounds=(-10.0, 10.0), fixed=False,)
 
     model_type: ClassVar[Literal["pl"]] = "pl"
 
@@ -151,23 +137,20 @@ class PowerLawModel(BaseModel):
         flux: float,
         alpha: float,
         name: str = "powerlaw",
-
         flux_bounds: AstropyBounds | None = None,
         alpha_bounds: AstropyBounds | None = None,
         flux_fixed: bool | None = None,
         alpha_fixed: bool | None = None,
     ) -> Self:
+        from quasar_models.utils.astropy import _apply_bounds
         model = PowerLawModel(
-            flux,
-            alpha,
-            meta={"x0": x0, "y0": y0},
-            name=name,
+            flux, alpha, meta={"x0": x0, "y0": y0}, name=name,
         )
         if flux_bounds is not None:
-            model.flux.value = apply_bounds.__wrapped__(flux, flux_bounds)
+            model.flux.value = _apply_bounds(flux, flux_bounds)
             model.flux.bounds = flux_bounds
         if alpha_bounds is not None:
-            model.alpha.value = apply_bounds.__wrapped__(alpha, alpha_bounds)
+            model.alpha.value = _apply_bounds(alpha, alpha_bounds)
             model.alpha.bounds = alpha_bounds
 
         if flux_fixed is not None:
@@ -213,9 +196,9 @@ class PowerLawModel(BaseModel):
             Model value(s) at ``x``.
         """
         return self.evaluate_func(
-            x, 
-            *self._transform_args_if_ndarray(flux, alpha), 
-            **self.kwargs, 
+            x,
+            *self._transform_args_if_ndarray(flux, alpha),
+            **self.kwargs,
             y=y,
         )
 
@@ -227,7 +210,7 @@ class PowerLawModel(BaseModel):
         that scalar floats are provided for ``flux`` and ``alpha``.
         """
         return self.fit_deriv_func(
-            x, 
+            x,
             *self._transform_args_if_ndarray(flux, alpha),
             **self.kwargs,
             derivs=derivs,
@@ -247,6 +230,7 @@ class PowerLawModel(BaseModel):
 
         Delegates to the core ``inverse`` implementation.
         """
+        from quasar_models._core.modeling.powerlaw import inverse
         return inverse(y, flux, alpha, **self.kwargs, x=None)
 
     @property
@@ -268,6 +252,7 @@ class PowerLawModel(BaseModel):
 
     @property
     def evaluate_func(self) -> PowerLawEvaluate:
+        from quasar_models._core.modeling.powerlaw import evaluate
         return self.meta.get("evaluate_func", evaluate)
 
     @evaluate_func.setter
@@ -280,6 +265,7 @@ class PowerLawModel(BaseModel):
 
     @property
     def fit_deriv_func(self) -> PowerLawFitDeriv:
+        from quasar_models._core.modeling.powerlaw import fit_deriv_all
         return self.meta.get("fit_deriv_func", fit_deriv_all)
 
     @fit_deriv_func.setter
@@ -291,12 +277,13 @@ class PowerLawModel(BaseModel):
         self.meta.pop("fit_deriv_func", None)
 
     def _choose_evaluate_func(self) -> None:
+        from quasar_models._core.modeling.powerlaw import choose_evaluate_func
         self.evaluate_func = choose_evaluate_func()
 
     def _choose_fit_deriv_func(
-        self,
-        fixed: dict[str, bool] | None = None,
+        self, fixed: dict[str, bool] | None = None,
     ) -> None:
+        from quasar_models._core.modeling.powerlaw import choose_fit_deriv_func
         self.fit_deriv_func = choose_fit_deriv_func(fixed or self.fixed)
 
     # Utilities
@@ -336,9 +323,9 @@ class PowerLawModel(BaseModel):
             Residuals (``(y - model)/dy``).
         """
 
-        _x = self.transform_x.__wrapped__(self, x) if log else x
-        _y = self.transform_y.__wrapped__(self, y) if log else y
-        _dy = self.transform_dy.__wrapped__(self, y, dy) if log else dy
+        _x = self.transform_x(x) if log else x
+        _y = self.transform_y(y) if log else y
+        _dy = self.transform_dy(y, dy) if log else dy
 
         _f = self.log(_x) if log else self(_x)
 
@@ -351,35 +338,27 @@ class PowerLawModel(BaseModel):
         Returns log(flux/y0) + alpha * x_log which is useful for linear
         regression based estimation of parameters.
         """
-        return log(self.flux.value / self.y0) + self.alpha.value * x_log
+        return math.log(self.flux.value / self.y0) + self.alpha.value * x_log
 
     @validate_call
-    def transform_x(
-        self,
-        x: float | FloatVector,
-    ) -> float | FloatVector:
-        return log(x) - log(self.x0)
+    def transform_x(self, x: float | FloatVector,) -> float | FloatVector:
+        return np.log(x / self.x0)
 
     @validate_call
     def inv_transform_x(
-        self,
-        x_log: float | FloatVector,
+        self, x_log: float | FloatVector,
     ) -> float | FloatVector:
-        return self.x0 * exp(x_log)
+        return self.x0 * np.exp(x_log)
 
     @validate_call
-    def transform_y(
-        self,
-        y: float | FloatVector,
-    ) -> float | FloatVector:
-        return log(y) - log(self.y0)
+    def transform_y(self, y: float | FloatVector,) -> float | FloatVector:
+        return np.log(y / self.y0)
 
     @validate_call
     def inv_transform_y(
-        self,
-        y_log: float | FloatVector,
+        self, y_log: float | FloatVector,
     ) -> float | FloatVector:
-        return self.y0 * exp(y_log)
+        return self.y0 * np.exp(y_log)
 
     @validate_call
     def transform_dy(
@@ -389,18 +368,13 @@ class PowerLawModel(BaseModel):
 
     @validate_call
     def inv_transform_dy(
-        self,
-        y_log: float | FloatVector,
-        dy_log: float | FloatVector,
+        self, y_log: float | FloatVector, dy_log: float | FloatVector,
     ) -> float | FloatVector:
-        return dy_log * self.inv_transform_y.__wrapped__(self, y_log)
+        return dy_log * self.inv_transform_y(y_log)
 
     @validate_call
     def from_linear_fit(
-        self,
-        x_log: FloatVector,
-        y_log: FloatVector,
-        dy_log: FloatVector,
+        self, x_log: FloatVector, y_log: FloatVector, dy_log: FloatVector,
     ) -> Self:
         """Fit this model to data using linear regression.
         
@@ -426,26 +400,30 @@ class PowerLawModel(BaseModel):
         ValueError
             If any other unexpected error occurs during linear regression.
         """
+        from quasar_models.utils.linear_regression import linreg
+        
         flux = self.flux.value
         alpha = self.alpha.value
         try:
-            flux, alpha = perform_linear_regression.__wrapped__(
-                x_log, y_log, dy_log,
+            flux, alpha = linreg(
+                x_log,
+                y_log,
+                dy_log,
                 x0=self.x0,
                 y0=self.y0,
                 flux_bounds=self.flux.bounds,
-                alpha_bounds=self.alpha.bounds
-            )            
+                alpha_bounds=self.alpha.bounds,
+            )
             msg = f"Linear regression successful: {flux=:.1f}, {alpha=:.1f}."
             logger.debug(msg)
         except OutsideBoundsError as e:
             msg = "Outside bounds error during linear regression (nonlinear optimisation recommended)"
             logger.info(msg)
             raise OutsideBoundsError(msg) from e
-        except ValidationError as e:
+        except ValidationError:
             msg = "Validation error during linear regression"
             logger.info(msg)
-            raise ValidationError(msg) from e
+            raise 
         except Exception as e:
             msg = f"Linear regression failed due to {type(e).__name__}: {e}"
             logger.info(msg)
@@ -454,7 +432,8 @@ class PowerLawModel(BaseModel):
         return PowerLawModel.create(
             self.x0,
             self.y0,
-            flux, alpha, 
+            flux,
+            alpha,
             name=self.name,
             flux_bounds=self.flux.bounds,
             alpha_bounds=self.alpha.bounds,
@@ -462,11 +441,10 @@ class PowerLawModel(BaseModel):
 
     @validate_call
     def bootstrap(
-        self,
-        x: FloatVector,
-        Y: FloatMatrix,
-        dy: FloatVector,
+        self, x: FloatVector, Y: FloatMatrix, dy: FloatVector,
     ) -> tuple[FloatVector, FloatVector]:
+        from quasar_models.utils.astropy import _apply_bounds
+        from quasar_models.utils.linear_regression import linreg
         assert x.size == Y.shape[-1]
 
         masks = Y > 0
@@ -478,15 +456,15 @@ class PowerLawModel(BaseModel):
         b: list[float] = []
         for mask, y in zip(masks, Y):
             res = linreg(
-                self.transform_x.__wrapped__(self, x[mask]),
-                self.transform_y.__wrapped__(self, y[mask]),
-                self.transform_dy.__wrapped__(self, y[mask], dy[mask]),
+                self.transform_x(x[mask]),
+                self.transform_y(y[mask]),
+                self.transform_dy(y[mask], dy[mask]),
             )
             a.append(res[0])
             b.append(res[1])
 
-        flux = apply_bounds(self.y0 * exp(a), self.flux.bounds)
-        alpha = apply_bounds(b, self.alpha.bounds)
+        flux = _apply_bounds(self.y0 * math.exp(a), self.flux.bounds)
+        alpha = _apply_bounds(b, self.alpha.bounds)
 
         return flux, alpha
 
@@ -494,7 +472,7 @@ class PowerLawModel(BaseModel):
 
     def _get_flipped_func(
         self,
-    ) -> Callable[[float | NDArray[float64]], float | NDArray[float64]]:
+    ) -> Callable[[float | FloatArray], float | FloatArray]:
         """
         Returns function equivalent to f(...) = 1 / self.evaluate(...)
         """
@@ -506,6 +484,7 @@ class PowerLawModel(BaseModel):
     ### Serialization
 
     def serialize(self, info: Info) -> dict[str, dict[str, Any]]:
+        from quasar_models.io.serialization import serialize_parameter
         flux_unit = str(info.units.flux_unit)
         data = {
             "name": self.name,
@@ -516,13 +495,15 @@ class PowerLawModel(BaseModel):
 
     @classmethod
     def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
+        from quasar_models.io.serialization import deserialize_parameter
         flux_unit = str(info.units.flux_unit)
         flux = deserialize_parameter(data["flux"], flux_unit)
         alpha = deserialize_parameter(data["alpha"], None)
 
         out = PowerLawModel.create(
-            info.continuum.x0, info.continuum.y0, 
-            flux["value"], 
+            info.continuum.x0,
+            info.continuum.y0,
+            flux["value"],
             alpha["value"],
             name=data["name"],
             flux_bounds=flux["bounds"],
@@ -534,4 +515,6 @@ class PowerLawModel(BaseModel):
         out.alpha.tied = alpha["tied"]
 
         return out
-        
+
+
+type PlModel = PowerLawModel

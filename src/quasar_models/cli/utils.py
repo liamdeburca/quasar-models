@@ -2,19 +2,24 @@ from pathlib import Path
 
 import click
 from quasar_utils.setup import Info
+
+from quasar_models.balmer.continuum import io as balmer_cont_io
+from quasar_models.balmer.continuum.setup import QSFIT
 from quasar_models.host import io as host_io
 from quasar_models.host.setup import BC2003
 from quasar_models.iron import io as iron_io
 from quasar_models.iron.setup import BW, V2003, VW2001
-from quasar_models.balmer.continuum import io as balmer_cont_io
-from quasar_models.balmer.continuum.setup import QSFIT
 
 INFO = Info()
 
 DEFAULT_IRON_TEMPLATES: tuple[str, ...] = (
-    "vw2001", "vw2001_blue", "vw2001_red",
+    "vw2001",
+    "vw2001_blue",
+    "vw2001_red",
     "bw",
-    "v2003", "v2003_blue", "v2003_red",
+    "v2003",
+    "v2003_blue",
+    "v2003_red",
 )
 
 DEFAULT_HOST_TEMPLATES: tuple[tuple[str, int], ...] = tuple(
@@ -22,12 +27,17 @@ DEFAULT_HOST_TEMPLATES: tuple[tuple[str, int], ...] = tuple(
     for path in BC2003.get_all_paths()
 )
 
-DEFAULT_BALMER_CONTINUUM_TEMPLATES: tuple[tuple[str, int, float, float], ...] = (
+DEFAULT_BALMER_CONTINUUM_TEMPLATES: tuple[
+    tuple[str, int, float, float], ...
+] = (
     ("qsfit", temp, tau, scale)
     for temp, tau, scale in zip(QSFIT.TEMPS, QSFIT.TAUS, QSFIT.SCALES)
 )
 
-def _check_path(path: Path, force: bool, verbose: bool, fail_fast: bool) -> None:
+
+def _check_path(
+    path: Path, force: bool, verbose: bool, fail_fast: bool
+) -> None:
     if path.exists():
         if verbose:
             click.echo(f">>> Template already exists at {path!s}!")
@@ -38,35 +48,41 @@ def _check_path(path: Path, force: bool, verbose: bool, fail_fast: bool) -> None
                 return
             raise FileExistsError(path)
 
-def _check_method(cls_: type, method: str, verbose: bool, fail_fast: bool) -> None:
+
+def _check_method(
+    cls_: type, method: str, verbose: bool, fail_fast: bool
+) -> None:
     if not hasattr(cls_, method):
         if verbose:
-            click.echo(f">>> Method {method} does not exist on class {cls_.__name__}")
+            click.echo(
+                f">>> Method {method} does not exist on class {cls_.__name__}"
+            )
         if not fail_fast:
             return
-        raise RuntimeError(f"Method {method} does not exist on class {cls_.__name__}")
+        raise RuntimeError(
+            f"Method {method} does not exist on class {cls_.__name__}"
+        )
+
 
 ###
 
+
 def _iron_init_helper(
-    template: str, 
-    force: bool, 
-    verbose: bool,
-    fail_fast: bool,
+    template: str, force: bool, verbose: bool, fail_fast: bool,
 ) -> None:
     if template not in DEFAULT_IRON_TEMPLATES:
         if verbose:
             click.echo(f">>> Unknown template '{template}'")
         if fail_fast:
             raise ValueError(f"Unknown template '{template}'")
-        return 
+        return
 
     if verbose:
         click.echo(f"Initializing template: {template}")
 
     path = iron_io.convert_path(template)
     _check_path(path, force, verbose, fail_fast)
-    
+
     cls_: type[VW2001 | BW | V2003] = {
         "vw2001": VW2001,
         "bw": BW,
@@ -98,12 +114,9 @@ def _iron_init_helper(
     if verbose:
         click.echo(">>> Successfully initialized template!")
 
+
 def _host_init_helper(
-    source: str,
-    age: int,
-    force: bool, 
-    verbose: bool,
-    fail_fast: bool,   
+    source: str, age: int, force: bool, verbose: bool, fail_fast: bool,
 ) -> None:
     if (source, age) not in DEFAULT_HOST_TEMPLATES:
         if verbose:
@@ -111,16 +124,14 @@ def _host_init_helper(
         if fail_fast:
             raise ValueError(f"Unknown host template: {source=} {age=} (Gyr)")
         return
-    
+
     if verbose:
         click.echo(f"Initializing host template: {source=} {age=} (Gyr)")
 
     path = host_io.convert_params_to_path(source, int(1e9 * age))
     _check_path(path, force, verbose, fail_fast)
 
-    cls_: type[BC2003] = {
-        "bc2003": BC2003,
-    }[source]
+    cls_: type[BC2003] = {"bc2003": BC2003,}[source]
     cls_name = cls_.__name__
     method = "init_basic"
 
@@ -141,6 +152,7 @@ def _host_init_helper(
     if verbose:
         click.echo(">>> Successfully initialized template!")
 
+
 def _balmer_cont_init_helper(
     name: str,
     temp: int,
@@ -157,10 +169,7 @@ def _balmer_cont_init_helper(
         )
 
     path = balmer_cont_io.convert_params_to_path(
-        temp=temp, 
-        tau=tau, 
-        scale=scale, 
-        info=INFO,
+        temp=temp, tau=tau, scale=scale, info=INFO,
     )
     _check_path(path, force, verbose, fail_fast)
 

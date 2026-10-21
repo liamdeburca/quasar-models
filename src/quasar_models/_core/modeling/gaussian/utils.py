@@ -11,10 +11,7 @@ class _GaussianBase:
     def _get_wrapped(cls, func_name: str | None) -> Callable:
         raise NotImplementedError
 
-    def __init__(
-        self,
-        func_name: str | None = None,
-    ) -> None:
+    def __init__(self, func_name: str | None = None,) -> None:
         self.func_name: str | None = func_name
         self.__wrapped__: Callable | None = self._get_wrapped(func_name)
 
@@ -122,10 +119,14 @@ class GaussianFitDerivV(_GaussianBase):
         if derivs is None:
             derivs = zeros((3, x.size), dtype=float64)
         if self.__wrapped__ is not None:
-            self.__wrapped__(derivs, x, strength, fwhm_v, v_off, wave, sigma_res)
+            self.__wrapped__(
+                derivs, x, strength, fwhm_v, v_off, wave, sigma_res
+            )
         return derivs
 
+
 ###
+
 
 class GaussianEvaluateX(_GaussianBase):
     @classmethod

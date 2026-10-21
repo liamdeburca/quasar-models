@@ -1,9 +1,13 @@
+from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
 from quasar_models._core.modeling.template.evaluate cimport (
     _evaluate_exact as _template_evaluate_exact,
+)
+from quasar_models._core.modeling.template.evaluate cimport (
     _evaluate_interp as _template_evaluate_interp,
+)
+from quasar_models._core.modeling.template.evaluate cimport (
     _evaluate_rescale as _template_evaluate_rescale,
 )
-from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
 
 ### By convolution
 

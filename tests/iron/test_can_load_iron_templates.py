@@ -1,6 +1,6 @@
-import numpy as np
-
 from pathlib import Path
+
+import numpy as np
 
 _this_file: Path = Path(__file__).resolve()
 
@@ -43,8 +43,9 @@ def test_can_load_bw() -> None:
 
 
 def test_can_save_and_load_template() -> None:
-    from quasar_models.iron import IronTemplate
     from os import remove
+
+    from quasar_models.iron import IronTemplate
 
     template = IronTemplate.load("vw_2001", _info)
     temp_path = template.save("test.fits", overwrite=True)

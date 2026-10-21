@@ -60,8 +60,7 @@ class IronEvaluate(_TemplateEvaluate):
         """
         if not isinstance(template, CyTemplate):
             template = CyTemplate.fromTemplate(
-                template,
-                simplify=self.simplify,
+                template, simplify=self.simplify,
             )
 
         return super().__call__(
@@ -127,8 +126,7 @@ class IronFitDeriv(_TemplateFitDeriv):
         """
         if not isinstance(template, CyTemplate):
             template = CyTemplate.fromTemplate(
-                template, 
-                simplify=self.simplify,
+                template, simplify=self.simplify,
             )
 
         return super().__call__(

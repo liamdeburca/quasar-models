@@ -7,11 +7,14 @@ from . import utils
 def cli():
     pass
 
+
 ### Initialisation of iron templates
+
 
 @cli.group("iron")
 def iron():
     pass
+
 
 @iron.command("init")
 def iron_init(
@@ -28,6 +31,7 @@ def iron_init(
 
     for template in templates:
         utils._iron_init_helper(template, force, verbose, fail_fast)
-        
+
+
 if __name__ == "__main__":
     cli()

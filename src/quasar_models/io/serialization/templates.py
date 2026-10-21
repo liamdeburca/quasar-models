@@ -22,17 +22,25 @@ def deserialize_host_template(data: dict, info: Info) -> HostGalaxyTemplate:
     return HostGalaxyTemplate.deserialize(data, info)
 
 
-def serialize_balmer_continuum_template(template: BalmerContinuumTemplate, info: Info):
+def serialize_balmer_continuum_template(
+    template: BalmerContinuumTemplate, info: Info
+):
     return template.serialize(info)
 
 
-def deserialize_balmer_continuum_template(data: dict, info: Info) -> BalmerContinuumTemplate:
+def deserialize_balmer_continuum_template(
+    data: dict, info: Info
+) -> BalmerContinuumTemplate:
     return BalmerContinuumTemplate.deserialize(data, info)
 
 
-def serialize_balmer_series_template(template: BalmerSeriesTemplate, info: Info):
+def serialize_balmer_series_template(
+    template: BalmerSeriesTemplate, info: Info
+):
     return template.serialize(info)
 
 
-def deserialize_balmer_series_template(data: dict, info: Info) -> BalmerSeriesTemplate:
+def deserialize_balmer_series_template(
+    data: dict, info: Info
+) -> BalmerSeriesTemplate:
     return BalmerSeriesTemplate.deserialize(data, info)

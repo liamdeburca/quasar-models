@@ -4,30 +4,17 @@ from collections.abc import Iterable
 from itertools import product
 from typing import Any, ClassVar, Literal, Self, TypedDict, Union
 
+import numpy as np
 from astropy.constants import c
-from numpy import float64, fromiter
-from quasar_typing.astropy import CompoundModel_
 from quasar_typing.bounds import AstropyBounds
 from quasar_utils.setup import Info
 
 from quasar_models._core.modeling.vprofilecopy import (
     VProfileCopyEvaluate,
     VProfileCopyFitDeriv,
-    choose_evaluate_func,
-    choose_fit_deriv_func,
-    evaluate_v,
-    fit_deriv_v_all,
 )
 from quasar_models.line.gaussian import GaussianModel
-from quasar_models.modeling import BaseModel, LinearTie
-
-from ...utils.astropy import apply_bounds
-from ...utils.serialization import (
-    deserialize_parameter,
-    deserialize_quantity,
-    serialize_parameter,
-    serialize_quantity,
-)
+from quasar_models.modeling import BaseModel
 
 C_KMS: float = c.to("km/s").value  # Exact speed of light in km/s
 
@@ -157,6 +144,8 @@ class _VProfileCopy(BaseModel):
         dx: float | None = None,
         adapt: bool = True,
     ) -> Self:
+        from quasar_models.utils.astropy import _apply_bounds
+        
         if isinstance(gs, tuple) and len(gs) != cls.n_profiles:
             raise ValueError(
                 "No. of Gaussian models does not match the number of profiles: "
@@ -179,7 +168,7 @@ class _VProfileCopy(BaseModel):
             meta=meta,
         )
         if strength_scale_bounds is not None:
-            model.strength_scale.value = apply_bounds.__wrapped__(
+            model.strength_scale.value = _apply_bounds(
                 strength_scale_value, strength_scale_bounds
             )
             model.strength_scale.bounds = strength_scale_bounds
@@ -296,7 +285,7 @@ class _VProfileCopy(BaseModel):
     def _get_params_from_args(cls, n_profiles: int, *args) -> tuple[float, ...]:
         args = cls._transform_args_if_ndarray(*args)
         return tuple(
-            fromiter((args[3 * i + o] for i in range(n_profiles)), dtype=float64)
+            np.fromiter((args[3 * i + o] for i in range(n_profiles)), dtype=np.float64)
             for o in range(3)
         )
 
@@ -327,7 +316,10 @@ class _VProfileCopy(BaseModel):
 
     @property
     def evaluate_func(self) -> VProfileCopyEvaluate:
-        return self.meta.get("evaluate_func", evaluate_v)
+        if not (stored := self.meta.get("evaluate_func")):
+            from quasar_models._core.modeling.vprofilecopy import evaluate_v
+            return evaluate_v
+        return stored
 
     @evaluate_func.setter
     def evaluate_func(self, value: VProfileCopyEvaluate) -> None:
@@ -339,7 +331,12 @@ class _VProfileCopy(BaseModel):
 
     @property
     def fit_deriv_func(self) -> VProfileCopyFitDeriv:
-        return self.meta.get("fit_deriv_func", fit_deriv_v_all)
+        if not (stored := self.meta.get("fit_deriv_func")):
+            from quasar_models._core.modeling.vprofilecopy import (
+                fit_deriv_v_all,
+            )
+            return fit_deriv_v_all
+        return stored
 
     @fit_deriv_func.setter
     def fit_deriv_func(self, value: VProfileCopyFitDeriv) -> None:
@@ -350,12 +347,18 @@ class _VProfileCopy(BaseModel):
         self.meta.pop("fit_deriv_func", None)
 
     def _choose_evaluate_func(self) -> None:
+        from quasar_models._core.modeling.vprofilecopy import (
+            choose_evaluate_func,
+        )
         self.evaluate_func = choose_evaluate_func(self.dx is None)
 
     def _choose_fit_deriv_func(
         self,
         fixed: dict[str, bool] | None = None,
     ) -> None:
+        from quasar_models._core.modeling.vprofilecopy import (
+            choose_fit_deriv_func,
+        )
         self.fit_deriv_func = choose_fit_deriv_func(
             self.dx is None, 
             fixed or self.fixed,
@@ -406,6 +409,7 @@ class _VProfileCopy(BaseModel):
         -----
         Lorem ipsum.
         """
+        from quasar_models.modeling import LinearTie
         if len(gs) != self.n_profiles:
             raise ValueError(
                 "No. of Gaussian models does not match the number of profiles: "
@@ -435,27 +439,29 @@ class _VProfileCopy(BaseModel):
 
     def adaptStrengthScale(
         self,
-        model: CompoundModel_[GaussianModel] | Iterable[GaussianModel],
+        model: Iterable[GaussianModel],
     ) -> None:
         """
         Lorem ipsum.
 
         Parameters
         ----------
-        model : CompoundModel_[GaussianModel] or Iterable[GaussianModel]
+        model : CompoundModelType[GaussianModel] or Iterable[GaussianModel]
 
         Notes
         -----
         Lorem ipsum.
         """
+        from quasar_models.utils.astropy import _apply_bounds
         current_strength = sum(
-            getattr(self, f"strength_{i}").value for i in range(1, self.n_profiles + 1)
+            getattr(self, f"strength_{i}").value 
+            for i in range(1, self.n_profiles + 1)
         )
         model_strength = sum(
             m.strength.value
             for m in (model if isinstance(model, Iterable) else [model])
         )
-        self.strength_scale.value = apply_bounds(
+        self.strength_scale.value = _apply_bounds(
             model_strength / current_strength,
             self.strength_scale.bounds,
         )
@@ -501,6 +507,11 @@ class _VProfileCopy(BaseModel):
     ### Serialization
 
     def serialize(self, info: Info) -> dict[str, dict[str, Any]]:
+        from quasar_models.utils.serialization import (
+            serialize_parameter,
+            serialize_quantity,
+        )
+        
         wave_unit = str(info.units.wavelength_unit)
         strength_unit = str(info.units.strength_unit)
 
@@ -516,19 +527,28 @@ class _VProfileCopy(BaseModel):
         # Per-profile parameters
         for i in range(1, self.n_profiles + 1):
             data[f"strength_{i}"] = serialize_parameter(
-                getattr(self, f"strength_{i}"), strength_unit
+                getattr(self, f"strength_{i}"), 
+                strength_unit,
+                scientific=True,
             )
             data[f"fwhm_v_{i}"] = serialize_parameter(
-                getattr(self, f"fwhm_v_{i}"), None
+                getattr(self, f"fwhm_v_{i}"), 
+                "km/s",
             )
             data[f"v_off_{i}"] = serialize_parameter(
-                getattr(self, f"v_off_{i}"), None
+                getattr(self, f"v_off_{i}"), 
+                "km/s",
             )
 
         return self._serialize_helper(data)
 
     @classmethod
     def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
+        from quasar_models.utils.serialization import (
+            deserialize_parameter,
+            deserialize_quantity,
+        )
+        
         wave_unit = str(info.units.wavelength_unit)
         strength_unit = str(info.units.strength_unit)
 
@@ -560,8 +580,8 @@ class _VProfileCopy(BaseModel):
         # Per-profile parameters
         for i in range(1, cls.n_profiles + 1):
             s = deserialize_parameter(data[f"strength_{i}"], strength_unit)
-            f = deserialize_parameter(data[f"fwhm_v_{i}"], None)
-            v = deserialize_parameter(data[f"v_off_{i}"], None)
+            f = deserialize_parameter(data[f"fwhm_v_{i}"], "km/s")
+            v = deserialize_parameter(data[f"v_off_{i}"], "km/s")
 
             getattr(model, f"strength_{i}").value = s["value"]
             getattr(model, f"strength_{i}").bounds = s["bounds"]

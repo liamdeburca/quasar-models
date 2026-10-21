@@ -14,18 +14,14 @@ from typing import Protocol
 from astropy.io import fits
 from astropy.units import Unit
 from quasar_typing.numpy import FloatVector
-from quasar_typing.pathlib import AbsoluteFITSPath, AnyAbsoluteFITSPath
+from quasar_typing.pathlib import AnyFITSPath, FITSPath
 from quasar_utils.setup import Info
 
-from quasar_models.modeling.template.io import (
-    BaseTemplateProtocol,
-    _load,
-    _save,
-)
-
-from ...utils.setup_utils import PathManager
+from quasar_models.modeling.template.io import BaseTemplateProtocol
+from quasar_models.utils.setup_utils import PathManager
 
 PATH_TO_CACHE: Path = PathManager.get_balmer_continuum_cache()
+
 
 class BalmerContinuumTemplateProtocol(BaseTemplateProtocol, Protocol):
     temp: float
@@ -34,7 +30,7 @@ class BalmerContinuumTemplateProtocol(BaseTemplateProtocol, Protocol):
     boltz: float
 
 
-def convert_path(path: str | AbsoluteFITSPath) -> AbsoluteFITSPath:
+def convert_path(path: str | FITSPath) -> FITSPath:
     if isinstance(path, str):
         path = Path(str(path).removesuffix(".fits") + ".fits")
         if "/" not in path.as_posix():
@@ -48,7 +44,7 @@ def convert_params_to_path(
     tau: float,
     scale: float,
     info: Info,
-) -> AnyAbsoluteFITSPath:
+) -> AnyFITSPath:
     return (
         PATH_TO_CACHE
         / "continuum:edge{:.1f}_temp{:.1e}_tau{:.1f}_scale{:.1f}.fits".format(
@@ -63,9 +59,11 @@ def convert_params_to_path(
 def save(
     *,
     template: BalmerContinuumTemplateProtocol,
-    path: str | AbsoluteFITSPath,
+    path: str | FITSPath,
     info: Info,
-) -> AbsoluteFITSPath:
+) -> FITSPath:
+    from quasar_models.modeling.template.io import _save
+
     path = convert_path(path)
     hdul = _save(
         template=template,
@@ -104,7 +102,7 @@ def save_to_cache(
     *,
     template: BalmerContinuumTemplateProtocol,
     info: Info,
-) -> AbsoluteFITSPath:
+) -> FITSPath:
     path = convert_params_to_path(
         temp=template.temp,
         tau=template.tau,
@@ -120,9 +118,11 @@ def save_to_cache(
 
 def load(
     *,
-    path: str | AbsoluteFITSPath,
+    path: str | FITSPath,
     info: Info,
 ) -> dict:
+    from quasar_models.modeling.template.io import _load
+    
     path = convert_path(path)
     kwargs = _load(
         path=path,

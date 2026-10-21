@@ -1,17 +1,23 @@
-from quasar_models._core.modeling.template.evaluate cimport (
-    _evaluate_exact as _template_evaluate_exact,
-    _evaluate_interp as _template_evaluate_interp,
-    _evaluate_rescale as _template_evaluate_rescale,
-)
-from quasar_models._core.modeling.template.fit_deriv cimport (
-    _fit_deriv_exact_only_fwhm as _template_fit_deriv_exact_only_fwhm,
-    _fit_deriv_interp_only_fwhm as _template_fit_deriv_interp_only_fwhm,
-)
-from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
 from quasar_models._core.modeling.balmer.evaluate cimport (
     _evaluate_exact,
     _evaluate_interp,
     _evaluate_rescale,
+)
+from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
+from quasar_models._core.modeling.template.evaluate cimport (
+    _evaluate_exact as _template_evaluate_exact,
+)
+from quasar_models._core.modeling.template.evaluate cimport (
+    _evaluate_interp as _template_evaluate_interp,
+)
+from quasar_models._core.modeling.template.evaluate cimport (
+    _evaluate_rescale as _template_evaluate_rescale,
+)
+from quasar_models._core.modeling.template.fit_deriv cimport (
+    _fit_deriv_exact_only_fwhm as _template_fit_deriv_exact_only_fwhm,
+)
+from quasar_models._core.modeling.template.fit_deriv cimport (
+    _fit_deriv_interp_only_fwhm as _template_fit_deriv_interp_only_fwhm,
 )
 
 ### By CONVOLUTION

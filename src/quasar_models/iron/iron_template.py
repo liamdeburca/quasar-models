@@ -3,16 +3,14 @@ __all__ = ["IronTemplate"]
 from dataclasses import field
 from typing import Any, ClassVar, Literal, Self
 
-from numpy import searchsorted
 from pydantic.dataclasses import dataclass
 from quasar_typing.numpy import FloatVector
-from quasar_typing.pathlib import AbsoluteDirPath, AbsoluteFITSPath
+from quasar_typing.pathlib import DirPath, FITSPath
 from quasar_utils.setup import Info
 
-from quasar_models._core.modeling.split import evaluate as split_evaluate
 from quasar_models.modeling.template import BaseTemplate
 
-from .io import PATH_TO_CACHE, load, load_from_cache, save, save_to_cache
+from .io import PATH_TO_CACHE
 
 
 @dataclass(eq=False)
@@ -21,11 +19,13 @@ class IronTemplate(BaseTemplate):
     Template class specifically designed for Iron pseudo-continua.
     """
 
-    name: Literal["vw2001", "v2003", "bw"] | str = field(default="vw2001", kw_only=True)
+    name: Literal["vw2001", "v2003", "bw"] | str = field(
+        default="vw2001", kw_only=True
+    )
 
     x_norm: float | None = field(default=None, kw_only=True)
 
-    PATH_TO_CACHE: ClassVar[AbsoluteDirPath] = PATH_TO_CACHE
+    PATH_TO_CACHE: ClassVar[DirPath] = PATH_TO_CACHE
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -33,6 +33,7 @@ class IronTemplate(BaseTemplate):
             self._calculate_normalisation()
 
     def _calculate_normalisation(self) -> float:
+        from numpy import searchsorted
         idx = searchsorted(self.fwhm, self.fwhm_norm, side="right") - 1
         y = self.data[idx]
         self.x_norm = self.x[y.argmax()]
@@ -100,7 +101,8 @@ class IronTemplate(BaseTemplate):
         -----
         This method assumes that the x-array is in logspace (logbinned).
         """
-        return split_evaluate(
+        from quasar_models._core.modeling.split import evaluate
+        return evaluate(
             x,
             split,
             left,
@@ -112,25 +114,28 @@ class IronTemplate(BaseTemplate):
     def save(
         self,
         *,
-        path: str | AbsoluteFITSPath,
+        path: str | FITSPath,
         info: Info,
-    ) -> AbsoluteFITSPath:
+    ) -> FITSPath:
         """
         Saves the IronTemplate to a FITS file.
         """
+        from .io import save
         return save(template=self, path=path, info=info)
 
     @classmethod
     def load(
         cls,
         *,
-        path: str | AbsoluteFITSPath,
+        path: str | FITSPath,
         info: Info,
     ) -> Self:
+        from .io import load
         kwargs = load(path=path, info=info)
         return IronTemplate(**kwargs)
 
-    def save_to_cache(self, info: Info) -> AbsoluteFITSPath:
+    def save_to_cache(self, info: Info) -> FITSPath:
+        from .io import save_to_cache
         return save_to_cache(template=self, info=info)
 
     @classmethod
@@ -140,6 +145,7 @@ class IronTemplate(BaseTemplate):
         name: Literal["vw2001", "v2003", "bw"] | str,
         info: Info,
     ) -> Self:
+        from .io import load_from_cache
         kwargs = load_from_cache(name=name, info=info)
         return IronTemplate(**kwargs)
 
@@ -149,7 +155,7 @@ class IronTemplate(BaseTemplate):
     def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
         template = cls.load_from_cache(name=data["name"], info=info)
         template = cls._deserialize_helper(template, data, info)
-        
+
         template.fwhm_norm = info.iron.fwhm_norm
         template.normalisation = None
         template.__post_init__()

@@ -11,10 +11,7 @@ class _VProfileCopyBase:
     def _get_wrapped(cls, func_name: str | None) -> Callable:
         raise NotImplementedError
 
-    def __init__(
-        self,
-        func_name: str | None = None,
-    ) -> None:
+    def __init__(self, func_name: str | None = None,) -> None:
         self.func_name: str | None = func_name
         self.__wrapped__: Callable | None = self._get_wrapped(func_name)
 
@@ -77,7 +74,14 @@ class VProfileCopyEvaluateV(_VProfileCopyBase):
             y = zeros(x.size, dtype=float64)
         if self.__wrapped__ is not None:
             self.__wrapped__(
-                y, x, strength_scale, strengths, fwhm_vs, v_offs, wave, sigma_res
+                y,
+                x,
+                strength_scale,
+                strengths,
+                fwhm_vs,
+                v_offs,
+                wave,
+                sigma_res,
             )
         return y
 
@@ -131,11 +135,20 @@ class VProfileCopyFitDerivV(_VProfileCopyBase):
             derivs = zeros((1 + 3 * strengths.size, x.size), dtype=float64)
         if self.__wrapped__ is not None:
             self.__wrapped__(
-                derivs, x, strength_scale, strengths, fwhm_vs, v_offs, wave, sigma_res
+                derivs,
+                x,
+                strength_scale,
+                strengths,
+                fwhm_vs,
+                v_offs,
+                wave,
+                sigma_res,
             )
         return derivs
 
+
 ###
+
 
 class VProfileCopyEvaluateX(_VProfileCopyBase):
     @classmethod
@@ -190,7 +203,7 @@ class VProfileCopyEvaluateX(_VProfileCopyBase):
             )
         return y
 
-    
+
 class VProfileCopyFitDerivX(_VProfileCopyBase):
     @classmethod
     def _get_wrapped(cls, func_name: str | None) -> Callable | None:

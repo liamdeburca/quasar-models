@@ -2,21 +2,12 @@ from collections.abc import Iterator
 from math import inf
 
 from emcee import State
-from numpy import (
-    dot,
-    empty,
-    float64,
-    fromiter,
-    isfinite,
-    ndim,
-    stack,
-    where,
-)
+from numpy import dot, empty, float64, fromiter, isfinite, ndim, stack, where
 from quasar_typing.numpy import (
     BoolVector,
     FloatMatrix,
     FloatVector,
-    RandomState_,
+    RandomStateType,
 )
 from scipy.linalg import LinAlgError, inv, pinv
 from scipy.stats import multivariate_normal
@@ -26,7 +17,7 @@ from ..sequential_model import SequentialModel
 
 
 def log_prior(
-    x: FloatVector | list[FloatVector] | FloatMatrix, 
+    x: FloatVector | list[FloatVector] | FloatMatrix,
     model: SequentialModel,
     bounds: tuple[FloatVector, FloatVector] | None = None,
 ) -> float | FloatVector:
@@ -39,8 +30,8 @@ def log_prior(
 
     if ndim(x) == 2:
         return where(
-            (x < lbs).any(axis=1) | (x > ubs).any(axis=1), 
-            -inf, 
+            (x < lbs).any(axis=1) | (x > ubs).any(axis=1),
+            -inf,
             0.0,
         )
 
@@ -48,9 +39,10 @@ def log_prior(
         return -inf
     return 0.0
 
+
 def log_likelihood(
     x: FloatVector | list[FloatVector] | FloatMatrix,
-    model: SequentialModel, 
+    model: SequentialModel,
     data: dict[str, FloatVector],
 ) -> float | FloatVector:
     """
@@ -62,15 +54,15 @@ def log_likelihood(
             z = model.fun(xi, data)
             out[i] = -0.5 * dot(z, z)
         return out
-    
+
     z = model.fun(x, data)
     return -0.5 * dot(z, z)
 
 
 def log_posterior(
-    x: FloatVector | list[FloatVector] | FloatMatrix, 
+    x: FloatVector | list[FloatVector] | FloatMatrix,
     *,
-    model: SequentialModel, 
+    model: SequentialModel,
     data: dict[str, FloatVector],
     bounds: tuple[FloatVector, FloatVector] | None = None,
 ) -> float | FloatVector:
@@ -78,19 +70,21 @@ def log_posterior(
     Compute the log posterior probability of the parameters `x` given the model and data.
     """
     prob: float | FloatVector = log_prior(x, model, bounds=bounds)
-    mask: bool | BoolVector = (prob != -inf)
+    mask: bool | BoolVector = prob != -inf
     if (ndim(x) == 2) and mask.any():
-        prob[mask] += log_likelihood(x[mask,:], model, data)
+        prob[mask] += log_likelihood(x[mask, :], model, data)
     elif mask:
         prob += log_likelihood(x, model, data)
 
     return prob
 
+
 ### INSTANTIATING SAMPLERS
 
+
 def get_fisher_information_matrix(
-    x: FloatVector, 
-    model: SequentialModel, 
+    x: FloatVector,
+    model: SequentialModel,
     data: dict[str, FloatVector],
 ) -> FloatMatrix:
     """
@@ -109,17 +103,19 @@ def get_covariance_matrix(fisher: FloatMatrix) -> FloatMatrix:
     # Ensure the covariance matrix is symmetric.
     return cov + cov.T
 
+
 ###
+
 
 def get_parameter_samples_uniform(
     n_samples: int,
     model: SequentialModel,
-    random_state: RandomState_,
+    random_state: RandomStateType,
 ) -> Iterator[FloatVector]:
     """
-    Create 'n_samples' samples of the model parameters from a uniform 
-    distribution within the parameter bounds of the model. If a parameter is 
-    unbounded, the parameter is not varied. 
+    Create 'n_samples' samples of the model parameters from a uniform
+    distribution within the parameter bounds of the model. If a parameter is
+    unbounded, the parameter is not varied.
     """
     x0 = model.x0
     lb, ub = model.bounds
@@ -136,14 +132,14 @@ def get_parameter_samples_uniform(
 
 
 def get_parameter_samples_fisher(
-    n_samples: int, 
+    n_samples: int,
     model: SequentialModel,
     data: dict[str, FloatVector],
-    random_state: RandomState_,
+    random_state: RandomStateType,
     max_attempts: int | None = None,
 ) -> Iterator[FloatVector]:
     """
-    Create 'n_samples' samples of the model parameters from a multivariate 
+    Create 'n_samples' samples of the model parameters from a multivariate
     normal distribution based on the Fisher information matrix. The samples are
     clipped using the parameter bounds of the model.
     """
@@ -154,9 +150,9 @@ def get_parameter_samples_fisher(
     fisher = get_fisher_information_matrix(x0, model, data)
     cov = get_covariance_matrix(fisher)
     dist = multivariate_normal(
-        mean=x0, 
-        cov=cov, 
-        seed=random_state, 
+        mean=x0,
+        cov=cov,
+        seed=random_state,
         allow_singular=True,
     )
 
@@ -164,8 +160,8 @@ def get_parameter_samples_fisher(
     n_attempts: int = 0
 
     loop = tqdm(
-        range(n_samples), 
-        desc="Generating parameter samples", 
+        range(n_samples),
+        desc="Generating parameter samples",
         total=n_samples,
         leave=False,
     )
@@ -189,6 +185,7 @@ def get_parameter_samples_fisher(
             break
     loop.close()
 
+
 def transform_samples_to_state(
     samples: list[FloatVector] | FloatMatrix,
     model: SequentialModel,
@@ -197,7 +194,10 @@ def transform_samples_to_state(
 ) -> State:
     coords = stack(samples, axis=0) if isinstance(samples, list) else samples
     log_prob = fromiter(
-        (log_posterior(x, model=model, data=data, bounds=bounds) for x in coords),
+        (
+            log_posterior(x, model=model, data=data, bounds=bounds)
+            for x in coords
+        ),
         dtype=float64,
     )
     return State(coords, log_prob=log_prob)

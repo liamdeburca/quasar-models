@@ -1,15 +1,9 @@
 from numpy import allclose, array, diff, float64, zeros
 from numpy.typing import NDArray
 
-from .evaluate import (
-    attenuation as _attenuation,
-)
-from .evaluate import (
-    continuum as _continuum,
-)
-from .evaluate import (
-    evaluate as _evaluate,
-)
+from .evaluate import attenuation as _attenuation
+from .evaluate import continuum as _continuum
+from .evaluate import evaluate as _evaluate
 
 
 def attenuation(
@@ -64,7 +58,19 @@ def evaluate(
     if normalisation is None:
         _y = zeros(1, dtype=float64)
         _x = array([edge], dtype=float64)
-        _evaluate(_y, _x, 1.0, fwhm, temp, tau, scale, edge, boltz, sigma_res, n_scales)
+        _evaluate(
+            _y,
+            _x,
+            1.0,
+            fwhm,
+            temp,
+            tau,
+            scale,
+            edge,
+            boltz,
+            sigma_res,
+            n_scales,
+        )
         normalisation = _y[0]
         del _y, _x
 

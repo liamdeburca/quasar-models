@@ -15,7 +15,7 @@ from numpy import (
     zeros,
 )
 from pydantic.dataclasses import dataclass
-from quasar_typing.astropy import CompoundModel_
+from quasar_typing.astropy.modeling import CompoundModelType
 from quasar_typing.numpy import (
     BoolVector,
     FloatArray,
@@ -23,16 +23,10 @@ from quasar_typing.numpy import (
     FloatVector,
     IntVector,
 )
-from quasar_typing.scipy import csr_matrix_
-from quasar_utils.resolving import apply_resolution
+from quasar_typing.scipy import CSRMatrix
 
-from ..utils.astropy import apply_bounds
 from .base_model import BaseModel
-from .utils import (
-    LinearTie,
-    Param,
-    get_param_type,
-)
+from .utils import Param, _get_param_type
 
 
 def _validate_compound_model(model: CompoundModel) -> None:
@@ -65,11 +59,11 @@ def _validate_initial_values(params: Iterable[Param | Parameter]) -> None:
             if (lb is not None) and val < lb:
                 msg = f"Parameter '{param.name}' has value {val} below lower bound {lb}."
                 raise ValueError(msg)
-            
+
             if (ub is not None) and val > ub:
                 msg = f"Parameter '{param.name}' has value {val} above upper bound {ub}."
                 raise ValueError(msg)
-            
+
             if (lb is not None) and (ub is not None) and lb == ub:
                 msg = f"Parameter '{param.name}' has identical lower and upper bounds {(lb, ub)}."
                 raise ValueError(msg)
@@ -77,10 +71,10 @@ def _validate_initial_values(params: Iterable[Param | Parameter]) -> None:
 
 @dataclass(repr=False)
 class SequentialModel:
-    _model: Union[BaseModel, CompoundModel_[BaseModel]]
+    _model: Union[BaseModel, CompoundModelType[BaseModel]]
 
     # For perfoming instrumental resolution correction
-    kernels: FloatMatrix | csr_matrix_ | None = None
+    kernels: FloatMatrix | CSRMatrix | None = None
 
     n_submodels: int = field(init=False)
     submodels: tuple[BaseModel, ...] = field(init=False)
@@ -132,7 +126,7 @@ class SequentialModel:
 
         # Parameters
         self._params = tuple(
-            Param.from_parameter(getattr(submodel, param_name))
+            Param._from_parameter(getattr(submodel, param_name))
             for submodel in self.submodels
             for param_name in submodel.param_names
         )
@@ -199,7 +193,7 @@ class SequentialModel:
         _fixed_params: list[Param] = []
 
         for i, param in enumerate(self._params):
-            param_type = get_param_type(param, self.submodels, coerce=True)
+            param_type = _get_param_type(param, self.submodels, coerce=True)
             match param_type:
                 case "free":
                     _free_indices.append(i)
@@ -211,7 +205,7 @@ class SequentialModel:
                     _tied_indices.append(i)
                     _tied_params.append(param)
 
-                    tied: LinearTie = param.tied
+                    tied = param.tied
                     _tied_to_indices.append(
                         self._params_dict[tied.model_name][tied.parameter_name]
                     )
@@ -238,13 +232,16 @@ class SequentialModel:
         self._start_stop_indices[0] = 0
         for i, submodel in enumerate(self.submodels):
             n_params = len(submodel.param_names)
-            self._start_stop_indices[i + 1] = self._start_stop_indices[i] + n_params
+            self._start_stop_indices[i + 1] = (
+                self._start_stop_indices[i] + n_params
+            )
 
     def _update_bounds(self) -> None:
+        from quasar_models.utils.astropy import _apply_bounds
         for i, j in zip(self._tied_indices, self._tied_to_indices):
             limiter: Param = self._params[i]
             param: Param = self._params[j]
-            
+
             a: float = limiter.tied.a
             b: float = limiter.tied.b
             if a == 0:
@@ -260,18 +257,19 @@ class SequentialModel:
                 new_ub = min(new_ub, (_ub - b) / a)
 
             param.bounds = (new_lb, new_ub)
-            param.value = apply_bounds.__wrapped__(param.value, param.bounds)
+            param.value = _apply_bounds(param.value, param.bounds)
             self._initial_values[j] = param.value
 
     def _set_inst_corr_function(self) -> None:
         """
-        Set the function responsible for applying instrumental correction to the 
+        Set the function responsible for applying instrumental correction to the
         model.
         """
+        from quasar_utils.resolving import _apply_resolution
         if self.kernels is None:
             self._inst_correction = lambda y: y
         else:
-            self._inst_correction = lambda y: apply_resolution(
+            self._inst_correction = lambda y: _apply_resolution(
                 y,
                 self.kernels,
                 out=y,
@@ -280,7 +278,7 @@ class SequentialModel:
     # Evaluation
 
     def _get_full_parameter_array(
-        self, 
+        self,
         free_params: FloatVector,
     ) -> FloatVector:
         """
@@ -305,8 +303,7 @@ class SequentialModel:
         params[self._free_indices] = free_params
         if self._n_tied > 0:
             params[self._tied_indices] = (
-                self._tied_as * params[self._tied_to_indices] 
-                + self._tied_bs
+                self._tied_as * params[self._tied_to_indices] + self._tied_bs
             )
         return params
 
@@ -323,18 +320,18 @@ class SequentialModel:
 
     def get_true_fixed(self) -> dict[str, dict[str, bool]]:
         """
-        Return a dictionary of parameter-fixed status dictionaries for the 
+        Return a dictionary of parameter-fixed status dictionaries for the
         sequential model, i.e. a dictionary showing whether models' parameters
         are actually fixed or not (e.g. tied or free).
 
         Returns
         -------
         fixed_dict : dict[str, dict[str, bool]]
-            Dictionary mapping submodel names to dictionaries of 
+            Dictionary mapping submodel names to dictionaries of
             parameter-fixed statuses.
         """
         fixed_dict = {}
-        _isin = isin(arange(self._n), self._fixed_indices, assume_unique=True)  
+        _isin = isin(arange(self._n), self._fixed_indices, assume_unique=True)
         count: int = 0
         for submodel in self.submodels:
             fixed_dict[submodel.name] = fixed = {}
@@ -342,8 +339,9 @@ class SequentialModel:
                 fixed[param_name] = _isin[count]
                 count += 1
 
-        assert count == self._n, \
-            "Mismatch between counted parameters and total number of parameters."
+        assert (
+            count == self._n
+        ), "Mismatch between counted parameters and total number of parameters."
         return fixed_dict
 
     ### Without instrumental correction
@@ -377,7 +375,9 @@ class SequentialModel:
 
         return y
 
-    def _partial_deriv(self, x: FloatVector, params: FloatVector) -> FloatMatrix:
+    def _partial_deriv(
+        self, x: FloatVector, params: FloatVector
+    ) -> FloatMatrix:
         """
         Computes the Jacobian matrix of partial derivatives for all free parameters.
 
@@ -421,23 +421,29 @@ class SequentialModel:
         )
 
         return full_derivs[self._free_indices]
-    
-    def _fit_deriv(self, x: FloatVector, params: FloatVector) -> list[FloatVector]:
+
+    def _fit_deriv(
+        self, x: FloatVector, params: FloatVector
+    ) -> list[FloatVector]:
         return list(self._partial_deriv(x, params))
 
     ### With instrumental correction
-    
+
     def evaluate(self, x: FloatVector, params: FloatVector) -> FloatVector:
         """Call '_evaluate' and apply instrumental correction."""
         y = self._evaluate(x, params)
         return self._inst_correction(y)
 
-    def partial_deriv(self, x: FloatVector, params: FloatVector) -> FloatMatrix:
+    def partial_deriv(
+        self, x: FloatVector, params: FloatVector
+    ) -> FloatMatrix:
         """Call '_partial_deriv' and apply instrumental correction."""
         derivs = self._partial_deriv(x, params)
         return self._inst_correction(derivs)
 
-    def fit_deriv(self, x: FloatVector, params: FloatVector) -> list[FloatVector]:
+    def fit_deriv(
+        self, x: FloatVector, params: FloatVector
+    ) -> list[FloatVector]:
         return list(self.partial_deriv(x, params))
 
     def __call__(self, x: FloatVector) -> FloatVector:
@@ -449,9 +455,9 @@ class SequentialModel:
         self,
         params: FloatVector | None = None,
         copy: bool = True,
-    ) -> Union[BaseModel, CompoundModel_[BaseModel]]:
+    ) -> Union[BaseModel, CompoundModelType[BaseModel]]:
         """
-        Returns an Astropy (compound) model instance with the final fitted 
+        Returns an Astropy (compound) model instance with the final fitted
         parameter values.
 
         Parameters
@@ -471,7 +477,7 @@ class SequentialModel:
         out = self._model.copy() if copy else self._model
         if params is None:
             return out
-        
+
         if params.size != self._n:
             params = self._get_full_parameter_array(params)
 
@@ -485,7 +491,7 @@ class SequentialModel:
     def get_updated_model(
         self,
         copy: bool = True,
-    ) -> Union[BaseModel, CompoundModel_[BaseModel]]:
+    ) -> Union[BaseModel, CompoundModelType[BaseModel]]:
         return self.get_final_model(
             self.parameters[self._free_indices],
             copy=copy,
@@ -494,23 +500,23 @@ class SequentialModel:
     ### For Scipy `least_squares` optimization
 
     def fun(
-        self, 
-        x: FloatVector, 
+        self,
+        x: FloatVector,
         data: dict[str, FloatVector],
         where: BoolVector | None = None,
     ) -> FloatVector:
         """
-        Calculate the array of residuals. 
+        Calculate the array of residuals.
 
         Parameters
         ----------
         x : FloatVector
             Array of free parameter values (SciPy notation).
         data : dict[str, FloatVector]
-            Dictionary containing the data arrays. Must include keys: x 
+            Dictionary containing the data arrays. Must include keys: x
             (wavelengths), y (flux densities), w (weights)
         where : BoolVector | None
-            If provided, only the residuals where `where` is True are 
+            If provided, only the residuals where `where` is True are
             calculated.
 
         Returns
@@ -530,13 +536,13 @@ class SequentialModel:
         return (f - y) * w
 
     def jac(
-        self, 
-        x: FloatVector, 
+        self,
+        x: FloatVector,
         data: dict[str, FloatVector],
         where: BoolVector | None = None,
     ) -> FloatMatrix:
         """
-        Calculate the Jacobian matrix of the residuals with respect to the free 
+        Calculate the Jacobian matrix of the residuals with respect to the free
         parameters.
 
         Parameters
@@ -544,25 +550,25 @@ class SequentialModel:
         x : FloatVector
             Array of free parameter values (SciPy notation).
         data : dict[str, FloatVector]
-            Dictionary containing the data arrays. Must include keys: x 
+            Dictionary containing the data arrays. Must include keys: x
             (wavelengths), y (flux densities), w (weights)
         where : BoolVector | None
-            If provided, only the derivative values where `where` is True are 
+            If provided, only the derivative values where `where` is True are
             considered.
 
         Returns
         -------
         FloatMatrix
-            Jacobian matrix of the residuals with respect to the free 
+            Jacobian matrix of the residuals with respect to the free
             parameters.
         """
         derivs = self.partial_deriv(data["x"], x).T
         if where is None:
             w = data["w"]
         else:
-            derivs = derivs[where,:]
+            derivs = derivs[where, :]
             w = data["w"][where]
-        return derivs * w[:,None]
+        return derivs * w[:, None]
 
     @property
     def x0(self) -> FloatVector:
@@ -572,9 +578,8 @@ class SequentialModel:
     def bounds(self) -> tuple[FloatVector, FloatVector]:
         return tuple(
             fromiter(
-                (param.bounds[i] for param in self._free_params), 
+                (param.bounds[i] for param in self._free_params),
                 dtype=float64,
-            ) 
+            )
             for i in (0, 1)
         )
-    

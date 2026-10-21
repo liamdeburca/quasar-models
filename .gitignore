@@ -1,25 +1,16 @@
-.gitignore
+.DS_Store
+quasar_models.egg-info
+__pycache__
+.notes
+.cache
+build
+scripts
+temp
+src/quasar_models/cli
 
-.DS_Store 
-.github
-.vscode
-
-# Compiled python files
-__pycache__/
-*.pyc
-
-# Cached templates (iron/balmer/host)
-.cache/
-
-# Files under development
-pl_wiggle.py
-
-# pytest
-.pytest_cache/
-*.ipynb
-*.egg-info
-
-# cython
-*.c
 *.so
-*.o
+*.c
+*.pyc
+*.ipynb
+
+pl_wiggle.py

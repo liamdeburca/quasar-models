@@ -1,5 +1,6 @@
 from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
 
+
 cdef void _fit_deriv_exact_only_flux(
     double[:,::1] derivs,
     const double flux,

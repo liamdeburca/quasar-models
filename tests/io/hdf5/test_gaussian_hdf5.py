@@ -20,20 +20,13 @@ def test_gaussian_hdf5_roundtrip(gaussian_model, info, temp_dir: Path):
     # Write
     with h5py.File(path, "w") as f:
         gaussian_to_hdf5(
-            gaussian_model, 
-            f, 
-            info, 
-            group_name="gauss", 
-            force=True,
+            gaussian_model, f, info, group_name="gauss", force=True,
         )
 
     # Read and verify
     with h5py.File(path, "r") as f:
         grp = f["gauss"]
-        loaded = hdf5_to_gaussian(
-            grp, 
-            info,
-        )
+        loaded = hdf5_to_gaussian(grp, info,)
 
     assert loaded.name == gaussian_model.name
 
@@ -43,7 +36,9 @@ def test_gaussian_hdf5_roundtrip(gaussian_model, info, temp_dir: Path):
     assert loaded.sigma_res == pytest.approx(gaussian_model.sigma_res)
 
     # parameters
-    assert loaded.strength.value == pytest.approx(gaussian_model.strength.value)
+    assert loaded.strength.value == pytest.approx(
+        gaussian_model.strength.value
+    )
     assert loaded.fwhm_v.value == pytest.approx(gaussian_model.fwhm_v.value)
     assert loaded.v_off.value == pytest.approx(gaussian_model.v_off.value)
 
@@ -64,9 +59,7 @@ def test_gaussian_hdf5_list_single(gaussian_model, info, temp_dir: Path):
 
     with h5py.File(path, "w") as f:
         gaussians_to_hdf5(
-            models, f, info, 
-            group_name="gauss_list",
-            force=True,
+            models, f, info, group_name="gauss_list", force=True,
         )
 
     with h5py.File(path, "r") as f:
@@ -97,9 +90,7 @@ def test_gaussian_hdf5_list_multiple(gaussian_model, info, temp_dir: Path):
     path = temp_dir / "gaussian_list_multi.h5"
     with h5py.File(path, "w") as f:
         gaussians_to_hdf5(
-            models, f, info, 
-            group_name="gauss_multi", 
-            force=True,
+            models, f, info, group_name="gauss_multi", force=True,
         )
 
     with h5py.File(path, "r") as f:

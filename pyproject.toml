@@ -37,9 +37,6 @@ dev = [
     "isort",
 ]
 
-[project.scripts]
-quasar-models = "quasar_models.cli.main::cli"
-
 [project.urls]
 Repository = "https://github.com/liamdeburca/quasar-models"
 

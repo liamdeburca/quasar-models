@@ -30,12 +30,6 @@ def evaluate(
         y = zeros(x.shape, dtype=float64)
 
     _evaluate(
-        y,
-        x,
-        flux / normalisation,
-        fwhm,
-        sigma_res,
-        waves,
-        weights,
+        y, x, flux / normalisation, fwhm, sigma_res, waves, weights,
     )
     return y

@@ -23,12 +23,8 @@ n_pix = math.floor(math.log(X_UB / X_LB) / math.log(1 + SIGMA_RES))
 x = X_LB * (1 + SIGMA_RES) ** arange(n_pix)
 
 host_template = HostGalaxyTemplate.load_from_cache(
-    name=INFO.host.sources[0],
-    age=INFO.host.ages[0],
-    info=INFO,
-).createLogspace(
-    sigma_res=SIGMA_RES,
-)
+    name=INFO.host.sources[0], age=INFO.host.ages[0], info=INFO,
+).createLogspace(sigma_res=SIGMA_RES,)
 
 host_model: HostGalaxyModel = HostGalaxyModel.create(
     1.0,
@@ -40,6 +36,7 @@ host_model: HostGalaxyModel = HostGalaxyModel.create(
     flux_bounds=INFO.host.flux_bounds,
     fwhm_bounds=INFO.host.fwhm_bounds,
 )
+
 
 @contextmanager
 def rescaled_host_model() -> Generator[SequentialModel]:
@@ -54,6 +51,7 @@ def rescaled_host_model() -> Generator[SequentialModel]:
         host_model.fwhm.fixed = False
         host_model.allow_interp_fitting = False
 
+
 @contextmanager
 def interped_host_model() -> Generator[SequentialModel]:
     host_model.flux.fixed = False
@@ -67,6 +65,7 @@ def interped_host_model() -> Generator[SequentialModel]:
         host_model.fwhm.fixed = False
         host_model.allow_interp_fitting = False
 
+
 @contextmanager
 def exact_host_model() -> Generator[SequentialModel]:
     host_model.flux.fixed = False
@@ -79,6 +78,7 @@ def exact_host_model() -> Generator[SequentialModel]:
         host_model.flux.fixed = False
         host_model.fwhm.fixed = False
         host_model.allow_interp_fitting = False
+
 
 def benchmark_host_model(model: SequentialModel) -> tuple[list, float]:
     rng = default_rng(SEED)
@@ -94,25 +94,21 @@ def benchmark_host_model(model: SequentialModel) -> tuple[list, float]:
     else:
         fwhms = rng.uniform(*m.fwhm.bounds, size=N)
 
-
     ps = [
         array([args[i] for i in model._free_indices])
         for args in zip(fluxs, fwhms)
     ]
     start = perf_counter()
     ys = [
-        model.evaluate(x, p) 
-        for p in tqdm(
-            ps,
-            desc=str(m.evaluate_func),
-            total=N,
-        )
+        model.evaluate(x, p)
+        for p in tqdm(ps, desc=str(m.evaluate_func), total=N,)
     ]
     t = (perf_counter() - start) / N * 1e6
 
     return ys, t
 
-def main() -> None:    
+
+def main() -> None:
     with rescaled_host_model() as f:
         print(f"Rescaled host model: {f._model.evaluate_func}")
         _, t1 = benchmark_host_model(f)
@@ -129,6 +125,7 @@ def main() -> None:
     print(f"> With rescaling:     {t1:.3f} µs")
     print(f"> With interpolation: {t2:.3f} µs")
     print(f"> Exact:              {t3:.3f} µs")
+
 
 if __name__ == "__main__":
     main()

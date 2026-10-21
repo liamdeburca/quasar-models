@@ -1,16 +1,16 @@
-from quasar_models._core.utils cimport (
-    multiply_and_add_to,
-)
 from quasar_models._core.convolution.utils cimport (
     _convolve_deriv,
     _identify_closest_idx_for_deriv,
 )
+from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
 from quasar_models._core.modeling.template.evaluate cimport (
     _evaluate_exact,
     _evaluate_interp,
     _evaluate_rescale,
 )
-from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
+from quasar_models._core.utils cimport (
+    multiply_and_add_to,
+)
 
 ### By CONVOLUTION
 

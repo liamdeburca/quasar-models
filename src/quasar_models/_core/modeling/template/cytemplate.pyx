@@ -1,33 +1,44 @@
-from libc.math cimport (
-    sqrt as math_sqrt,
-)
-from numpy import (
-    ascontiguousarray as np_ascontiguousarray,
-    asarray as np_asarray,
-    zeros as np_zeros,
-    float64 as np_float64,
+from libc.math cimport sqrt as math_sqrt
+
+from numpy import asarray as np_asarray
+from numpy import ascontiguousarray as np_ascontiguousarray
+from numpy import float64 as np_float64
+from numpy import zeros as np_zeros
+
+from quasar_models._core.convolution.utils cimport (
+    _convolve_signal2d,
+    _kernel,
 )
 from quasar_models._core.modeling.split.evaluate cimport (
     _evaluate as _split_evaluate,
 )
 from quasar_models._core.modeling.split.fit_deriv cimport (
-    _fit_deriv_only_split       as _split_fit_deriv_only_split,
-    _fit_deriv_only_left        as _split_fit_deriv_only_left,
-    _fit_deriv_only_right       as _split_fit_deriv_only_right,
-    _fit_deriv_split_and_left   as _split_fit_deriv_split_and_left,
-    _fit_deriv_split_and_right  as _split_fit_deriv_split_and_right,
-    _fit_deriv_left_and_right   as _split_fit_deriv_left_and_right,
-    _fit_deriv_all              as _split_fit_deriv_all,
+    _fit_deriv_all as _split_fit_deriv_all,
 )
-from quasar_models._core.convolution.utils cimport (
-    _kernel,
-    _convolve_signal2d,
+from quasar_models._core.modeling.split.fit_deriv cimport (
+    _fit_deriv_left_and_right as _split_fit_deriv_left_and_right,
+)
+from quasar_models._core.modeling.split.fit_deriv cimport (
+    _fit_deriv_only_left as _split_fit_deriv_only_left,
+)
+from quasar_models._core.modeling.split.fit_deriv cimport (
+    _fit_deriv_only_right as _split_fit_deriv_only_right,
+)
+from quasar_models._core.modeling.split.fit_deriv cimport (
+    _fit_deriv_only_split as _split_fit_deriv_only_split,
+)
+from quasar_models._core.modeling.split.fit_deriv cimport (
+    _fit_deriv_split_and_left as _split_fit_deriv_split_and_left,
+)
+from quasar_models._core.modeling.split.fit_deriv cimport (
+    _fit_deriv_split_and_right as _split_fit_deriv_split_and_right,
 )
 from quasar_models._core.utils cimport (
-    arr_multiply_inplace,
     arr_add_inplace,
+    arr_multiply_inplace,
     multiply_and_multiply_to,
 )
+
 
 cdef class CyTemplate:
     """

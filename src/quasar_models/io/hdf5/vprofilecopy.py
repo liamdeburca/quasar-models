@@ -3,12 +3,12 @@ from h5py import File, Group, string_dtype
 from numpy import dtype, float32
 from quasar_utils.setup import Info
 
-from ...line import VProfileCopy, VProfileCopyDict
+from ...line.line import VProfileCopy, VProfileCopyDict
 from .utils import hdf5_to_model, hdf5_to_models, model_to_hdf5, models_to_hdf5
 
 
 def vprofilecopy_to_hdf5(
-    model: VProfileCopy, 
+    model: VProfileCopy,
     f: File | Group,
     info: Info,
     group_name: str | None = None,
@@ -42,15 +42,16 @@ def vprofilecopy_to_hdf5(
     grp.attrs["n_profiles"] = model.n_profiles
     return grp
 
+
 def vprofilecopies_to_hdf5(
-    models: list[VProfileCopy], 
+    models: list[VProfileCopy],
     f: File | Group,
     info: Info,
     group_name: str = "gaussians",
     _dtype: str | dtype = float32,
     force: bool = False,
     compression: str | None = None,
-    compression_opts: int | None = None,   
+    compression_opts: int | None = None,
 ) -> Group:
     unit_map: dict[str, str] = {}
     for i in range(models[0].n_profiles):
@@ -90,10 +91,8 @@ def vprofilecopies_to_hdf5(
 
     return grp
 
-def hdf5_to_vprofilecopy(
-    grp: Group,
-    info: Info,
-) -> VProfileCopy:
+
+def hdf5_to_vprofilecopy(grp: Group, info: Info,) -> VProfileCopy:
     n_profiles = grp.attrs["n_profiles"]
     model = VProfileCopyDict[n_profiles]()
 
@@ -106,17 +105,17 @@ def hdf5_to_vprofilecopy(
     hdf5_to_model(model, grp, unit_map=unit_map)
     # Read metadata stored as explicit attributes
     model.wave = (
-        grp.attrs["wave"] * Unit(grp.attrs["wavelength_unit"])
-    ).to(info.units.wavelength_unit).value
+        (grp.attrs["wave"] * Unit(grp.attrs["wavelength_unit"]))
+        .to(info.units.wavelength_unit)
+        .value
+    )
     model.sigma_res = info.loading.sigma_res
     model.linetype = grp.attrs["linetype"]
     model.n_sigmas = 3.0
     return model
 
-def hdf5_to_vprofilecopies(
-    grp: Group,
-    info: Info,
-) -> list[VProfileCopy]:
+
+def hdf5_to_vprofilecopies(grp: Group, info: Info,) -> list[VProfileCopy]:
     n_profiles = grp.attrs["n_profiles"]
     _cls = VProfileCopyDict[n_profiles]
 
@@ -125,7 +124,7 @@ def hdf5_to_vprofilecopies(
         unit_map[f"strength_{i+1}"] = str(info.units.strength_unit)
         unit_map[f"fwhm_v_{i+1}"] = "km/s"
         unit_map[f"v_off_{i+1}"] = "km/s"
-    
+
     n_models = grp.attrs["n_models"]
     models = [_cls() for _ in range(n_models)]
     waves = grp["waves"][()]
@@ -134,8 +133,10 @@ def hdf5_to_vprofilecopies(
     hdf5_to_models(models, grp, unit_map=unit_map)
     for model, wave, linetype in zip(models, waves, linetypes):
         model.wave = (
-            wave * Unit(grp.attrs["wavelength_unit"])
-        ).to(info.units.wavelength_unit).value
+            (wave * Unit(grp.attrs["wavelength_unit"]))
+            .to(info.units.wavelength_unit)
+            .value
+        )
         model.sigma_res = info.loading.sigma_res
         model.linetype = linetype
         model.n_sigmas = 3.0

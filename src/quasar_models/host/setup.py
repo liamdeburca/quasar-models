@@ -10,7 +10,7 @@ from typing import ClassVar
 
 from astropy.io import fits
 from astropy.units import Quantity, Unit
-from numpy import float64
+from numpy import float64, argsort
 from quasar_utils.setup import Info
 
 from quasar_models.host import io
@@ -34,25 +34,28 @@ class BC2003:
 
     @classmethod
     def get_age_from_path(cls, path: Path) -> int:
-        return int(
-            path.name\
-                .removeprefix("tau06_z02_")\
-                .removesuffix("_001.fits")
-        ) * 1000
+        return (
+            int(path.name.removeprefix("tau06_z02_").removesuffix("_001.fits"))
+            * 1000
+        )
 
     @classmethod
     def create_template(cls, path: Path) -> None:
-        x_bounds = INFO.units.getUnitlessWavelength(cls.X_BOUNDS) 
+        x_bounds = INFO.units.getUnitlessWavelength(cls.X_BOUNDS)
         age = cls.get_age_from_path(path)
 
         with fits.open(path) as hdul:
             x = hdul[1].data["WAVELENGTH"].astype(float64)
             x = INFO.units.getUnitlessWavelength(x * Unit("angstrom"))
+            x_sorted_indices = argsort(x)
 
             fwhm = INFO.units.getUnitlessKMS([0] * Unit("km/s"))
 
             y = hdul[1].data["FLUX"].astype(float64)
             mask = (x_bounds[0] <= x) & (x <= x_bounds[1])
+
+            x = x[x_sorted_indices]
+            y = y[x_sorted_indices]
 
             x = x[mask]
             y = y[mask]
@@ -74,6 +77,7 @@ class BC2003:
     def init_basic(cls) -> None:
         for path in cls.get_paths():
             cls.create_template(path)
+
 
 def main() -> None:
     BC2003().main()
@@ -97,7 +101,9 @@ def plot() -> None:
         ax.plot(t.x, t.data[0], label=f"{t.age / 1_000_000_000:.0f} Gyr", lw=1)
 
     ax.set_xlabel(
-        r"$\lambda_{\mathrm{rest}}$ (" + INFO.units.wavelength_unit.to_string() + ")",
+        r"$\lambda_{\mathrm{rest}}$ ("
+        + INFO.units.wavelength_unit.to_string()
+        + ")",
         loc="right",
     )
     ax.set_ylabel("Flux density (a.u.)")

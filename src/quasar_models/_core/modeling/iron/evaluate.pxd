@@ -1,5 +1,6 @@
 from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
 
+
 cdef void _evaluate_exact_no_split(
     double[::1] y,
     const double flux,

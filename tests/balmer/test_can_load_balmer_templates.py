@@ -1,6 +1,6 @@
-import numpy as np
-
 from pathlib import Path
+
+import numpy as np
 
 _this_file: Path = Path(__file__).resolve()
 
@@ -33,8 +33,9 @@ def test_can_load_template() -> None:
 
 
 def test_can_save_and_load_template() -> None:
-    from quasar_models.balmer import BalmerTemplate
     from os import remove
+
+    from quasar_models.balmer import BalmerTemplate
 
     template = BalmerTemplate.load("qsfit_01", _info)
     temp_path = template.save("test.fits", overwrite=True)

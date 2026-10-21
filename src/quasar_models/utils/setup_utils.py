@@ -13,7 +13,6 @@ class PathManager:
     _HOST_CACHE: ClassVar[Path] = STORAGE_DIR / "host"
     _IRON_CACHE: ClassVar[Path] = STORAGE_DIR / "iron"
 
-
     @classmethod
     def get_storage_dir(cls) -> Path:
         cls._STORAGE_DIR.mkdir(parents=True, exist_ok=True)

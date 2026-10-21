@@ -1,26 +1,24 @@
-from libc.math cimport (
-    log as math_log,
-    exp as math_exp,
-    sqrt as math_sqrt,
-    pi as math_pi,
-)
-from numpy import (
-    arange as np_arange,
-    ones as np_ones,
-    zeros as np_zeros,
-    full as np_full,
-    float64 as np_float64,
-    pad as np_pad,
-    searchsorted as np_searchsorted,
-    copy as np_copy,
-)
+from libc.math cimport exp as math_exp
+from libc.math cimport log as math_log
+from libc.math cimport pi as math_pi
+from libc.math cimport sqrt as math_sqrt
+
+from numpy import arange as np_arange
+from numpy import copy as np_copy
+from numpy import float64 as np_float64
+from numpy import full as np_full
+from numpy import ones as np_ones
+from numpy import pad as np_pad
+from numpy import searchsorted as np_searchsorted
+from numpy import zeros as np_zeros
 from scipy.signal import fftconvolve
 
 from quasar_models._core.utils cimport (
     arr_add_inplace,
-    dbl_multiply_inplace,
     dbl_divide_inplace,
+    dbl_multiply_inplace,
 )
+
 
 cdef double GAUSS_AMP = 1 / math_sqrt(2 * math_pi)
 cdef double SIGMA_TO_FWHM = 2 * math_sqrt(2 * math_log(2))

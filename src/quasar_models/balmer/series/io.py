@@ -15,16 +15,11 @@ from typing import Literal, Protocol
 from astropy.io import fits
 from astropy.units import Unit
 from quasar_typing.numpy import FloatVector, SortedFloatVector
-from quasar_typing.pathlib import AbsoluteFITSPath, AnyAbsoluteFITSPath
+from quasar_typing.pathlib import AnyFITSPath, FITSPath
 from quasar_utils.setup import Info
 
-from quasar_models.modeling.template.io import (
-    BaseTemplateProtocol,
-    _load,
-    _save,
-)
-
-from ...utils.setup_utils import PathManager
+from quasar_models.modeling.template.io import BaseTemplateProtocol
+from quasar_models.utils.setup_utils import PathManager
 
 _this_file: Path = Path(__file__).resolve()
 PATH_TO_DATA: Path = _this_file.parent / ".data"
@@ -41,7 +36,7 @@ class BalmerSeriesTemplateProtocol(BaseTemplateProtocol, Protocol):
     n_u_range: tuple[int, int]
 
 
-def convert_path(path: str | AbsoluteFITSPath) -> AbsoluteFITSPath:
+def convert_path(path: str | FITSPath) -> FITSPath:
     if isinstance(path, str):
         path = Path(str(path).removesuffix(".fits") + ".fits")
         if "/" not in path.as_posix():
@@ -57,15 +52,17 @@ def convert_params_to_path(
     n_u_range: tuple[int, int],
     info: Info,
     mode: Literal["save", "load"],
-) -> AnyAbsoluteFITSPath:
-    _edge = int(info.units.getWavelength(info.balmer.edge).to("angstrom").value)
+) -> AnyFITSPath:
+    _edge = int(
+        info.units.getWavelength(info.balmer.edge).to("angstrom").value
+    )
     _temp = int(info.units.getTemperature(temp).to("K").value)
     _dens = int(info.units.getDensity(dens).to("cm^-3").value)
     n_u_min = min(n_u_range)
     n_u_max = max(n_u_range)
 
     path = PATH_TO_CACHE / (
-        f"series-{name}:edge{_edge}_temp{_temp:.1e}_dens{_dens:.1e}"\
+        f"series-{name}:edge{_edge}_temp{_temp:.1e}_dens{_dens:.1e}"
         f"_nu{n_u_min}-{n_u_max}.fits"
     )
     if path.exists() or mode == "save":
@@ -81,18 +78,22 @@ def convert_params_to_path(
         if is_a_match(potential_path):
             return potential_path
 
-    msg = f"No cached template for name={name}, edge={info.balmer.edge}, "\
+    msg = (
+        f"No cached template for name={name}, edge={info.balmer.edge}, "
         f"temp={temp}, dens={dens}, n_u_range={n_u_range}"
-    
+    )
+
     raise FileNotFoundError(msg)
 
 
 def save(
     *,
     template: BalmerSeriesTemplateProtocol,
-    path: str | AbsoluteFITSPath,
+    path: str | FITSPath,
     info: Info,
-) -> AbsoluteFITSPath:
+) -> FITSPath:
+    from quasar_models.modeling.template.io import _save
+
     path = convert_path(path)
     hdul = _save(
         template=template,
@@ -148,11 +149,7 @@ def save(
     return path
 
 
-def save_to_cache(
-    *,
-    template: BalmerSeriesTemplateProtocol,
-    info: Info,
-) -> AbsoluteFITSPath:
+def save_to_cache(*, template: BalmerSeriesTemplateProtocol, info: Info) -> FITSPath:
     path = convert_params_to_path(
         name=template.name,
         temp=template.temp,
@@ -168,11 +165,9 @@ def save_to_cache(
     )
 
 
-def load(
-    *,
-    path: str | AbsoluteFITSPath,
-    info: Info,
-) -> dict:
+def load(*, path: str | FITSPath, info: Info) -> dict:
+    from quasar_models.modeling.template.io import _load
+
     path = convert_path(path)
     kwargs = _load(
         path=path,

@@ -1,60 +1,39 @@
 __all__ = ["BaseTemplate"]
 
+import math
 from abc import ABC, abstractmethod
 from dataclasses import field
 from pathlib import Path
 from typing import Any, ClassVar, Self
 
-from numpy import (
-    arange,
-    array,
-    array_equal,
-    ascontiguousarray,
-    diff,
-    empty,
-    exp,
-    float64,
-    full_like,
-    interp,
-    isfinite,
-    log,
-    maximum,
-    median,
-    searchsorted,
-    stack,
-)
-from numpy.typing import NDArray
-from pydantic.dataclasses import dataclass
+import numpy as np
+import pydantic
 from quasar_typing.bounds import AstropyBounds
 from quasar_typing.numpy import FloatMatrix, FloatVector, SortedFloatVector
-from quasar_typing.pathlib import AbsoluteDirPath, AbsoluteFITSPath
-from quasar_typing.scipy import csr_matrix_
-from quasar_utils.binning import alpha_matrix_sparse, lin_dx
-from quasar_utils.decorators import validate_call
-from quasar_utils.interpolation import create_interp_matrix
-from quasar_utils.raster import rasterise
+from quasar_typing.pathlib import DirPath, FITSPath
+from quasar_typing.scipy import CSRMatrix
 from quasar_utils.setup import Info
 
-from ..._core.convolution import convolve_signal, kernel
+from quasar_models._core.convolution import convolve_signal, kernel
 
 templates_dir: Path = Path(__file__).parent / "templates"
 
 
-def drop_nan(arr: NDArray[float64]) -> NDArray[float64]:
-    return arr[isfinite(arr)]
+def drop_nan(arr: FloatVector) -> FloatVector:
+    return arr[np.isfinite(arr)]
 
 
-def drop_nonpos(arr: NDArray[float64]) -> NDArray[float64]:
-    return arr[isfinite(arr) & (arr > 0)]
+def drop_nonpos(arr: FloatVector) -> FloatVector:
+    return arr[np.isfinite(arr) & (arr > 0)]
 
 
-SIGMA_TO_FWHM: float = 2 * (2 * log(2)) ** 0.5
+SIGMA_TO_FWHM: float = 2 * (2 * math.log(2)) ** 0.5
 FWHM_TO_SIGMA: float = 1 / SIGMA_TO_FWHM
 
 TemplateTuple = tuple[FloatMatrix, FloatVector, FloatVector]
 
 
-@dataclass
+@pydantic.dataclasses.dataclass
 class BaseTemplate(ABC):
     fwhm: SortedFloatVector = field(kw_only=True)
     x: SortedFloatVector = field(kw_only=True)
@@ -65,22 +44,28 @@ class BaseTemplate(ABC):
     n_scales: float = field(default=5.0, kw_only=True)
     name: str = field(kw_only=True)
 
-    path: AbsoluteFITSPath | None = field(default=None, kw_only=True)
+    path: FITSPath | None = field(default=None, kw_only=True)
 
-    _alpha_matrix: csr_matrix_ | None = field(default=None, repr=False, kw_only=True)
-    _beta_matrix: csr_matrix_ | None = field(default=None, repr=False, kw_only=True)
-    _xn: SortedFloatVector | None = field(default=None, repr=False, kw_only=True)
+    _alpha_matrix: CSRMatrix | None = field(
+        default=None, repr=False, kw_only=True
+    )
+    _beta_matrix: CSRMatrix | None = field(
+        default=None, repr=False, kw_only=True
+    )
+    _xn: SortedFloatVector | None = field(
+        default=None, repr=False, kw_only=True
+    )
 
     x_norm: float = field(kw_only=True)
     fwhm_norm: float = field(kw_only=True)
     normalisation: float | None = field(default=None, kw_only=True)
 
-    PATH_TO_CACHE: ClassVar[AbsoluteDirPath]
+    PATH_TO_CACHE: ClassVar[DirPath]
 
     def __post_init__(self) -> None:
-        self.x = ascontiguousarray(self.x, dtype=float64)
-        self.fwhm = ascontiguousarray(self.fwhm, dtype=float64)
-        self.data = ascontiguousarray(self.data, dtype=float64)
+        self.x = np.ascontiguousarray(self.x, dtype=np.float64)
+        self.fwhm = np.ascontiguousarray(self.fwhm, dtype=np.float64)
+        self.data = np.ascontiguousarray(self.data, dtype=np.float64)
 
         if self.is_logspace:
             assert self.sigma_res is not None
@@ -150,9 +135,9 @@ class BaseTemplate(ABC):
             and (self.x_norm == other.x_norm)
             and (self.fwhm_norm == other.fwhm_norm)
             and (self.normalisation == other.normalisation)
-            and array_equal(self.fwhm, other.fwhm)
-            and array_equal(self.x, other.x)
-            and array_equal(self.data, other.data)
+            and np.array_equal(self.fwhm, other.fwhm)
+            and np.array_equal(self.x, other.x)
+            and np.array_equal(self.data, other.data)
         )
 
     def _calculate_normalisation(self) -> float:
@@ -161,8 +146,8 @@ class BaseTemplate(ABC):
             # accurately.
             self.normalisation = 1.0
         else:
-            idx = searchsorted(self.fwhm, self.fwhm_norm, side="right") - 1
-            self.normalisation = interp(self.x_norm, self.x, self.data[idx])
+            idx = np.searchsorted(self.fwhm, self.fwhm_norm, side="right") - 1
+            self.normalisation = np.interp(self.x_norm, self.x, self.data[idx])
 
         return self.normalisation
 
@@ -200,15 +185,18 @@ class BaseTemplate(ABC):
         if self.is_logspace:
             obj = self if inplace else self.copy(with_matrices=True)
 
-            data = empty(shape=(fwhm.size, self.x.size), dtype=float64)
-            indices = searchsorted(self.fwhm, fwhm)
+            data = np.empty(shape=(fwhm.size, self.x.size), dtype=np.float64)
+            indices = np.searchsorted(self.fwhm, fwhm)
 
             fwhm_prev = self.fwhm[0]
             data_prev = self.data[0, :]
 
             for i, fwhm_curr in enumerate(fwhm):
                 # Check if exact match exists at the insertion index
-                if indices[i] < self.fwhm.size and self.fwhm[indices[i]] == fwhm_curr:
+                if (
+                    indices[i] < self.fwhm.size
+                    and self.fwhm[indices[i]] == fwhm_curr
+                ):
                     data[i, :] = self.data[indices[i]]
                 else:
                     k = kernel(
@@ -250,9 +238,9 @@ class BaseTemplate(ABC):
     @abstractmethod
     def save(
         self,
-        path: AbsoluteFITSPath,
+        path: FITSPath,
         overwrite: bool = False,
-    ) -> AbsoluteFITSPath:
+    ) -> FITSPath:
         """
         Saves the Template to a FITS file.
         """
@@ -262,7 +250,7 @@ class BaseTemplate(ABC):
     def load(
         cls,
         *,
-        path: str | AbsoluteFITSPath,
+        path: str | FITSPath,
         info: Info,
     ) -> Self:
         pass
@@ -275,12 +263,12 @@ class BaseTemplate(ABC):
             "path": str(self.path),
             "is_logspace": self.is_logspace,
         }
-    
+
     @classmethod
     def _deserialize_helper(
-        cls, 
-        template: Self, 
-        data: dict[str, Any], 
+        cls,
+        template: Self,
+        data: dict[str, Any],
         info: Info,
     ) -> Self:
         if data["is_logspace"]:
@@ -295,14 +283,14 @@ class BaseTemplate(ABC):
     def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
         pass
 
-
     ### Space transformations ###
 
+    @pydantic.validate_call
     def createLogspace(
         self,
         *,
         sigma_res: float,
-        xr: FloatVector | None = None,
+        xr: SortedFloatVector | None = None,
         keep_x: bool = False,
         conserve: bool = True,
     ) -> Self:
@@ -323,40 +311,47 @@ class BaseTemplate(ABC):
         template : Template
             The logspace-equivalent template.
         """
-        dx = self.x * self.sigma_res if self.is_logspace else lin_dx(self.x)
-        x_edges = empty(self.x.size + 1, dtype=float)
-        x_edges[:-1] = self.x - dx / 2
-        x_edges[-1] = self.x[-1] + dx[-1] / 2
+        from quasar_utils.binning import _alpha_matrix_sparse, edges, gradient
+
+        if self.is_logspace:
+            dx = self.x * self.sigma_res
+            x_edges = edges(self.x, self.x * self.sigma_res)
+        else:
+            dx = gradient(self.x)
+            x_edges = edges(self.x)
+
+        if not (dx > 0).all():
+            raise ValueError("All elements of dx must be positive.")
 
         if xr is None:
-            nr = log(x_edges[-1] / x_edges[0]) // log(1 + sigma_res) + 1
-            logxr_edges = log(x_edges[0]) + sigma_res * arange(nr + 1)
-            xr_edges = exp(logxr_edges)
-            xr = exp(0.5 * (logxr_edges[:-1] + logxr_edges[1:]))
+            nr = math.log(x_edges[-1] / x_edges[0]) // math.log(1 + sigma_res) + 1
+            logxr_edges = math.log(x_edges[0]) + sigma_res * np.arange(nr + 1)
+            xr_edges = np.exp(logxr_edges)
+            xr = np.exp(0.5 * (logxr_edges[:-1] + logxr_edges[1:]))
         else:
-            logxr = log(xr)
-            dlogxr = full_like(xr, fill_value=sigma_res)
-            logxr_edges = empty(xr.size + 1, dtype=float)
+            logxr = np.log(xr)
+            dlogxr = np.full_like(xr, fill_value=sigma_res)
+            logxr_edges = np.empty(xr.size + 1, dtype=float)
             logxr_edges[:-1] = logxr - dlogxr / 2
             logxr_edges[-1] = logxr[-1] + dlogxr[-1] / 2
-            xr_edges = exp(logxr_edges)
+            xr_edges = np.exp(logxr_edges)
 
         if self.is_logspace:
             return self.interpolate(xr)
 
         dxr = xr * sigma_res
-
         if keep_x:
             xn_edges = x_edges
         else:
-            dxn = median(dx)
+            dxn = np.median(dx)
             n_left = int(abs(x_edges[0] - xr_edges[0]) // dxn + 1)
             n_right = int(abs(xr_edges[-1] - x_edges[-1]) // dxn + 1)
 
-            xn_edges = empty(int(n_left + len(x_edges) + n_right))
-            xn_edges[:n_left] = x_edges[0] + dxn * arange(-n_left, 0)
+            xn_edges = np.empty(int(n_left + len(x_edges) + n_right))
+            xn_edges[:n_left] = x_edges[0] + dxn * np.arange(-n_left, 0)
             xn_edges[n_left:-n_right] = x_edges
-            xn_edges[-n_right:] = x_edges[-1] + dxn * arange(1, n_right + 1)
+            xn_edges[-n_right:] = x_edges[-1] + dxn * np.arange(1, n_right + 1)
+
 
         cp = self.copy()
         cp.is_logspace = True
@@ -364,21 +359,23 @@ class BaseTemplate(ABC):
         cp._xn = 0.5 * (xn_edges[:-1] + xn_edges[1:])
         cp.x = xr
 
-        self._alpha_matrix = cp._alpha_matrix = alpha_matrix_sparse.__wrapped__(
-            x_edges,
-            xr_edges,
-            dx=dx,
-            dxr=dxr,
-            conserve=conserve,
+        self._alpha_matrix = cp._alpha_matrix = (
+            _alpha_matrix_sparse(
+                x_edges,
+                xr_edges,
+                dx=dx,
+                dxr=dxr,
+                conserve=conserve,
+            )
         )
-        self._beta_matrix = cp._beta_matrix = alpha_matrix_sparse.__wrapped__(
+        self._beta_matrix = cp._beta_matrix = _alpha_matrix_sparse(
             xr_edges,
             xn_edges,
             dx=dxr,
-            dxr=dx if keep_x else diff(xn_edges),
+            dxr=dx if keep_x else np.diff(xn_edges),
             conserve=conserve,
         )
-        cp.data = maximum(cp._alpha_matrix.dot(cp.data.T).T, 0)
+        cp.data = np.maximum(cp._alpha_matrix.dot(cp.data.T).T, 0)
 
         # cp.normalisation = None
         cp.__post_init__()
@@ -411,15 +408,15 @@ class BaseTemplate(ABC):
         assert template.is_logspace, "Provided template must be in logspace."
         assert not self.is_logspace, "Current template must be in linspace."
 
-        assert self._beta_matrix is not None, (
-            "Current template must have a beta matrix."
-        )
-        assert template._beta_matrix is not None, (
-            "Provided template must have a beta matrix."
-        )
-        assert self._beta_matrix is template._beta_matrix, (
-            "Templates must share the same beta matrix if 'inplace=True'."
-        )
+        assert (
+            self._beta_matrix is not None
+        ), "Current template must have a beta matrix."
+        assert (
+            template._beta_matrix is not None
+        ), "Provided template must have a beta matrix."
+        assert (
+            self._beta_matrix is template._beta_matrix
+        ), "Templates must share the same beta matrix if 'inplace=True'."
 
         if inplace:
             obj = self
@@ -438,27 +435,29 @@ class BaseTemplate(ABC):
 
         return obj
 
-    def interpolate(self, x: FloatVector) -> Self:
+    @pydantic.validate_call
+    def interpolate(self, x: SortedFloatVector) -> Self:
         """
         Interpolates the template to match the new x coordinates.
 
         If the new x coordinates match the current x coordinates, the same
         template is returned (or a copy if `inplace=False`).
         """
+        from quasar_utils.interpolation import _create_interp_matrix
         obj = self.copy(with_matrices=False)
-        if array_equal(x, self.x):
+        if np.array_equal(x, self.x):
             return obj
 
-        M, b = create_interp_matrix(self.x, x, left=0, right=0)
-        obj.data = maximum(stack([M.dot(y) + b for y in self.data], axis=0), 0)
+        M, b = _create_interp_matrix(self.x, x, left=0, right=0)
+        obj.data = np.maximum(np.array([M.dot(y) + b for y in self.data]), 0)
         obj.x = x
 
         return obj
 
-    @validate_call
+    @pydantic.validate_call
     def rasterise(
         self,
-        x: FloatVector,
+        x: SortedFloatVector,
         y: FloatVector,
         dy: FloatVector,
         *,
@@ -469,8 +468,9 @@ class BaseTemplate(ABC):
         Performs a raster fit of the template to the provided data returning the
         chi-square and flux value for each FWHM.
         """
+        from quasar_utils.raster import _rasterise
         obj = self.interpolate(x)
-        return rasterise.__wrapped__(
+        return _rasterise(
             y,
             dy,
             obj.fwhm,
@@ -480,7 +480,7 @@ class BaseTemplate(ABC):
         )
 
     def simplifyData(
-        self, 
+        self,
         tol: float = 1e-8,
         inplace: bool = False,
     ) -> Self:
@@ -489,7 +489,7 @@ class BaseTemplate(ABC):
 
         for i, arr in enumerate(obj.data):
             mask = arr < tol * arr.max()
-            obj.data[i,mask] = 0.0
+            obj.data[i, mask] = 0.0
 
         return obj
 
@@ -498,12 +498,12 @@ class BaseTemplate(ABC):
         fwhm: float,
     ) -> Self:
         """
-        Creates a template with a single FWHM value. This is useful for 
-        template-based models with fixed FWHM values. 
+        Creates a template with a single FWHM value. This is useful for
+        template-based models with fixed FWHM values.
         """
         assert fwhm >= self.fwhm[0]
 
-        idx = searchsorted(self.fwhm, fwhm, side="right") - 1
+        idx = np.searchsorted(self.fwhm, fwhm, side="right") - 1
         if idx == -1:
             raise ValueError(
                 "FWHM is smaller than the smallest available FWHM in the "
@@ -511,7 +511,8 @@ class BaseTemplate(ABC):
             )
 
         if fwhm == self.fwhm[idx]:
-            return self[idx:idx+1]
+            return self[idx : idx + 1]
 
         # Create new column and return only the newly created column
-        return self.resample(array([self.fwhm[0], fwhm]), keep_x=True)[1:2]
+        return self.resample(np.array([self.fwhm[0], fwhm]), keep_x=True)[1:2]
+    

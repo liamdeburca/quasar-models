@@ -1,17 +1,17 @@
 from logging import getLogger
 
+import pydantic
 from numpy import einsum, float64, full_like, nan, zeros_like
 from quasar_typing.numpy import (
     FittableFloatMatrix,
     FittableFloatVector,
     FloatVector,
 )
-from quasar_utils.decorators import validate_call
 
 logger = getLogger(__name__)
 
 
-@validate_call
+@pydantic.validate_call
 def linreg(
     x: FittableFloatVector | FittableFloatMatrix,
     y: FittableFloatVector | FittableFloatMatrix,
@@ -38,6 +38,14 @@ def linreg(
         The 1st polynomial coefficient, equivalent to the gradient of the
         fitted line.
     """
+    return _linreg(x, y, dy)
+
+
+def _linreg(
+    x: FittableFloatVector | FittableFloatMatrix,
+    y: FittableFloatVector | FittableFloatMatrix,
+    dy: FittableFloatVector | FittableFloatMatrix,
+) -> tuple[float, float] | tuple[FloatVector, FloatVector]:
     assert x.shape == y.shape == dy.shape
 
     if x.shape[-1] == 0:
@@ -60,7 +68,7 @@ def linreg(
     B = einsum("...i -> ...", b)
     C = einsum("...i -> ...", c)
 
-    det = A * C - B**2
+    det = A * C - B ** 2
     ya = einsum("...i,...i -> ...", y, a)
     yb = einsum("...i,...i -> ...", y, b)
 

@@ -98,6 +98,23 @@ def choose_fit_deriv_func(
         return choose_fit_deriv_v_func(fixed)
     return choose_fit_deriv_x_func(fixed)
 
+
+@overload
+def choose_prime_func(
+    logbinned: Literal[True],
+) -> GaussianEvaluateV: ...
+
+@overload
+def choose_prime_func(
+    logbinned: Literal[False],
+) -> GaussianEvaluateX: ...
+
+@final
+def choose_prime_func(
+    logbinned: bool,
+) -> GaussianEvaluateV | GaussianEvaluateX:
+    return prime_v if logbinned else prime_x
+
 ###
 
 evaluate_v = GaussianEvaluateV("evaluate_v")

@@ -11,7 +11,7 @@ __all__ = [
 from pathlib import Path
 from typing import Literal, Protocol
 
-from quasar_typing.pathlib import AbsoluteFITSPath
+from quasar_typing.pathlib import FITSPath
 from quasar_utils.setup import Info
 
 from quasar_models.modeling.template.io import (
@@ -31,7 +31,7 @@ class IronTemplateProtocol(BaseTemplateProtocol, Protocol):
     name: Literal["vw2001", "v2003", "bw"] | str
 
 
-def convert_path(path: str | AbsoluteFITSPath) -> AbsoluteFITSPath:
+def convert_path(path: str | FITSPath) -> FITSPath:
     if isinstance(path, str):
         path = Path(path.removesuffix(".fits") + ".fits")
         if "/" not in path.as_posix():
@@ -42,9 +42,9 @@ def convert_path(path: str | AbsoluteFITSPath) -> AbsoluteFITSPath:
 def save(
     *,
     template: IronTemplateProtocol,
-    path: str | AbsoluteFITSPath,
+    path: str | FITSPath,
     info: Info,
-) -> AbsoluteFITSPath:
+) -> FITSPath:
     path = convert_path(path)
     hdul = _save(
         template=template,
@@ -58,7 +58,7 @@ def save_to_cache(
     *,
     template: IronTemplateProtocol,
     info: Info,
-) -> AbsoluteFITSPath:
+) -> FITSPath:
     return save(
         template=template,
         path=template.name,
@@ -68,7 +68,7 @@ def save_to_cache(
 
 def load(
     *,
-    path: str | AbsoluteFITSPath,
+    path: str | FITSPath,
     info: Info,
 ) -> dict:
     path = convert_path(path)

@@ -1,49 +1,70 @@
-from libc.math cimport (
-    sqrt as math_sqrt,
-)
-from numpy import (
-    zeros as np_zeros,
-    float64 as np_float64,
-)
+from libc.math cimport sqrt as math_sqrt
+
+from numpy import float64 as np_float64
+from numpy import zeros as np_zeros
+
 from quasar_models._core.convolution.utils cimport (
-    _kernel,
     _convolve_signal,
     _convolve_signal2d,
-)
-from quasar_models._core.modeling.template.evaluate cimport (
-    _evaluate_exact  as _template_evaluate_exact,
-    _evaluate_interp as _template_evaluate_interp,
-)
-from quasar_models._core.modeling.template.fit_deriv cimport (
-    _fit_deriv_exact_only_flux as _template_fit_deriv_exact_only_flux,
-    _fit_deriv_exact_only_fwhm as _template_fit_deriv_exact_only_fwhm,
-    _fit_deriv_exact_all       as _template_fit_deriv_exact_all,
-
-    _fit_deriv_interp_only_flux as _template_fit_deriv_interp_only_flux,
-    _fit_deriv_interp_only_fwhm as _template_fit_deriv_interp_only_fwhm,
-    _fit_deriv_interp_all       as _template_fit_deriv_interp_all,
-
-    _fit_deriv_rescale_only_flux as _template_fit_deriv_rescale_only_flux,
+    _kernel,
 )
 from quasar_models._core.modeling.iron.evaluate cimport (
     _evaluate_exact,
 )
 from quasar_models._core.modeling.split.fit_deriv cimport (
-    _fit_deriv_only_split      as _split_fit_deriv_only_split,
-    _fit_deriv_only_left       as _split_fit_deriv_only_left,
-    _fit_deriv_only_right      as _split_fit_deriv_only_right,
-    _fit_deriv_split_and_left  as _split_fit_deriv_split_and_left,
+    _fit_deriv_all as _split_fit_deriv_all,
+)
+from quasar_models._core.modeling.split.fit_deriv cimport (
+    _fit_deriv_left_and_right as _split_fit_deriv_left_and_right,
+)
+from quasar_models._core.modeling.split.fit_deriv cimport (
+    _fit_deriv_only_left as _split_fit_deriv_only_left,
+)
+from quasar_models._core.modeling.split.fit_deriv cimport (
+    _fit_deriv_only_right as _split_fit_deriv_only_right,
+)
+from quasar_models._core.modeling.split.fit_deriv cimport (
+    _fit_deriv_only_split as _split_fit_deriv_only_split,
+)
+from quasar_models._core.modeling.split.fit_deriv cimport (
+    _fit_deriv_split_and_left as _split_fit_deriv_split_and_left,
+)
+from quasar_models._core.modeling.split.fit_deriv cimport (
     _fit_deriv_split_and_right as _split_fit_deriv_split_and_right,
-    _fit_deriv_left_and_right  as _split_fit_deriv_left_and_right,
-    _fit_deriv_all             as _split_fit_deriv_all,
+)
+from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
+from quasar_models._core.modeling.template.evaluate cimport (
+    _evaluate_exact as _template_evaluate_exact,
+)
+from quasar_models._core.modeling.template.evaluate cimport (
+    _evaluate_interp as _template_evaluate_interp,
+)
+from quasar_models._core.modeling.template.fit_deriv cimport (
+    _fit_deriv_exact_all as _template_fit_deriv_exact_all,
+)
+from quasar_models._core.modeling.template.fit_deriv cimport (
+    _fit_deriv_exact_only_flux as _template_fit_deriv_exact_only_flux,
+)
+from quasar_models._core.modeling.template.fit_deriv cimport (
+    _fit_deriv_exact_only_fwhm as _template_fit_deriv_exact_only_fwhm,
+)
+from quasar_models._core.modeling.template.fit_deriv cimport (
+    _fit_deriv_interp_all as _template_fit_deriv_interp_all,
+)
+from quasar_models._core.modeling.template.fit_deriv cimport (
+    _fit_deriv_interp_only_flux as _template_fit_deriv_interp_only_flux,
+)
+from quasar_models._core.modeling.template.fit_deriv cimport (
+    _fit_deriv_interp_only_fwhm as _template_fit_deriv_interp_only_fwhm,
+)
+from quasar_models._core.modeling.template.fit_deriv cimport (
+    _fit_deriv_rescale_only_flux as _template_fit_deriv_rescale_only_flux,
 )
 from quasar_models._core.utils cimport (
-    arr_multiply_inplace,
     arr_add_inplace,
+    arr_multiply_inplace,
     multiply_and_multiply_to,
 )
-
-from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
 
 ### By CONVOLUTION // No split
 

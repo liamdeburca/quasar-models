@@ -1,8 +1,8 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+from quasar_utils.setup import Info
 from tqdm import tqdm
 
-from quasar_utils.setup import Info
 from quasar_models.balmer import BalmerModel
 from quasar_models.balmer.continuum import BalmerContinuumTemplate
 from quasar_models.balmer.series import BalmerSeriesTemplate
@@ -21,10 +21,7 @@ continuum_template = BalmerContinuumTemplate.load_from_cache(
     tau=INFO.balmer.tau,
     scale=INFO.balmer.scale,
     info=INFO,
-).createLogspace(
-    sigma_res=SIGMA_RES,
-    xr=x,
-)
+).createLogspace(sigma_res=SIGMA_RES, xr=x,)
 
 series_template = BalmerSeriesTemplate.load_from_cache(
     name="sh1995",
@@ -32,10 +29,7 @@ series_template = BalmerSeriesTemplate.load_from_cache(
     dens=INFO.balmer.dens,
     n_u_range=(INFO.balmer.n_u_min, INFO.balmer.n_u_max),
     info=INFO,
-).createLogspace(
-    sigma_res=SIGMA_RES,
-    xr=x,
-)
+).createLogspace(sigma_res=SIGMA_RES, xr=x,)
 
 MODEL = BalmerModel.create(
     flux=INFO.balmer.flux,
@@ -66,11 +60,7 @@ def jac_numeric(p):
     flux, fwhm, ratio = p
 
     dflux = min(
-        [
-            1e-5,
-            MODEL.flux.bounds[1] - flux,
-            flux - MODEL.flux.bounds[0],
-        ]
+        [1e-5, MODEL.flux.bounds[1] - flux, flux - MODEL.flux.bounds[0],]
     )
     df_dflux = MODEL.evaluate(x, flux + dflux, fwhm, ratio) - MODEL.evaluate(
         x, flux - dflux, fwhm, ratio
@@ -90,11 +80,7 @@ def jac_numeric(p):
     df_dfwhm /= 2 * dfwhm
 
     dratio = min(
-        [
-            1e-3,
-            MODEL.ratio.bounds[1] - ratio,
-            ratio - MODEL.ratio.bounds[0],
-        ]
+        [1e-3, MODEL.ratio.bounds[1] - ratio, ratio - MODEL.ratio.bounds[0],]
     )
     df_dratio = MODEL.evaluate(x, flux, fwhm, ratio + dratio) - MODEL.evaluate(
         x, flux, fwhm, ratio - dratio

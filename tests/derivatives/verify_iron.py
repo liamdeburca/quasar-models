@@ -1,8 +1,8 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+from quasar_utils.setup import Info
 from tqdm import tqdm
 
-from quasar_utils.setup import Info
 from quasar_models.iron import IronModel, IronTemplate
 
 SIGMA_RES: float = 2.3e-4
@@ -14,10 +14,9 @@ np.random.seed(42)
 INFO = Info()
 
 # Load and adapt template
-template = IronTemplate.load(
-    path="vw2001",
-    info=INFO,
-).createLogspace(sigma_res=SIGMA_RES, xr=x)
+template = IronTemplate.load(path="vw2001", info=INFO,).createLogspace(
+    sigma_res=SIGMA_RES, xr=x
+)
 
 scale = INFO.iron["scale"]
 MODEL = IronModel.create(
@@ -51,11 +50,7 @@ def jac_numeric(p):
     flux, fwhm, split, left, right = p
 
     dflux = min(
-        [
-            1e-6,
-            MODEL.flux.bounds[1] - flux,
-            flux - MODEL.flux.bounds[0],
-        ]
+        [1e-6, MODEL.flux.bounds[1] - flux, flux - MODEL.flux.bounds[0],]
     )
     df_dflux = MODEL.evaluate(
         x, flux + dflux, fwhm, split, left, right
@@ -87,11 +82,7 @@ def jac_numeric(p):
     df_dsplit /= 2 * dsplit
 
     dleft = min(
-        [
-            1e-5,
-            MODEL.left.bounds[1] - left,
-            left - MODEL.left.bounds[0],
-        ]
+        [1e-5, MODEL.left.bounds[1] - left, left - MODEL.left.bounds[0],]
     )
     df_dleft = MODEL.evaluate(
         x, flux, fwhm, split, left + dleft, right
@@ -99,18 +90,16 @@ def jac_numeric(p):
     df_dleft /= 2 * dleft
 
     dright = min(
-        [
-            1e-5,
-            MODEL.right.bounds[1] - right,
-            right - MODEL.right.bounds[0],
-        ]
+        [1e-5, MODEL.right.bounds[1] - right, right - MODEL.right.bounds[0],]
     )
     df_dright = MODEL.evaluate(
         x, flux, fwhm, split, left, right + dright
     ) - MODEL.evaluate(x, flux, fwhm, split, left, right - dright)
     df_dright /= 2 * dright
 
-    return np.stack([df_dflux, df_dfwhm, df_dsplit, df_dleft, df_dright], axis=0)
+    return np.stack(
+        [df_dflux, df_dfwhm, df_dsplit, df_dleft, df_dright], axis=0
+    )
 
 
 def perturb_model() -> None:
@@ -166,7 +155,9 @@ def main(N: int):
     fig, axes = plt.subplots(2, 1, figsize=(12, 8))
 
     # Boxplot for mismatch
-    axes[0].boxplot(mismatch, tick_labels=["flux", "fwhm", "split", "left", "right"])
+    axes[0].boxplot(
+        mismatch, tick_labels=["flux", "fwhm", "split", "left", "right"]
+    )
     axes[0].set_yscale("log")
     axes[0].set_ylabel("Mismatch (log scale)")
     axes[0].set_title("Distribution of Discrepancies")

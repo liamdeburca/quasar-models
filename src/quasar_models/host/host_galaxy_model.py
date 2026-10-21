@@ -1,33 +1,23 @@
 """
 AstroPy compatible model: HostGalaxyModel.
 """
-
 from logging import getLogger
 from typing import Any, ClassVar, Literal, Self
 
+import numpy as np
 from astropy.constants import c
 from astropy.modeling import Parameter
-from numpy import argmin, isfinite
+from pydantic import validate_call
 from quasar_typing.bounds import AstropyBounds
 from quasar_typing.numpy import FloatVector
-from quasar_utils.decorators import validate_call
 from quasar_utils.setup import Info
 
 from quasar_models._core.modeling.host import (
     HostGalaxyEvaluate,
     HostGalaxyFitDeriv,
-    choose_evaluate_func,
-    choose_fit_deriv_func,
-    evaluate_exact,
-    fit_deriv_exact_all,
 )
+from quasar_models.modeling.template import TemplateModel
 
-from ..modeling.template import TemplateModel
-from ..utils.astropy import apply_bounds
-from ..utils.serialization import (
-    deserialize_parameter,
-    serialize_parameter,
-)
 from .host_galaxy_template import HostGalaxyTemplate
 from .io import convert_params_to_name
 
@@ -66,12 +56,13 @@ class HostGalaxyModel(TemplateModel):
         n_scales: float = 3.0,
         name: Literal["bc2003"] | None = None,
         age: int | None = None,
-
         flux_bounds: AstropyBounds | None = None,
         fwhm_bounds: AstropyBounds | None = None,
         flux_fixed: bool | None = None,
         fwhm_fixed: bool | None = None,
     ) -> Self:
+        from quasar_models.utils.astropy import _apply_bounds
+
         if template is None:
             if info is None:
                 msg = "'info' cannot be None if 'template' is not provided."
@@ -100,14 +91,14 @@ class HostGalaxyModel(TemplateModel):
             },
         )
         if flux_bounds is not None:
-            model.flux.value = apply_bounds.__wrapped__(flux, flux_bounds)
+            model.flux.value = _apply_bounds(flux, flux_bounds)
             model.flux.bounds = flux_bounds
 
         if fwhm_bounds is None and template.fwhm.shape[0] > 1:
             fwhm_bounds = (template.fwhm[0], template.fwhm[-1])
 
         if fwhm_bounds is not None:
-            model.fwhm.value = apply_bounds.__wrapped__(fwhm, fwhm_bounds)
+            model.fwhm.value = _apply_bounds(fwhm, fwhm_bounds)
             model.fwhm.bounds = fwhm_bounds
 
         if flux_fixed is not None:
@@ -135,7 +126,7 @@ class HostGalaxyModel(TemplateModel):
 
     @property
     def sorting_key(self) -> tuple[float, float]:
-        return (3.0, self.template.x_norm)
+        return (3.0, 0.0)
 
     ###
 
@@ -166,7 +157,7 @@ class HostGalaxyModel(TemplateModel):
                 "template": self.template,
                 "n_scales": self.n_scales,
                 "interpolation_matrix": self.interpolation_matrix,
-            }
+            },
         )
 
     @kwargs.setter
@@ -188,6 +179,8 @@ class HostGalaxyModel(TemplateModel):
 
     @property
     def evaluate_func(self) -> HostGalaxyEvaluate:
+        from quasar_models._core.modeling.host import evaluate_exact
+
         return self.meta.get("evaluate_func", evaluate_exact)
 
     @evaluate_func.setter
@@ -200,6 +193,8 @@ class HostGalaxyModel(TemplateModel):
 
     @property
     def fit_deriv_func(self) -> HostGalaxyFitDeriv:
+        from quasar_models._core.modeling.host import fit_deriv_exact_all
+
         return self.meta.get("fit_deriv_func", fit_deriv_exact_all)
 
     @fit_deriv_func.setter
@@ -214,6 +209,8 @@ class HostGalaxyModel(TemplateModel):
         self,
         fixed: dict[str, bool] | None = None,
     ) -> None:
+        from quasar_models._core.modeling.host import choose_evaluate_func
+
         self.evaluate_func = choose_evaluate_func(
             self.allow_interp_fitting,
             fixed or self.fixed,
@@ -223,10 +220,12 @@ class HostGalaxyModel(TemplateModel):
         self,
         fixed: dict[str, bool] | None = None,
     ) -> None:
+        from quasar_models._core.modeling.host import choose_fit_deriv_func
+
         self.fit_deriv_func = choose_fit_deriv_func(
             self.allow_interp_fitting,
             fixed or self.fixed,
-        )    
+        )
 
     # Utilities
 
@@ -239,20 +238,23 @@ class HostGalaxyModel(TemplateModel):
         *,
         inplace: bool = False,
     ) -> Self:
-        chi2s, fluxs = self.template.rasterise.__wrapped__(
-            self.template,
-            x,
+        from quasar_utils.raster import rasterise
+
+        template = self.template.interpolate(x)
+        chi2s, fluxs = rasterise(
             y,
             dy,
+            template.fwhm,
+            template.data / template.normalisation,
             flux_bounds=self.flux.bounds,
             fwhm_bounds=self.fwhm.bounds,
         )
         obj = self if inplace else self.copy()
 
-        if not isfinite(chi2s).any():
+        if not np.isfinite(chi2s).any():
             return obj
 
-        idx: int = argmin(chi2s).flatten()[0]
+        idx: int = np.argmin(chi2s).flatten()[0]
         chi2 = chi2s[idx]
         flux = fluxs[idx]
         fwhm = self.template.fwhm[idx]
@@ -268,11 +270,13 @@ class HostGalaxyModel(TemplateModel):
     ### Serialization
 
     def serialize(self, info: Info) -> dict[str, dict[str, Any]]:
+        from quasar_models.utils.serialization import serialize_parameter
+
         kms_unit = "km/s"
         flux_unit = str(info.units.flux_unit)
         data = {
             "name": self.name,
-            "flux": serialize_parameter(self.flux, flux_unit),
+            "flux": serialize_parameter(self.flux, flux_unit, scientific=True),
             "fwhm": serialize_parameter(self.fwhm, kms_unit),
             "template": self.template.serialize(info),
         }
@@ -280,6 +284,8 @@ class HostGalaxyModel(TemplateModel):
 
     @classmethod
     def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
+        from quasar_models.utils.serialization import deserialize_parameter
+
         kms_unit = "km/s"
         flux_unit = str(info.units.flux_unit)
 
@@ -288,7 +294,8 @@ class HostGalaxyModel(TemplateModel):
         template = HostGalaxyTemplate.deserialize(data["template"], info)
 
         model = HostGalaxyModel.create(
-            flux["value"], fwhm["value"],
+            flux["value"],
+            fwhm["value"],
             info=info,
             template=template,
             allow_interp_fitting=info.convolution.allow_interp_fitting,
@@ -302,5 +309,8 @@ class HostGalaxyModel(TemplateModel):
         model.fwhm.tied = fwhm["tied"]
 
         model.name = data["name"]
-        
+
         return model
+
+
+type HgModel = HostGalaxyModel

@@ -10,8 +10,8 @@ def _split_evaluate(
     left: float,
     right: float,
     *,
-    sigma_res: float = None,
-    scale: float = None,
+    sigma_res: float | None = None,
+    scale: float | None = None,
 ) -> float | NDArray[float64]:
     """
     Calculates the split weight at the given x values.
@@ -31,8 +31,8 @@ def _split_fit_deriv(
     left: float,
     right: float,
     *,
-    sigma_res: float = None,
-    scale: float = None,
+    sigma_res: float | None = None,
+    scale: float | None = None,
     fixed: dict[str, bool] | None = None,
 ) -> list[NDArray[float64], NDArray[float64], NDArray[float64]]:
     """
@@ -73,8 +73,8 @@ def prepare_data_for_split(
     left: float,
     right: float,
     *,
-    sigma_res: float = None,
-    scale: float = None,
+    sigma_res: float | None = None,
+    scale: float | None = None,
 ) -> tuple[NDArray[float64], NDArray[float64]]:
     """
     Convenience function preparing the fwhm and data arrays of a template for

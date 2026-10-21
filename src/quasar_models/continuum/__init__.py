@@ -1,3 +1,3 @@
-__all__ = ["PowerLawModel"]
-
-from .powerlaw import PowerLawModel
+__all__ = ["PlModel", "PowerLawModel"]
+    
+from .powerlaw import PlModel, PowerLawModel

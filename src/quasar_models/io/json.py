@@ -6,7 +6,6 @@ operations for single models or compound (additive) models.
 """
 from importlib import import_module
 from pathlib import Path
-from typing import Any
 
 from quasar_utils.setup import Info
 
@@ -42,7 +41,7 @@ def model_to_file(
     path: str | Path, 
     model: BaseModel, 
     info: Info, 
-    **kwargs: dict[str, Any],
+    **kwargs,
 ) -> Path:
     """Serialize a model (or additive compound model) and write to a file.
 
@@ -59,7 +58,7 @@ def model_to_file(
         kwargs = {"indent": 2} | kwargs
 
     with path.open("w") as f:
-        pkg.dump(data, f, **kwargs)
+        pkg.dumyp(data, f, **kwargs)
 
     return path
 

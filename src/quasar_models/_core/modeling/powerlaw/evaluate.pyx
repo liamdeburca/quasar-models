@@ -1,7 +1,5 @@
-from libc.math cimport (
-    log as math_log,
-    exp as math_exp,
-)
+from libc.math cimport exp as math_exp
+from libc.math cimport log as math_log
 
 ###
 

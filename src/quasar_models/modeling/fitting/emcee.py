@@ -10,24 +10,21 @@ from emcee import EnsembleSampler
 from emcee.autocorr import AutocorrError
 from numpy import array, float64, int_, ndim, ones, stack
 from pydantic.dataclasses import dataclass
-from quasar_typing.astropy import CompoundModel_
-from quasar_typing.emcee import Backend_, EnsembleSampler_, Move_
-from quasar_typing.misc import MCMCSamplingMethod
+from quasar_typing.astropy.modeling import CompoundModelType
+from quasar_typing.emcee import BackendType, EnsembleSamplerType, MoveType
+from quasar_typing.literals import MCMCSamplingMethod
 from quasar_typing.numpy import (
     FloatCube,
     FloatMatrix,
     FloatVector,
-    RandomState_,
+    RandomStateType,
 )
-from quasar_typing.scipy import OptimizeResult_
+from quasar_typing.scipy import OptimizeResultType
 from quasar_utils.decorators import validate_call
 
 from ..base_model import BaseModel
 from ..sequential_model import SequentialModel
-from ..stop_conditions import (
-    ftol_stop_batched,
-    xtol_stop_batched,
-)
+from ..stop_conditions import ftol_stop_batched, xtol_stop_batched
 from .utils import (
     get_parameter_samples_fisher,
     get_parameter_samples_uniform,
@@ -39,49 +36,52 @@ logger = getLogger(__name__)
 
 
 def _log_prob_fn(
-    x: FloatVector | list[FloatVector] | FloatMatrix, 
+    x: FloatVector | list[FloatVector] | FloatMatrix,
     *,
-    model: SequentialModel, 
+    model: SequentialModel,
     data: dict[str, FloatVector],
     bounds: tuple[FloatVector, FloatVector] | None = None,
 ) -> float:
     if ndim(x) == 2:
         return stack(
-            [log_posterior(xi, model=model, data=data, bounds=bounds) for xi in x],
+            [
+                log_posterior(xi, model=model, data=data, bounds=bounds)
+                for xi in x
+            ],
             axis=0,
             dtype=float64,
         )
     return log_posterior(x, model=model, data=data, bounds=bounds)
 
+
 @dataclass
 class MCMCFitter:
-    fit_info: OptimizeResult_ | None = field(default=None, init=False)
+    fit_info: OptimizeResultType | None = field(default=None, init=False)
     sol: FloatVector | None = field(default=None, init=False)
 
-    sampler: EnsembleSampler_ | None = field(default=None, init=False)
+    sampler: EnsembleSamplerType | None = field(default=None, init=False)
     samples: FloatCube | None = field(default=None, init=False)
     ps: FloatVector | None = field(default=None, init=False)
 
     @validate_call
     def __call__(
         self,
-        model: Union[BaseModel, CompoundModel_[BaseModel], SequentialModel],
+        model: Union[BaseModel, CompoundModelType[BaseModel], SequentialModel],
         x: FloatVector,
         y: FloatVector,
         *,
         dy: FloatVector | None = None,
         weights: FloatVector | None = None,
-
         get_model: bool = False,
         inplace: bool | None = None,
-
         progress: bool = False,
         vectorize: bool = True,
         pool: object | None = None,
-        backend: Backend_ | None = None,
-        moves: Move_ | list[Move_] | list[tuple[Move_, float]] | None = None,
-
-        random_state: RandomState_,
+        backend: BackendType | None = None,
+        moves: (
+            MoveType | list[MoveType] | list[tuple[MoveType, float]] | None
+        ) = None,
+        random_state: RandomStateType,
         n_walkers: int = 100,
         n_walkers_per_dim: int = 10,
         max_nfev: int = 1000,
@@ -90,7 +90,7 @@ class MCMCFitter:
         xtol: float | None = 1e-4,
         sampling_method: MCMCSamplingMethod = "uniform",
         max_attempts: int | None = None,
-    ) -> Union[BaseModel, CompoundModel_[BaseModel], None]:
+    ) -> Union[BaseModel, CompoundModelType[BaseModel], None]:
         """
         Fit the model to the data using MCMC sampling.
         """
@@ -114,18 +114,26 @@ class MCMCFitter:
 
         if sampling_method == "uniform":
             _samples_itr = get_parameter_samples_uniform(
-                n_walkers, model, random_state,
+                n_walkers,
+                model,
+                random_state,
             )
         else:
             _samples_itr = get_parameter_samples_fisher(
-                n_walkers, model, data, random_state, max_attempts=max_attempts,
+                n_walkers,
+                model,
+                data,
+                random_state,
+                max_attempts=max_attempts,
             )
 
         _samples = list(_samples_itr)
         _n = len(_samples)
         if _n == 0:
-            msg = "Could not generate any valid initial parameter samples in "\
+            msg = (
+                "Could not generate any valid initial parameter samples in "
                 f"{max_attempts} attempts."
+            )
             logger.critical(msg)
             raise ValueError(msg)
         elif _n < n_walkers:
@@ -135,7 +143,9 @@ class MCMCFitter:
             )
 
         n_walkers = min(n_walkers, _n)
-        initial_state = transform_samples_to_state(_samples, model, data, bounds=bounds)
+        initial_state = transform_samples_to_state(
+            _samples, model, data, bounds=bounds
+        )
         if backend is not None:
             backend.reset(n_walkers, n_free)
             assert backend.initialized
@@ -153,8 +163,10 @@ class MCMCFitter:
         self.autocorr_time = 1.0
         with suppress(AutocorrError):
             status: int = 0
-            message = f"MCMC fitting did not converge within {max_nfev=} "\
+            message = (
+                f"MCMC fitting did not converge within {max_nfev=} "
                 "iterations."
+            )
 
             if (xtol is None) and (ftol is None):
                 batch_size = max_nfev
@@ -164,7 +176,8 @@ class MCMCFitter:
             while count < max_nfev:
                 n = min(batch_size, max_nfev - count)
                 curr_state = self.sampler.run_mcmc(
-                    curr_state, n,
+                    curr_state,
+                    n,
                     progress=progress,
                     store=True,
                 )
@@ -173,42 +186,52 @@ class MCMCFitter:
                 # Stop if conditions are satisfied for any of the walkers in the last batch
                 ftol_stop = False
                 if ftol is not None:
-                    fs = self.sampler.get_log_prob()[-n:]   # (n, n_walkers)
+                    fs = self.sampler.get_log_prob()[-n:]  # (n, n_walkers)
                     ftol_stop = any(
-                        ftol_stop_batched(ftol, fs[...,i]) 
+                        ftol_stop_batched(ftol, fs[..., i])
                         for i in range(n_walkers)
                     )
 
                 xtol_stop = False
                 if xtol is not None:
-                    xs = self.sampler.get_chain()[-n:]      # (n, n_walkers, n_free)
+                    xs = self.sampler.get_chain()[
+                        -n:
+                    ]  # (n, n_walkers, n_free)
                     xtol_stop = any(
-                        xtol_stop_batched(xtol, xs[:,i,:]) 
+                        xtol_stop_batched(xtol, xs[:, i, :])
                         for i in range(n_walkers)
                     )
 
                 if ftol_stop and xtol_stop:
                     status = 4
-                    message = f"MCMC fitting stopped after {count} iterations "\
+                    message = (
+                        f"MCMC fitting stopped after {count} iterations "
                         f"due to 'ftol' and 'xtol' conditions being satisfied."
+                    )
                     break
                 if ftol_stop:
                     status = 2
-                    message = f"MCMC fitting stopped after {count} iterations "\
+                    message = (
+                        f"MCMC fitting stopped after {count} iterations "
                         f"due to 'ftol' condition being satisfied."
+                    )
                     break
                 if xtol_stop:
                     status = 3
-                    message = f"MCMC fitting stopped after {count} iterations "\
+                    message = (
+                        f"MCMC fitting stopped after {count} iterations "
                         f"due to 'xtol' condition being satisfied."
+                    )
                     break
 
-            self.autocorr_time = self.sampler.get_autocorr_time() 
+            self.autocorr_time = self.sampler.get_autocorr_time()
 
         t_elapsed: float = perf_counter() - t_start
 
-        self.samples = self.sampler.get_chain(flat=True) # (nsteps x nwalkers, ndim)
-        self.ps = self.sampler.get_log_prob(flat=True) # (nsteps x nwalkers)
+        self.samples = self.sampler.get_chain(
+            flat=True
+        )  # (nsteps x nwalkers, ndim)
+        self.ps = self.sampler.get_log_prob(flat=True)  # (nsteps x nwalkers)
 
         idx_best = self.ps.argmax()
         x_best = self.samples[idx_best]
@@ -223,7 +246,7 @@ class MCMCFitter:
             else:
                 active_mask.append(0)
 
-        self.fit_info = OptimizeResult_(
+        self.fit_info = OptimizeResultType(
             x_best,
             -self.ps[idx_best],
             fun=model.fun(x_best, data),
@@ -251,7 +274,10 @@ class MCMCFitter:
         else:
             msg = f"OptimizeResult [FAILURE ({status})]: "
             log = logger.info
-        log(msg + f"chi2/dof={chi2n:.1f}, {nfev=}, {n_lb=}, {n_ub=}, {message=}, {t_elapsed=:.1f} ms")
+        log(
+            msg
+            + f"chi2/dof={chi2n:.1f}, {nfev=}, {n_lb=}, {n_ub=}, {message=}, {t_elapsed=:.1f} ms"
+        )
 
         if get_model:
             if inplace is None:
@@ -265,5 +291,7 @@ class MCMCFitter:
                 copy=not inplace,
             )
         elif inplace is not None:
-            msg = "'inplace' should only be specified when 'get_model' is True."
+            msg = (
+                "'inplace' should only be specified when 'get_model' is True."
+            )
             warn(msg, UserWarning)

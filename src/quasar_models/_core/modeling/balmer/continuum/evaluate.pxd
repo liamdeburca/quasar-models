@@ -1,5 +1,6 @@
 from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
 
+
 cdef void _attenuation(
     double[::1] y,
     const double[::1] x,

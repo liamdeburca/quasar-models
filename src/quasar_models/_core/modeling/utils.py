@@ -12,9 +12,7 @@ def _does_nothing(*args, **kwargs):
 
 
 def _interp(
-    x: NDArray[float64],
-    template_x: NDArray[float64],
-    _y: NDArray[float64],
+    x: NDArray[float64], template_x: NDArray[float64], _y: NDArray[float64],
 ) -> NDArray[float64]:
     return interp(x, template_x, _y, left=0.0, right=0.0)
 
@@ -42,7 +40,9 @@ def _interp2d_matrix(
     M, b = interpolation_matrix
     return stack([M @ d + b for d in _derivs], axis=0)
 
+
 ###
+
 
 class _TemplateModelBase:
     def __str__(self) -> str:
@@ -82,11 +82,12 @@ class _TemplateModelBase:
         self.rescaling = state["rescaling"]
         self.__wrapped__ = self._get_wrapped(self.func_name)
 
+
 class _TemplateEvaluate(_TemplateModelBase):
     def call_wrapped(
         self,
         template_x: FloatVector,
-        args: tuple[Any,...],
+        args: tuple[Any, ...],
         *,
         y: FloatVector | None = None,
     ) -> FloatVector:
@@ -104,25 +105,21 @@ class _TemplateEvaluate(_TemplateModelBase):
         self,
         x: FloatVector,
         template_x: FloatVector,
-        args: tuple[Any,...],
+        args: tuple[Any, ...],
         *,
         interpolation_matrix: tuple | Literal[False] | None = None,
         y: FloatVector | None = None,
     ) -> FloatVector:
 
-        f = self.call_wrapped(
-            template_x,
-            args,
-            y=y,
-        )
+        f = self.call_wrapped(template_x, args, y=y,)
         if self.rescaling:
-            # Template is already evaluated on the wavelength grid -> no 
+            # Template is already evaluated on the wavelength grid -> no
             # interpolation needed
             return f
 
         # Interpolate onto the wavelength grid
         if interpolation_matrix is None:
-            f = _interp(x, template_x, f) 
+            f = _interp(x, template_x, f)
         else:
             f = _interp_matrix(f, interpolation_matrix)
 
@@ -133,13 +130,14 @@ class _TemplateEvaluate(_TemplateModelBase):
         y += f
         return y
 
+
 class _TemplateFitDeriv(_TemplateModelBase):
     _ndim: ClassVar[int]
 
     def call_wrapped(
         self,
         template_x,
-        args: tuple[Any,...],
+        args: tuple[Any, ...],
         *,
         derivs: FloatMatrix | None = None,
     ) -> FloatMatrix:
@@ -157,22 +155,18 @@ class _TemplateFitDeriv(_TemplateModelBase):
         self,
         x: FloatVector,
         template_x: FloatVector,
-        args: tuple[Any,...],
+        args: tuple[Any, ...],
         *,
         interpolation_matrix: tuple | Literal[False] | None = None,
-        derivs: FloatMatrix | None = None,  
+        derivs: FloatMatrix | None = None,
     ) -> FloatMatrix:
-        df = self.call_wrapped(
-            template_x,
-            args,
-            derivs=derivs,
-        )
+        df = self.call_wrapped(template_x, args, derivs=derivs,)
         if self.rescaling:
             return df
 
         # Interpolate onto the wavelength grid
         if interpolation_matrix is None:
-            df = _interp2d(x, template_x, df) 
+            df = _interp2d(x, template_x, df)
         else:
             df = _interp2d_matrix(df, interpolation_matrix)
 
@@ -182,5 +176,3 @@ class _TemplateFitDeriv(_TemplateModelBase):
 
         derivs += df
         return derivs
-
-        

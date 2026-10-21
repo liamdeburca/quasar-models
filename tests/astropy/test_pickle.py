@@ -8,18 +8,19 @@ Tests verify that pickled+unpickled models are equal to the original models:
 """
 
 import pickle
+
 import numpy as np
-from astropy.modeling import Fittable1DModel, CompoundModel
-from quasar_models.tying import IdenticalTie
+from astropy.modeling import CompoundModel, Fittable1DModel
+from quasar_utils.setup import Info
 
 from quasar_models import (
-    PowerLawModel,
-    GaussianModel,
     BalmerModel,
-    IronModel,
+    GaussianModel,
     HostGalaxyModel,
+    IronModel,
+    PowerLawModel,
 )
-from quasar_utils.setup import Info
+from quasar_models.modeling.utils import IdenticalTie
 
 N_INSTANCES = 100
 N_SUBMODELS = 10
@@ -47,7 +48,7 @@ def generate_random_bounds(
     if lower == upper:
         return (lower, upper)
 
-    return tuple(sorted((np.random.uniform(lower, upper, size=2))))
+    return tuple(sorted(np.random.uniform(lower, upper, size=2)))
 
 
 def sample_value_from_bounds(bounds: tuple[float | None, float | None]) -> float:

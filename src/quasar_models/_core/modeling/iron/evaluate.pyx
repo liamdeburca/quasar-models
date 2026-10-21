@@ -1,19 +1,22 @@
-from numpy import (
-    zeros as np_zeros,
-    float64 as np_float64,
-)
-from quasar_models._core.utils cimport (
-    arr_multiply_inplace,
-)
-from quasar_models._core.modeling.template.evaluate cimport (
-    _evaluate_exact as _template_evaluate_exact,
-    _evaluate_interp as _template_evaluate_interp,
-    _evaluate_rescale as _template_evaluate_rescale,
-)
+from numpy import float64 as np_float64
+from numpy import zeros as np_zeros
+
 from quasar_models._core.modeling.split.evaluate cimport (
     _evaluate as _split_evaluate,
 )
 from quasar_models._core.modeling.template.cytemplate cimport CyTemplate
+from quasar_models._core.modeling.template.evaluate cimport (
+    _evaluate_exact as _template_evaluate_exact,
+)
+from quasar_models._core.modeling.template.evaluate cimport (
+    _evaluate_interp as _template_evaluate_interp,
+)
+from quasar_models._core.modeling.template.evaluate cimport (
+    _evaluate_rescale as _template_evaluate_rescale,
+)
+from quasar_models._core.utils cimport (
+    arr_multiply_inplace,
+)
 
 ### By CONVOLUTION
 

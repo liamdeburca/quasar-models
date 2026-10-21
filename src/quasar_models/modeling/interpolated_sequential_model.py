@@ -1,13 +1,11 @@
 from dataclasses import field
 from typing import Union
 
-from numpy import array_equal, bool_, einsum, float64, ones, stack
+from numpy import array, array_equal, bool_, einsum, float64, ones
 from pydantic.dataclasses import dataclass
-from quasar_typing.astropy import CompoundModel_
+from quasar_typing.astropy.modeling import CompoundModelType
 from quasar_typing.numpy import BoolVector, FloatMatrix, FloatVector, IntVector
-from quasar_typing.scipy import csr_matrix_
-from quasar_utils.interpolation import create_interp_matrix
-from scipy.sparse import eye
+from quasar_typing.scipy import CSRMatrix
 
 from .base_model import BaseModel
 from .sequential_model import SequentialModel
@@ -18,31 +16,35 @@ from .utils import Param
 class InterpolatedSequentialModel:
     sequential_model: SequentialModel
 
-    x: FloatVector = field(kw_only=True)    
+    x: FloatVector = field(kw_only=True)
     x_new: FloatVector = field(kw_only=True)
 
-    _interp_matrix: csr_matrix_ = field(init=False)
+    _interp_matrix: CSRMatrix = field(init=False)
     _mask: BoolVector = field(init=False)
 
     def __post_init__(self):
         """
         Sets the following attributes based on the input `x` and `x_new` arrays:
 
-        - `_interp_matrix`: sparse matrix for interpolating values from `x` to 
-            `x_new`. If `x` and `x_new` are identical, the interpolation matrix 
+        - `_interp_matrix`: sparse matrix for interpolating values from `x` to
+            `x_new`. If `x` and `x_new` are identical, the interpolation matrix
             is the identity matrix.
-        - `_mask`: boolean array indicating which elements of `x_new` fall 
-            within the range of `x`. This ensures that data-model comparisons 
-            are only performed where the model can be evaluated. If `x` and 
+        - `_mask`: boolean array indicating which elements of `x_new` fall
+            within the range of `x`. This ensures that data-model comparisons
+            are only performed where the model can be evaluated. If `x` and
             `x_new` are identical, the mask is all `True`.
         """
+        from quasar_utils.interpolation import create_interp_matrix
+        from scipy.sparse import eye
+
         if array_equal(self.x, self.x_new):
             n = self.x.size
             self._interp_matrix = eye(n, n, dtype=float64, format="csr")
             self._mask = ones(n, dtype=bool_)
         else:
-            self._interp_matrix = create_interp_matrix.__wrapped__(
-                self.x, self.x_new,
+            self._interp_matrix = create_interp_matrix(
+                self.x,
+                self.x_new,
             )[0]
             lb = self.x.min()
             ub = self.x.max()
@@ -145,28 +147,25 @@ class InterpolatedSequentialModel:
 
     def partial_deriv(self, params: FloatVector) -> FloatMatrix:
         derivs = self.sequential_model.partial_deriv(self.x, params)
-        return stack(
-            [d @ self._interp_matrix for d in derivs],
-            axis=0,
-        )
+        return array([d @ self._interp_matrix for d in derivs])
 
     def get_final_model(
         self,
         params: FloatVector | None = None,
         copy: bool = True,
-    ) -> Union[BaseModel, CompoundModel_[BaseModel]]:
+    ) -> Union[BaseModel, CompoundModelType[BaseModel]]:
         return self.sequential_model.get_final_model(params=params, copy=copy)
 
     def get_updated_model(
         self,
         copy: bool = True,
-    ) -> Union[BaseModel, CompoundModel_[BaseModel]]:
+    ) -> Union[BaseModel, CompoundModelType[BaseModel]]:
         return self.sequential_model.get_updated_model(copy=copy)
 
     ### For Scipy `least_squares` optimization
 
     def fun(
-        self, 
+        self,
         x: FloatVector,
         data: dict[str, FloatVector],
     ) -> FloatVector:
@@ -178,14 +177,14 @@ class InterpolatedSequentialModel:
         return einsum("i,i->i", z, data["w"][self._mask], out=z)
 
     def jac(
-        self, 
-        x: FloatVector, 
+        self,
+        x: FloatVector,
         data: dict[str, FloatVector],
     ) -> FloatMatrix:
         """
         Scipy notation: 'x' is the vector of free parameters.
         """
-        jac = self.partial_deriv(x)[:,self._mask].T
+        jac = self.partial_deriv(x)[:, self._mask].T
         return einsum("ij,i->ij", jac, data["w"][self._mask], out=jac)
 
     @property
@@ -194,4 +193,4 @@ class InterpolatedSequentialModel:
 
     @property
     def bounds(self) -> tuple[FloatVector, FloatVector]:
-        return self.sequential_model.bounds    
+        return self.sequential_model.bounds

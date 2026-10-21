@@ -7,10 +7,15 @@ __all__ = [
 
 from numpy import float64, zeros_like
 from quasar_typing.numpy import FloatMatrix, FloatVector
-from quasar_typing.scipy import csr_matrix_
-from quasar_utils.convolution import _identify_closest_idx, convolve, convolve_deriv
+from quasar_typing.scipy import CSRMatrix
+from quasar_utils.convolution import (
+    _identify_closest_idx,
+    convolve,
+    convolve_deriv,
+)
 
-from ...utils.interpolation import get_template_transform
+from quasar_models.utils.interpolation import get_template_transform
+
 from .base_template import BaseTemplate
 
 # By CONVOLUTION
@@ -27,7 +32,7 @@ def evaluate(
     template_data: FloatMatrix | None = None,
     sigma_res: float | None = None,
     normalisation: float | None = None,
-    interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
+    interpolation_matrix: tuple[CSRMatrix, FloatVector] | None = None,
 ) -> FloatVector:
     if flux == 0:
         return zeros_like(x, dtype=float64)
@@ -65,7 +70,7 @@ def fit_deriv(
     template_data: FloatMatrix | None = None,
     sigma_res: float | None = None,
     normalisation: float | None = None,
-    interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
+    interpolation_matrix: tuple[CSRMatrix, FloatVector] | None = None,
     fixed: dict[str, bool] | None = None,
 ) -> list[FloatVector]:
     if fixed is None:
@@ -131,7 +136,7 @@ def evaluate_interp(
     template_data: FloatMatrix | None = None,
     sigma_res: float | None = None,
     normalisation: float | None = None,
-    interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
+    interpolation_matrix: tuple[CSRMatrix, FloatVector] | None = None,
 ) -> FloatVector:
 
     if template_fwhm is None:
@@ -172,7 +177,7 @@ def fit_deriv_interp(
     template_data: FloatMatrix | None = None,
     sigma_res: float | None = None,
     normalisation: float | None = None,
-    interpolation_matrix: tuple[csr_matrix_, FloatVector] | None = None,
+    interpolation_matrix: tuple[CSRMatrix, FloatVector] | None = None,
     fixed: dict[str, bool] | None = None,
 ) -> list[FloatVector]:
     if fixed is None:

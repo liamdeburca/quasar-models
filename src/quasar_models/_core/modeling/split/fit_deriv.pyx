@@ -1,10 +1,8 @@
-from libc.math cimport (
-    fmin,
-    fmax,
-    log as math_log,
-    exp as math_exp,
-    fabs as math_fabs,
-)
+from libc.math cimport exp as math_exp
+from libc.math cimport fabs as math_fabs
+from libc.math cimport fmax, fmin
+from libc.math cimport log as math_log
+
 
 cdef inline double clip(
     double val, 

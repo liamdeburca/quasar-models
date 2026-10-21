@@ -1,12 +1,11 @@
-from libc.math cimport (
-    fmin,
-    fmax,
-    log as math_log,
-    exp as math_exp,
-)
+from libc.math cimport exp as math_exp
+from libc.math cimport fmax, fmin
+from libc.math cimport log as math_log
+
 from quasar_models._core.utils cimport (
     dbl_add_inplace,
 )
+
 
 cdef double clip(double val, double min_val, double max_val) noexcept nogil:
     return fmin(fmax(val, min_val), max_val)

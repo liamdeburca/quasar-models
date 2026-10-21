@@ -6,8 +6,8 @@ from astropy.io import fits
 from astropy.units import Quantity, Unit
 from numpy import isfinite
 from quasar_typing.numpy import FloatMatrix, FloatVector, SortedFloatVector
-from quasar_typing.pathlib import AbsoluteFITSPath
-from quasar_typing.scipy import csr_matrix_
+from quasar_typing.pathlib import FITSPath
+from quasar_typing.scipy import CSRMatrix
 from quasar_utils.setup import Info
 
 
@@ -20,10 +20,10 @@ class BaseTemplateProtocol(Protocol):
     sigma_res: float | None
     name: str
 
-    path: AbsoluteFITSPath
+    path: FITSPath
 
-    _alpha_matrix: csr_matrix_
-    _beta_matrix: csr_matrix_
+    _alpha_matrix: CSRMatrix
+    _beta_matrix: CSRMatrix
     _xn: SortedFloatVector
 
     x_norm: float
@@ -39,7 +39,9 @@ def drop_nonfinite(arr: FloatVector) -> FloatVector:
     return arr[isfinite(arr)]
 
 
-def get_table_data(table: fits.BinTableHDU, cname: str) -> FloatVector | Quantity:
+def get_table_data(
+    table: fits.BinTableHDU, cname: str
+) -> FloatVector | Quantity:
     data = table.data[cname]
     col_index = table.columns.names.index(cname)
     col = table.columns[col_index]
@@ -171,7 +173,7 @@ def _save(
 
 def _load(
     *,
-    path: AbsoluteFITSPath,
+    path: FITSPath,
     info: Info,
 ) -> dict:
     """
@@ -221,21 +223,25 @@ def _load(
             hdu2: fits.BinTableHDU = hdul[2]
 
             kwargs["_xn"] = transform_wavelength(hdu2.data["xn"])
-            kwargs["_alpha_matrix"] = csr_matrix_(
+            kwargs["_alpha_matrix"] = CSRMatrix(
                 (
                     hdu2.data["alpha_data"],
                     hdu2.data["alpha_indices"],
                     hdu2.data["alpha_indptr"],
                 ),
-                shape=tuple(map(int, hdu2.header["ASHAPE"].strip().split("/"))),
+                shape=tuple(
+                    map(int, hdu2.header["ASHAPE"].strip().split("/"))
+                ),
             )
-            kwargs["_beta_matrix"] = csr_matrix_(
+            kwargs["_beta_matrix"] = CSRMatrix(
                 (
                     hdu2.data["beta_data"],
                     hdu2.data["beta_indices"],
                     hdu2.data["beta_indptr"],
                 ),
-                shape=tuple(map(int, hdu2.header["BSHAPE"].strip().split("/"))),
+                shape=tuple(
+                    map(int, hdu2.header["BSHAPE"].strip().split("/"))
+                ),
             )
 
     return kwargs

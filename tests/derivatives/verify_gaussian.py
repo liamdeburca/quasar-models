@@ -1,6 +1,7 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from tqdm import tqdm
+
 from quasar_models.line import GaussianModel
 
 SIGMA_RES: float = 2.3e-4
@@ -10,11 +11,7 @@ x = x0 * (1 + SIGMA_RES) ** np.arange(10_000)
 np.random.seed(42)
 
 MODEL = GaussianModel.create(
-    wave=1549.0,
-    sigma_res=SIGMA_RES,
-    strength=1.0,
-    fwhm_v=1e-3,
-    v_off=0.0,
+    wave=1549.0, sigma_res=SIGMA_RES, strength=1.0, fwhm_v=1e-3, v_off=0.0,
 )
 MODEL.strength.bounds = (0.1, 10.0)
 MODEL.fwhm_v.bounds = (1e-4, 1e-2)
@@ -48,9 +45,9 @@ def jac_numeric(p):
             fwhm_v - MODEL.fwhm_v.bounds[0],
         ]
     )
-    df_dfwhm_v = MODEL.evaluate(x, strength, fwhm_v + dfwhm_v, v_off) - MODEL.evaluate(
-        x, strength, fwhm_v - dfwhm_v, v_off
-    )
+    df_dfwhm_v = MODEL.evaluate(
+        x, strength, fwhm_v + dfwhm_v, v_off
+    ) - MODEL.evaluate(x, strength, fwhm_v - dfwhm_v, v_off)
     df_dfwhm_v /= 2 * dfwhm_v
 
     dv_off = min(
@@ -60,9 +57,9 @@ def jac_numeric(p):
             v_off - MODEL.v_off.bounds[0],
         ]
     )
-    df_dv_off = MODEL.evaluate(x, strength, fwhm_v, v_off + dv_off) - MODEL.evaluate(
-        x, strength, fwhm_v, v_off - dv_off
-    )
+    df_dv_off = MODEL.evaluate(
+        x, strength, fwhm_v, v_off + dv_off
+    ) - MODEL.evaluate(x, strength, fwhm_v, v_off - dv_off)
     df_dv_off /= 2 * dv_off
 
     return np.stack([df_dstrength, df_dfwhm_v, df_dv_off], axis=0)
