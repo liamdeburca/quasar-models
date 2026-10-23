@@ -1,7 +1,9 @@
+from timeit import repeat
+
+import numpy as np
 import pytest
-from numpy import allclose, array, isclose, stack
-from numpy.random import Generator
 from quasar_typing.numpy import FloatMatrix, FloatVector
+from scipy.optimize._numdiff import approx_derivative
 
 from quasar_models.continuum import PowerLawModel
 from quasar_models.host import HostGalaxyModel
@@ -14,290 +16,523 @@ def numerical_derivative(
     x: FloatVector,
     model: SequentialModel,
     params: FloatVector,
-    bounds: tuple[FloatVector, FloatVector],
-    epsilon: float,
+    f0: FloatVector | None = None,
 ) -> FloatMatrix:
-
-    derivs = []
-    for i, (p, lb, ub) in enumerate(zip(params, *bounds)):
-        params_left = params.copy()
-        params_left[i] = max(lb, p - epsilon)
-        dp_left = params[i] - params_left[i]
-        y_left = model.evaluate(x, params_left)
-
-        params_right = params.copy()
-        params_right[i] = min(ub, p + epsilon)
-        dp_right = params_right[i] - params[i]
-        y_right = model.evaluate(x, params_right)
-
-        dp = dp_left + dp_right
-        assert dp > 0.0
-
-        derivs.append((y_right - y_left) / dp)
-
-    return stack(derivs, axis=0)
+    return approx_derivative(
+        lambda p: model.evaluate(x, p),
+        params[model._free_indices],
+        method='2-point',
+        f0=f0,
+    ).T
 
 
-def test_gaussian(
-    gaussian_model: GaussianModel,
-    wavelength_array: FloatVector,
-    rng: Generator,
-    deriv_epsilon: float,
-    deriv_its: int,
-    deriv_rtol: float,
-    deriv_atol: float,
-    subtests: pytest.Subtests,
-) -> None:
-    assert _is_logbinned(wavelength_array)
+class TestGaussianModel:
+    def test_derivatives(
+        self,
+        gaussian_model: GaussianModel,
+        wavelength_array: FloatVector,
+        rng: np.random.Generator,
+        deriv_its: int,
+        deriv_rtol: float,
+        deriv_atol: float,
+        subtests: pytest.Subtests,
+    ) -> None:
+        assert _is_logbinned(wavelength_array)
 
-    gaussian_model.strength.fixed = False
-    gaussian_model.fwhm_v.fixed = False
-    gaussian_model.v_off.fixed = False
+        gaussian_model.strength.fixed = False
+        gaussian_model.fwhm_v.fixed = False
+        gaussian_model.v_off.fixed = False
 
-    with PrepareModel(x=wavelength_array, model=gaussian_model):
-        m = gaussian_model
-        assert m.dx is None
-        assert m.kwargs["wave"] == m.wave
-        assert m.kwargs["sigma_res"] == m.sigma_res
-        assert "dx" not in m.kwargs
+        with PrepareModel(x=wavelength_array, model=gaussian_model) as (seq_model, _):
+            m = gaussian_model
+            assert m.dx is None
+            assert m.kwargs["wave"] == m.wave
+            assert m.kwargs["sigma_res"] == m.sigma_res
+            assert "dx" not in m.kwargs
 
-        bounds = gaussian_model.bounds
-        for _ in range(deriv_its):
-            strength = rng.uniform(*gaussian_model.strength.bounds)
-            fwhm_v = rng.uniform(*gaussian_model.fwhm_v.bounds)
-            v_off = rng.uniform(*gaussian_model.v_off.bounds)
-            params = array([strength, fwhm_v, v_off])
-            with subtests.test(
-                msg=f"GaussianModel: {strength=:.1f}, {fwhm_v=:.1f}, {v_off=:.1f}"
-            ):
-                df_analytical = gaussian_model.partial_deriv(
-                    wavelength_array, params
-                )
-                df_numerical = numerical_derivative(
-                    wavelength_array, gaussian_model, params, bounds, deriv_epsilon
-                )
-                assert (
-                    isclose(
-                        df_analytical[0],
-                        df_numerical[0],
+            for _ in range(deriv_its):
+                strength = rng.uniform(*gaussian_model.strength.bounds)
+                fwhm_v = rng.uniform(*gaussian_model.fwhm_v.bounds)
+                v_off = rng.uniform(*gaussian_model.v_off.bounds)
+                params = np.array([strength, fwhm_v, v_off])
+
+                # with subtests.test(msg=f"GaussianModel: {strength=:.1f}, {fwhm_v=:.1f}, {v_off=:.1f}"):
+                df_analytical = seq_model.partial_deriv(wavelength_array, params)
+                df_numerical = numerical_derivative(wavelength_array, seq_model, params)
+
+                for df_a, df_n in zip(df_analytical, df_numerical):
+                    np.testing.assert_allclose(
+                        df_a,
+                        df_n,
                         rtol=deriv_rtol,
                         atol=deriv_atol,
-                    ).mean()
-                    == 1.0
-                )
-                assert (
-                    isclose(
-                        df_analytical[1],
-                        df_numerical[1],
+                    )
+
+
+    def test_benchmark(
+        self,
+        gaussian_model: GaussianModel,
+        wavelength_array: FloatVector,
+        rng: np.random.Generator,
+        deriv_its: int,
+        subtests: pytest.Subtests,
+    ) -> None:
+        assert _is_logbinned(wavelength_array)
+
+        gaussian_model.strength.fixed = False
+        gaussian_model.fwhm_v.fixed = False
+        gaussian_model.v_off.fixed = False
+
+        with PrepareModel(x=wavelength_array, model=gaussian_model) as (seq_model, _):
+            m = gaussian_model
+            assert m.dx is None
+            assert m.kwargs["wave"] == m.wave
+            assert m.kwargs["sigma_res"] == m.sigma_res
+            assert "dx" not in m.kwargs
+
+            ts_evaluate = []
+            ts_analytical = []
+            ts_numerical = []
+
+            for _ in range(deriv_its):
+                strength = rng.uniform(*gaussian_model.strength.bounds)
+                fwhm_v = rng.uniform(*gaussian_model.fwhm_v.bounds)
+                v_off = rng.uniform(*gaussian_model.v_off.bounds)
+                params = np.array([strength, fwhm_v, v_off])
+
+                f0 = seq_model.evaluate(wavelength_array, params)
+
+                t_evaluate = min(repeat(
+                    "f(x, params)",
+                    globals={
+                        "f": seq_model.evaluate,
+                        "x": wavelength_array,
+                        "params": params,
+                    },
+                    repeat=1000,
+                    number=1,
+                ))
+                t_analytical = min(repeat(
+                    "f(x, params)",
+                    globals={
+                        "f": seq_model.partial_deriv,
+                        "x": wavelength_array,
+                        "params": params,
+                    },
+                    repeat=1000,
+                    number=1,
+                ))
+                t_numerical = min(repeat(
+                    "f(x, seq_model, params, f0)",
+                    globals={
+                        "f": numerical_derivative,
+                        "x": wavelength_array,
+                        "seq_model": seq_model,
+                        "params": params,
+                        "f0": f0,
+                    },
+                    repeat=1000,
+                    number=1,
+                ))
+                
+                ts_evaluate.append(t_evaluate * 1e6)
+                ts_analytical.append(t_analytical * 1e6)
+                ts_numerical.append(t_numerical * 1e6)
+
+        msg_evaluate = f"(Q05, M, Q95) = {(np.quantile(ts_evaluate, [0.05, 0.5, 0.95])).round(1)}"
+        with subtests.test(msg=msg_evaluate):
+            pass
+
+        msg_analytical = f"(Q05, M, Q95) = {(np.quantile(ts_analytical, [0.05, 0.5, 0.95])).round(1)}"
+        with subtests.test(msg=msg_analytical):
+            pass
+
+        msg_numerical = f"(Q05, M, Q95) = {(np.quantile(ts_numerical, [0.05, 0.5, 0.95])).round(1)}"
+        with subtests.test(msg=msg_numerical):
+            pass
+
+class TestGaussianModelLinear:
+    def test_derivatives(
+        self,
+        gaussian_model: GaussianModel,
+        wavelength_array_linear: FloatVector,
+        rng: np.random.Generator,
+        deriv_its: int,
+        deriv_rtol: float,
+        deriv_atol: float,
+        subtests: pytest.Subtests,
+    ) -> None:
+        assert not _is_logbinned(wavelength_array_linear)
+
+        gaussian_model.strength.fixed = False
+        gaussian_model.fwhm_v.fixed = False
+        gaussian_model.v_off.fixed = False
+
+        with PrepareModel(x=wavelength_array_linear, model=gaussian_model) as (seq_model, _):
+            m = seq_model._model
+            assert m.dx is not None
+            assert m.kwargs["wave"] == m.wave
+            assert m.kwargs["dx"] == m.dx
+            assert "sigma_res" not in m.kwargs
+
+            for _ in range(deriv_its):
+                strength = rng.uniform(*gaussian_model.strength.bounds)
+                fwhm_v = rng.uniform(*gaussian_model.fwhm_v.bounds)
+                v_off = rng.uniform(*gaussian_model.v_off.bounds)
+                params = np.array([strength, fwhm_v, v_off])
+
+                # with subtests.test(msg=f"GaussianModel: {strength=:.1f}, {fwhm_v=:.1f}, {v_off=:.1f}"):
+                df_analytical = seq_model.partial_deriv(wavelength_array_linear, params)
+                df_numerical = numerical_derivative(wavelength_array_linear, seq_model, params)
+
+                for df_a, df_n in zip(df_analytical, df_numerical):
+                    np.testing.assert_allclose(
+                        df_a,
+                        df_n,
                         rtol=deriv_rtol,
                         atol=deriv_atol,
-                    ).mean()
-                    == 1.0
-                )
-                assert (
-                    isclose(
-                        df_analytical[2],
-                        df_numerical[2],
-                        rtol=deriv_rtol,
-                        atol=deriv_atol,
-                    ).mean()
-                    == 1.0
-                )
+                    )
 
 
-def test_gaussian_linear(
-    gaussian_model: GaussianModel,
-    wavelength_array_linear: FloatVector,
-    rng: Generator,
-    deriv_epsilon: float,
-    deriv_its: int,
-    deriv_rtol: float,
-    deriv_atol: float,
-    subtests: pytest.Subtests,
-) -> None:
-    assert not _is_logbinned(wavelength_array_linear)
+    def test_benchmark(
+        self,
+        gaussian_model: GaussianModel,
+        wavelength_array_linear: FloatVector,
+        rng: np.random.Generator,
+        deriv_its: int,
+        subtests: pytest.Subtests,
+    ) -> None:
+        assert not _is_logbinned(wavelength_array_linear)
 
-    gaussian_model.strength.fixed = False
-    gaussian_model.fwhm_v.fixed = False
-    gaussian_model.v_off.fixed = False
+        gaussian_model.strength.fixed = False
+        gaussian_model.fwhm_v.fixed = False
+        gaussian_model.v_off.fixed = False
+    
+        with PrepareModel(x=wavelength_array_linear, model=gaussian_model) as (seq_model, _):
+            m = gaussian_model
+            assert m.dx is not None
+            assert m.kwargs["wave"] == m.wave
+            assert m.kwargs["dx"] == m.dx
+            assert "sigma_res" not in m.kwargs
 
-    with PrepareModel(x=wavelength_array_linear, model=gaussian_model) as (seq_model, _):
-        m = seq_model._model
-        assert m.dx is not None
-        assert m.kwargs["wave"] == m.wave
-        assert m.kwargs["dx"] == m.dx
-        assert "sigma_res" not in m.kwargs
+            ts_evaluate = []
+            ts_analytical = []
+            ts_numerical = []
 
-        for _ in range(deriv_its):
-            strength = rng.uniform(*gaussian_model.strength.bounds)
-            fwhm_v = rng.uniform(*gaussian_model.fwhm_v.bounds)
-            v_off = rng.uniform(*gaussian_model.v_off.bounds)
-            params = array([strength, fwhm_v, v_off])
-            with subtests.test(
-                msg=f"GaussianModel: {strength=:.1f}, {fwhm_v=:.1f}, {v_off=:.1f}"
-            ):
-                df_analytical = gaussian_model.partial_deriv(
-                    wavelength_array_linear, params
-                )
-                df_numerical = numerical_derivative(
-                    wavelength_array_linear,
-                    seq_model,
-                    params,
-                    seq_model.bounds,
-                    deriv_epsilon,
-                )
+            for _ in range(deriv_its):
+                strength = rng.uniform(*gaussian_model.strength.bounds)
+                fwhm_v = rng.uniform(*gaussian_model.fwhm_v.bounds)
+                v_off = rng.uniform(*gaussian_model.v_off.bounds)
+                params = np.array([strength, fwhm_v, v_off])
 
-                assert (
-                    isclose(
-                        df_analytical[0],
-                        df_numerical[0],
-                        rtol=deriv_rtol,
-                        atol=deriv_atol,
-                    ).mean()
-                    == 1.0
-                )
-                assert (
-                    isclose(
-                        df_analytical[1],
-                        df_numerical[1],
-                        rtol=deriv_rtol,
-                        atol=deriv_atol,
-                    ).mean()
-                    == 1.0
-                )
-                assert (
-                    isclose(
-                        df_analytical[2],
-                        df_numerical[2],
-                        rtol=deriv_rtol,
-                        atol=deriv_atol,
-                    ).mean()
-                    == 1.0
-                )
+                f0 = seq_model.evaluate(wavelength_array_linear, params)
+
+                t_evaluate = min(repeat(
+                    "f(x, params)",
+                    globals={
+                        "f": seq_model.evaluate,
+                        "x": wavelength_array_linear,
+                        "params": params,
+                    },
+                    repeat=1000,
+                    number=1,
+                ))
+                t_analytical = min(repeat(
+                    "f(x, params)",
+                    globals={
+                        "f": seq_model.partial_deriv,
+                        "x": wavelength_array_linear,
+                        "params": params,
+                    },
+                    repeat=1000,
+                    number=1,
+                ))
+                t_numerical = min(repeat(
+                    "f(x, seq_model, params, f0)",
+                    globals={
+                        "f": numerical_derivative,
+                        "x": wavelength_array_linear,
+                        "seq_model": seq_model,
+                        "params": params,
+                        "f0": f0,
+                    },
+                    repeat=1000,
+                    number=1,
+                ))
+                
+                ts_evaluate.append(t_evaluate * 1e6)
+                ts_analytical.append(t_analytical * 1e6)
+                ts_numerical.append(t_numerical * 1e6)
+
+        msg_evaluate = f"(Q05, M, Q95) = {(np.quantile(ts_evaluate, [0.05, 0.5, 0.95])).round(1)}"
+        with subtests.test(msg=msg_evaluate):
+            pass
+
+        msg_analytical = f"(Q05, M, Q95) = {(np.quantile(ts_analytical, [0.05, 0.5, 0.95])).round(1)}"
+        with subtests.test(msg=msg_analytical):
+            pass
+
+        msg_numerical = f"(Q05, M, Q95) = {(np.quantile(ts_numerical, [0.05, 0.5, 0.95])).round(1)}"
+        with subtests.test(msg=msg_numerical):
+            pass
 
 
-def test_sequential(
-    gaussian_model: GaussianModel,
-    v_profile_copy: VProfileCopy1G,
-    wavelength_array: FloatVector,
-    rng: Generator,
-    deriv_epsilon: float,
-    deriv_its: int,
-    deriv_rtol: float,
-    deriv_atol: float,
-    subtests: pytest.Subtests,
-) -> None:
-    gaussian_model.strength.fixed = False
-    gaussian_model.fwhm_v.fixed = False
-    gaussian_model.v_off.fixed = False
-    v_profile_copy.strength_scale.fixed = False
+class TestSequentialModel:
+    def test_derivatives(
+        self,
+        gaussian_model: GaussianModel,
+        v_profile_copy: VProfileCopy1G,
+        wavelength_array: FloatVector,
+        rng: np.random.Generator,
+        deriv_its: int,
+        deriv_rtol: float,
+        deriv_atol: float,
+        subtests: pytest.Subtests,
+    ) -> None:
+        gaussian_model.strength.fixed = False
+        gaussian_model.fwhm_v.fixed = False
+        gaussian_model.v_off.fixed = False
+        v_profile_copy.strength_scale.fixed = False
 
-    assert v_profile_copy.fwhm_v_1.tied.model_name == gaussian_model.name
-    assert v_profile_copy.v_off_1.tied.model_name == gaussian_model.name
+        assert v_profile_copy.fwhm_v_1.tied.model_name == gaussian_model.name
+        assert v_profile_copy.v_off_1.tied.model_name == gaussian_model.name
 
-    mask = (6400.0 < wavelength_array) & (wavelength_array < 6700.0)
-    x = wavelength_array[mask]
+        mask = (6400.0 < wavelength_array) & (wavelength_array < 6700.0)
+        x = wavelength_array[mask]
 
-    with PrepareModel(
-        x=x, 
-        model=gaussian_model + v_profile_copy,
-    ) as (seq_model, _):
-        bounds = seq_model.bounds
-        for _ in range(deriv_its):
-            strength = rng.uniform(*gaussian_model.strength.bounds)
-            fwhm_v = rng.uniform(*gaussian_model.fwhm_v.bounds)
-            v_off = rng.uniform(*gaussian_model.v_off.bounds)
-            strength_scale = rng.uniform(*v_profile_copy.strength_scale.bounds)
+        with PrepareModel(
+            x=x, 
+            model=gaussian_model + v_profile_copy,
+        ) as (seq_model, _):
+            for _ in range(deriv_its):
+                strength = rng.uniform(*gaussian_model.strength.bounds)
+                fwhm_v = rng.uniform(*gaussian_model.fwhm_v.bounds)
+                v_off = rng.uniform(*gaussian_model.v_off.bounds)
+                strength_scale = rng.uniform(*v_profile_copy.strength_scale.bounds)
+                params = np.array([strength, fwhm_v, v_off, strength_scale])
 
-            params = array([strength, fwhm_v, v_off, strength_scale])
-            with subtests.test(
-                msg=f"GaussianModel: {strength=:.1f}, {fwhm_v=:.1f}, {v_off=:.1f}, {strength_scale=:.1f}"
-            ):
+                # with subtests.test(f"GaussianModel: {strength=:.1f}, {fwhm_v=:.1f}, {v_off=:.1f}, {strength_scale=:.1f}"):
                 f_analytical = seq_model.evaluate(x, params)
-                f_theoretical = gaussian_model.evaluate(
-                    x, strength, fwhm_v, v_off
-                ) + v_profile_copy.evaluate(
-                    x, strength_scale, strength, fwhm_v, v_off
-                )
-                assert allclose(
+                f_theoretical = gaussian_model.evaluate(x, strength, fwhm_v, v_off) \
+                    + v_profile_copy.evaluate(x, strength_scale, strength, fwhm_v, v_off)
+                
+                np.testing.assert_allclose(
                     f_analytical,
                     f_theoretical,
                     rtol=deriv_rtol,
                     atol=deriv_atol,
                 )
 
-                df_analytical = seq_model.partial_deriv(x, params)[
-                    seq_model._free_indices
-                ]
-                df_numerical = numerical_derivative(
-                    x, seq_model, params, bounds, deriv_epsilon
-                )
+                df_analytical = seq_model.partial_deriv(wavelength_array, params)
+                df_numerical = numerical_derivative(wavelength_array, seq_model, params)
 
-                assert df_analytical.shape == (4, x.size)
-                assert df_numerical.shape == (4, x.size)
-
-                assert allclose(
-                    df_analytical[0],
-                    df_numerical[0],
-                    rtol=deriv_rtol,
-                    atol=deriv_atol,
-                )
-                assert allclose(
-                    df_analytical[1],
-                    df_numerical[1],
-                    rtol=deriv_rtol,
-                    atol=deriv_atol,
-                )
-                # assert allclose(df_analytical[2], df_numerical[2], rtol=deriv_rtol, atol=deriv_atol)
-                # assert allclose(df_analytical[3], df_numerical[3], rtol=deriv_rtol, atol=deriv_atol)
-
-
-def test_powerlaw(
-    powerlaw_model: PowerLawModel,
-    wavelength_array: FloatVector,
-    rng: Generator,
-    deriv_epsilon: float,
-    deriv_its: int,
-    deriv_rtol: float,
-    deriv_atol: float,
-    subtests: pytest.Subtests,
-) -> None:
-    powerlaw_model.flux.fixed = False
-    powerlaw_model.alpha.fixed = False
-
-    with PrepareModel(x=wavelength_array, model=powerlaw_model) as (seq_model, _):
-        for _ in range(deriv_its):
-            flux = rng.uniform(*powerlaw_model.flux.bounds)
-            alpha = rng.uniform(*powerlaw_model.alpha.bounds)
-            params = array([flux, alpha])
-            bounds = seq_model.bounds
-            with subtests.test(
-                msg=f"PowerLawModel: {flux=:.1f}, {alpha=:.1f}"
-            ):
-                df_analytical = seq_model.partial_deriv(
-                    wavelength_array, params
-                )
-                df_numerical = numerical_derivative(
-                    wavelength_array, seq_model, params, bounds, deriv_epsilon
-                )
-                assert (
-                    isclose(
-                        df_analytical[0],
-                        df_numerical[0],
+                for df_a, df_n in zip(df_analytical, df_numerical):
+                    np.testing.assert_allclose(
+                        df_a,
+                        df_n,
                         rtol=deriv_rtol,
                         atol=deriv_atol,
-                    ).mean()
-                    == 1.0
-                )
-                assert (
-                    isclose(
-                        df_analytical[1],
-                        df_numerical[1],
+                    )
+
+
+    def test_benchmark(
+        self,
+        gaussian_model: GaussianModel,
+        v_profile_copy: VProfileCopy1G,
+        wavelength_array: FloatVector,
+        rng: np.random.Generator,
+        deriv_its: int,
+        subtests: pytest.Subtests,
+    ) -> None:
+        assert _is_logbinned(wavelength_array)
+
+        gaussian_model.strength.fixed = False
+        gaussian_model.fwhm_v.fixed = False
+        gaussian_model.v_off.fixed = False
+        v_profile_copy.strength_scale.fixed = False
+
+        assert v_profile_copy.fwhm_v_1.tied.model_name == gaussian_model.name
+        assert v_profile_copy.v_off_1.tied.model_name == gaussian_model.name
+
+        mask = (6400.0 < wavelength_array) & (wavelength_array < 6700.0)
+        x = wavelength_array[mask]
+
+        with PrepareModel(
+            x=x, 
+            model=gaussian_model + v_profile_copy,
+        ) as (seq_model, _):
+            m = gaussian_model
+            assert m.dx is None
+            assert m.kwargs["wave"] == m.wave
+            assert m.kwargs["sigma_res"] == m.sigma_res
+            assert "dx" not in m.kwargs
+
+            ts_evaluate = []
+            ts_analytical = []
+            ts_numerical = []
+
+            for _ in range(deriv_its):
+                strength = rng.uniform(*gaussian_model.strength.bounds)
+                fwhm_v = rng.uniform(*gaussian_model.fwhm_v.bounds)
+                v_off = rng.uniform(*gaussian_model.v_off.bounds)
+                strength_scale = rng.uniform(*v_profile_copy.strength_scale.bounds)
+                params = np.array([strength, fwhm_v, v_off, strength_scale])
+
+                f0 = seq_model.evaluate(wavelength_array, params)
+
+                t_evaluate = min(repeat(
+                    "f(x, params)",
+                    globals={
+                        "f": seq_model.evaluate,
+                        "x": wavelength_array,
+                        "params": params,
+                    },
+                    repeat=1000,
+                    number=1,
+                ))
+                t_analytical = min(repeat(
+                    "f(x, params)",
+                    globals={
+                        "f": seq_model.partial_deriv,
+                        "x": wavelength_array,
+                        "params": params,
+                    },
+                    repeat=1000,
+                    number=1,
+                ))
+                t_numerical = min(repeat(
+                    "f(x, seq_model, params, f0)",
+                    globals={
+                        "f": numerical_derivative,
+                        "x": wavelength_array,
+                        "seq_model": seq_model,
+                        "params": params,
+                        "f0": f0,
+                    },
+                    repeat=1000,
+                    number=1,
+                ))
+                
+                ts_evaluate.append(t_evaluate * 1e6)
+                ts_analytical.append(t_analytical * 1e6)
+                ts_numerical.append(t_numerical * 1e6)
+
+        msg_evaluate = f"(Q05, M, Q95) = {(np.quantile(ts_evaluate, [0.05, 0.5, 0.95])).round(1)}"
+        with subtests.test(msg=msg_evaluate):
+            pass
+
+        msg_analytical = f"(Q05, M, Q95) = {(np.quantile(ts_analytical, [0.05, 0.5, 0.95])).round(1)}"
+        with subtests.test(msg=msg_analytical):
+            pass
+
+        msg_numerical = f"(Q05, M, Q95) = {(np.quantile(ts_numerical, [0.05, 0.5, 0.95])).round(1)}"
+        with subtests.test(msg=msg_numerical):
+            pass
+
+
+class TestPowerLawModel:
+    def test_derivatives(
+        self,
+        powerlaw_model: PowerLawModel,
+        wavelength_array: FloatVector,
+        rng: np.random.Generator,
+        deriv_its: int,
+        deriv_rtol: float,
+        deriv_atol: float,
+        subtests: pytest.Subtests,
+    ) -> None:
+        powerlaw_model.flux.fixed = False
+        powerlaw_model.alpha.fixed = False
+
+        with PrepareModel(x=wavelength_array, model=powerlaw_model) as (seq_model, _):
+            for _ in range(deriv_its):
+                flux = rng.uniform(*powerlaw_model.flux.bounds)
+                alpha = rng.uniform(*powerlaw_model.alpha.bounds)
+                params = np.array([flux, alpha])
+
+                # with subtests.test(msg=f"PowerLawModel: {flux=:.1f}, {alpha=:.1f}"):
+                df_analytical = seq_model.partial_deriv(wavelength_array, params)
+                df_numerical = numerical_derivative(wavelength_array, seq_model, params)
+
+                for df_a, df_n in zip(df_analytical, df_numerical):
+                    np.testing.assert_allclose(
+                        df_a,
+                        df_n,
                         rtol=deriv_rtol,
                         atol=deriv_atol,
-                    ).mean()
-                    == 1.0
-                )
+                    )
+
+    def test_benchmark(
+        self,
+        powerlaw_model: PowerLawModel,
+        wavelength_array: FloatVector,
+        rng: np.random.Generator,
+        deriv_its: int,
+        subtests: pytest.Subtests,
+    ) -> None:
+        powerlaw_model.flux.fixed = False
+        powerlaw_model.alpha.fixed = False
+
+        ts_evaluate: list[float] = []
+        ts_analytical: list[float] = []
+        ts_numerical: list[float] = []
+
+        with PrepareModel(x=wavelength_array, model=powerlaw_model) as (seq_model, _):
+            for _ in range(deriv_its):
+                flux = rng.uniform(*powerlaw_model.flux.bounds)
+                alpha = rng.uniform(*powerlaw_model.alpha.bounds)
+                params = np.array([flux, alpha])
+
+                f0 = seq_model.evaluate(wavelength_array, params)
+
+                t_evaluate = min(repeat(
+                    "f(x, params)",
+                    globals={
+                        "f": seq_model.evaluate,
+                        "x": wavelength_array,
+                        "params": params,
+                    },
+                    repeat=1000,
+                    number=1,
+                ))
+                t_analytical = min(repeat(
+                    "f(x, params)",
+                    globals={
+                        "f": seq_model.partial_deriv,
+                        "x": wavelength_array,
+                        "params": params,
+                    },
+                    repeat=1000,
+                    number=1,
+                ))
+                t_numerical = min(repeat(
+                    "f(x, seq_model, params, f0)",
+                    globals={
+                        "f": numerical_derivative,
+                        "x": wavelength_array,
+                        "seq_model": seq_model,
+                        "params": params,
+                        "f0": f0,
+                    },
+                    repeat=1000,
+                    number=1,
+                ))
+                
+                ts_evaluate.append(t_evaluate * 1e6)
+                ts_analytical.append(t_analytical * 1e6)
+                ts_numerical.append(t_numerical * 1e6)
+
+        msg_evaluate = f"(Q05, M, Q95) = {(np.quantile(ts_evaluate, [0.05, 0.5, 0.95])).round(1)}"
+        with subtests.test(msg=msg_evaluate):
+            pass
+
+        msg_analytical = f"(Q05, M, Q95) = {(np.quantile(ts_analytical, [0.05, 0.5, 0.95])).round(1)}"
+        with subtests.test(msg=msg_analytical):
+            pass
+
+        msg_numerical = f"(Q05, M, Q95) = {(np.quantile(ts_numerical, [0.05, 0.5, 0.95])).round(1)}"
+        with subtests.test(msg=msg_numerical):
+            pass
 
 
 # def test_iron(
@@ -333,41 +568,113 @@ def test_powerlaw(
 #                 assert isclose(df_analytical[1], df_numerical[1], rtol=deriv_rtol, atol=deriv_atol).mean() == 1.0
 
 
-def test_host(
-    host_model: HostGalaxyModel,
-    rng: Generator,
-    deriv_epsilon: float,
-    deriv_its: int,
-    deriv_rtol: float,
-    deriv_atol: float,
-    subtests: pytest.Subtests,
-) -> None:
-    host_model.flux.fixed = False
-    host_model.fwhm.fixed = True
+class TestHostGalaxyModel:
+    def test_derivatives(
+        self,
+        host_model: HostGalaxyModel,
+        wavelength_array: FloatVector,
+        rng: np.random.Generator,
+        deriv_its: int,
+        deriv_rtol: float,
+        deriv_atol: float,
+        subtests: pytest.Subtests,
+    ) -> None:
+        host_model.flux.fixed = False
+        host_model.fwhm.fixed = True
 
-    wavelength_array = host_model.template.x
+        wavelength_array = host_model.template.x
 
-    with PrepareModel(x=wavelength_array, model=host_model) as (seq_model, _):
-        m = seq_model._model
-        assert m.evaluate_func.rescaling
+        with PrepareModel(x=wavelength_array, model=host_model) as (seq_model, _):
+            m = seq_model._model
+            assert m.evaluate_func.rescaling
+            for _ in range(deriv_its):
+                flux = rng.uniform(*host_model.flux.bounds)
+                params = np.array([flux])
 
-        bounds = seq_model.bounds
-        for _ in range(deriv_its):
-            flux = rng.uniform(*host_model.flux.bounds)
-            params = array([flux])
-            with subtests.test(msg=f"HostModel: {params=}"):
-                df_analytical = seq_model.partial_deriv(
-                    wavelength_array, params
-                )
-                df_numerical = numerical_derivative(
-                    wavelength_array, seq_model, params, bounds, deriv_epsilon
-                )
-                assert (
-                    isclose(
-                        df_analytical[0],
-                        df_numerical[0],
+                # with subtests.test(msg=f"HostModel: {params=}"):
+                df_analytical = seq_model.partial_deriv(wavelength_array, params)
+                df_numerical = numerical_derivative(wavelength_array, seq_model, params)
+
+                for df_a, df_n in zip(df_analytical, df_numerical):
+                    np.testing.assert_allclose(
+                        df_a,
+                        df_n,
                         rtol=deriv_rtol,
                         atol=deriv_atol,
-                    ).mean()
-                    == 1.0
-                )
+                    )
+
+    def test_benchmark(
+        self,
+        host_model: HostGalaxyModel,
+        wavelength_array: FloatVector,
+        rng: np.random.Generator,
+        deriv_its: int,
+        subtests: pytest.Subtests,
+    ) -> None:
+        host_model.flux.fixed = False
+        host_model.fwhm.fixed = True
+
+        wavelength_array = host_model.template.x
+
+        with PrepareModel(x=wavelength_array, model=host_model) as (seq_model, _):
+            m = seq_model._model
+            assert m.evaluate_func.rescaling
+
+            ts_evaluate = []
+            ts_analytical = []
+            ts_numerical = []
+
+            for _ in range(deriv_its):
+                flux = rng.uniform(*host_model.flux.bounds)
+                params = np.array([flux])
+
+                f0 = seq_model.evaluate(wavelength_array, params)
+
+                t_evaluate = min(repeat(
+                    "f(x, params)",
+                    globals={
+                        "f": seq_model.evaluate,
+                        "x": wavelength_array,
+                        "params": params,
+                    },
+                    repeat=1000,
+                    number=1,
+                ))
+                t_analytical = min(repeat(
+                    "f(x, params)",
+                    globals={
+                        "f": seq_model.partial_deriv,
+                        "x": wavelength_array,
+                        "params": params,
+                    },
+                    repeat=1000,
+                    number=1,
+                ))
+                t_numerical = min(repeat(
+                    "f(x, seq_model, params, f0)",
+                    globals={
+                        "f": numerical_derivative,
+                        "x": wavelength_array,
+                        "seq_model": seq_model,
+                        "params": params,
+                        "f0": f0,
+                    },
+                    repeat=1000,
+                    number=1,
+                ))
+                
+                ts_evaluate.append(t_evaluate * 1e6)
+                ts_analytical.append(t_analytical * 1e6)
+                ts_numerical.append(t_numerical * 1e6)
+
+        msg_evaluate = f"(Q05, M, Q95) = {(np.quantile(ts_evaluate, [0.05, 0.5, 0.95])).round(1)}"
+        with subtests.test(msg=msg_evaluate):
+            pass
+
+        msg_analytical = f"(Q05, M, Q95) = {(np.quantile(ts_analytical, [0.05, 0.5, 0.95])).round(1)}"
+        with subtests.test(msg=msg_analytical):
+            pass
+
+        msg_numerical = f"(Q05, M, Q95) = {(np.quantile(ts_numerical, [0.05, 0.5, 0.95])).round(1)}"
+        with subtests.test(msg=msg_numerical):
+            pass
