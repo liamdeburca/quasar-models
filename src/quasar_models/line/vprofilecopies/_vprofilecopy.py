@@ -453,14 +453,24 @@ class _VProfileCopy(BaseModel):
         Lorem ipsum.
         """
         from quasar_models.utils.astropy import _apply_bounds
+
         current_strength = sum(
             getattr(self, f"strength_{i}").value 
             for i in range(1, self.n_profiles + 1)
         )
-        model_strength = sum(
-            m.strength.value
-            for m in (model if isinstance(model, Iterable) else [model])
-        )
+        model_strength = 0.0
+        for m in model:
+            if hasattr(m, "n_profiles"):
+                model_strength += sum(
+                    getattr(m, f"strength_{i}").value
+                    for i in range(1, m.n_profiles + 1)
+                )
+            else:
+                model_strength += m.strength.value
+        # model_strength = sum(
+        #     m.strength.value
+        #     for m in (model if isinstance(model, Iterable) else [model])
+        # )
         self.strength_scale.value = _apply_bounds(
             model_strength / current_strength,
             self.strength_scale.bounds,

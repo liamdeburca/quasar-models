@@ -400,19 +400,24 @@ class PowerLawModel(BaseModel):
         ValueError
             If any other unexpected error occurs during linear regression.
         """
+        from quasar_models.utils.astropy import _apply_bounds
         from quasar_models.utils.linear_regression import linreg
         
         flux = self.flux.value
         alpha = self.alpha.value
         try:
-            flux, alpha = linreg(
+            res = linreg(
                 x_log,
                 y_log,
                 dy_log,
-                x0=self.x0,
-                y0=self.y0,
-                flux_bounds=self.flux.bounds,
-                alpha_bounds=self.alpha.bounds,
+            )
+            flux = _apply_bounds(
+                self.y0 * np.exp(res[0]),
+                self.flux.bounds,
+            )
+            alpha = _apply_bounds(
+                res[1],
+                self.alpha.bounds,
             )
             msg = f"Linear regression successful: {flux=:.1f}, {alpha=:.1f}."
             logger.debug(msg)
@@ -463,7 +468,7 @@ class PowerLawModel(BaseModel):
             a.append(res[0])
             b.append(res[1])
 
-        flux = _apply_bounds(self.y0 * math.exp(a), self.flux.bounds)
+        flux = _apply_bounds(self.y0 * np.exp(a), self.flux.bounds)
         alpha = _apply_bounds(b, self.alpha.bounds)
 
         return flux, alpha
