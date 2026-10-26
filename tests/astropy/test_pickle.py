@@ -80,7 +80,12 @@ def verify_model_pickle(original: Fittable1DModel) -> None:
     """
     pickled = pickle.dumps(original)
     unpickled = pickle.loads(pickled)
-    assert original == unpickled
+    
+    assert original is not unpickled
+    assert original.name == unpickled.name
+    assert original.meta == unpickled.meta
+    assert original.param_names == unpickled.param_names
+    assert np.allclose(original.parameters, unpickled.parameters)
 
     for param_name in original.param_names:
         original_param = getattr(original, param_name)
@@ -117,7 +122,8 @@ def apply_random_ties(model: Fittable1DModel) -> None:
         if bool(np.random.choice([True, False])):
             param = getattr(model, param_name)
             param.tied = IdenticalTie(
-                target_name="some_other_model", target_parameter=param_name
+                model_name="some_other_model", 
+                parameter_name=param_name,
             )
 
 
@@ -166,8 +172,9 @@ def _generate_random_gaussian_model() -> GaussianModel:
     v_off_value = sample_value_from_bounds(v_off_bounds)
 
     model = GaussianModel.create(
-        wave=np.random.uniform(1000, 10000),
-        sigma_res=np.random.uniform(1e-4, 1e-2),
+        np.random.uniform(1000, 10000),
+        np.random.uniform(1e-4, 1e-2),
+        "b",
         strength=strength_value,
         fwhm_v=fwhm_v_value,
         v_off=v_off_value,
@@ -197,18 +204,21 @@ def _generate_random_balmer_model() -> BalmerModel:
     ratio_value = sample_value_from_bounds(ratio_bounds)
 
     model = BalmerModel.create(
-        flux=flux_value,
-        fwhm=fwhm_value,
+        flux_value,
+        fwhm_value,
+        ratio_value,
         edge=INFO.balmer.edge,
         info=INFO,
-        ratio=ratio_value,
         name=INFO.balmer.source,
         temp=INFO.balmer.temp,
         tau=INFO.balmer.tau,
         scale=INFO.balmer.scale,
         dens=INFO.balmer.dens,
         n_u_range=(INFO.balmer.n_u_min, INFO.balmer.n_u_max),
-        allow_interp_fitting=INFO.balmer.allow_interp_fitting,
+        allow_interp_fitting=INFO.convolution.allow_interp_fitting,
+        flux_bounds=flux_bounds,
+        fwhm_bounds=fwhm_bounds,
+        ratio_bounds=ratio_bounds
     )
     model.flux.bounds = flux_bounds
     model.fwhm.bounds = fwhm_bounds

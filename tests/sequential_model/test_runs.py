@@ -79,8 +79,7 @@ def test_from_gaussian_model(wavelength_grid):
 
     # Create GaussianModel
     model = GaussianModel.create(
-        wave=1549.0,
-        sigma_res=V_RES,
+        1549.0, V_RES, "b",
         strength=1.0,
         fwhm_v=1e-4,
         v_off=0.0,

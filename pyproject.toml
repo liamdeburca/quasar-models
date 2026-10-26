@@ -20,12 +20,14 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "numpy>=1.26",
-    "scipy>=1.16",
-    "astropy>=7.0",
-    "pydantic>=2.12",
     "quasar-typing",
     "quasar-utils",
+    "pydantic>=2.12",
+    "astropy>=7.0",
+    "numpy>=1.26",
+    "scipy>=1.16",
+    "emcee>=3.0.0",
+    "matplotlib",
     "click >= 8.0",
 ]
 

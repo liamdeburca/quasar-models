@@ -55,7 +55,7 @@ def test_main(
 
         model.flux.value = flux
         model.fwhm.value = fwhm
-        with PrepareModel(x=template.x, model=model) as _model:
+        with PrepareModel(x=template.x, model=model) as (_model, _):
             y = _model(template.x)
 
         chi2s = rasterise(

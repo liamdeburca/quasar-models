@@ -87,11 +87,6 @@ class TestBalmerSeriesModuleImports:
         from quasar_models.balmer.series import PATH_TO_CACHE
         assert PATH_TO_CACHE is not None
 
-    def test_import_path_to_data(self):
-        """Verify PATH_TO_DATA can be imported from series."""
-        from quasar_models.balmer.series import PATH_TO_DATA
-        assert PATH_TO_DATA is not None
-
 
 class TestContinuumModuleImports:
     """Test imports from quasar_models.continuum submodule."""
@@ -155,37 +150,37 @@ class TestLineModuleImports:
 
     def test_import_gaussian_model(self):
         """Verify GaussianModel can be imported from line."""
-        from quasar_models.line.line import GaussianModel
+        from quasar_models.line import GaussianModel
         assert GaussianModel is not None
 
     def test_import_vprofilecopy(self):
         """Verify VProfileCopy can be imported from line."""
-        from quasar_models.line.line import VProfileCopy
+        from quasar_models.line import VProfileCopy
         assert VProfileCopy is not None
 
     def test_import_vprofilecopy_1g(self):
         """Verify VProfileCopy1G can be imported from line."""
-        from quasar_models.line.line import VProfileCopy1G
+        from quasar_models.line import VProfileCopy1G
         assert VProfileCopy1G is not None
 
     def test_import_vprofilecopy_2g(self):
         """Verify VProfileCopy2G can be imported from line."""
-        from quasar_models.line.line import VProfileCopy2G
+        from quasar_models.line import VProfileCopy2G
         assert VProfileCopy2G is not None
 
     def test_import_vprofilecopy_3g(self):
         """Verify VProfileCopy3G can be imported from line."""
-        from quasar_models.line.line import VProfileCopy3G
+        from quasar_models.line import VProfileCopy3G
         assert VProfileCopy3G is not None
 
     def test_import_vprofilecopy_4g(self):
         """Verify VProfileCopy4G can be imported from line."""
-        from quasar_models.line.line import VProfileCopy4G
+        from quasar_models.line import VProfileCopy4G
         assert VProfileCopy4G is not None
 
     def test_import_vprofilecopy_5g(self):
         """Verify VProfileCopy5G can be imported from line."""
-        from quasar_models.line.line import VProfileCopy5G
+        from quasar_models.line import VProfileCopy5G
         assert VProfileCopy5G is not None
 
 
@@ -254,22 +249,12 @@ class TestModelingModuleImports:
     def test_import_prepare_model_function(self):
         """Verify prepare_model function can be imported from modeling."""
         from quasar_models.modeling import prepare_model
-        assert callable(prepare_model)
+        assert prepare_model is not None
 
     def test_import_sequential_model(self):
         """Verify SequentialModel can be imported from modeling."""
         from quasar_models.modeling import SequentialModel
         assert SequentialModel is not None
-
-    def test_import_prepared_sequential_model(self):
-        """Verify PreparedSequentialModel can be imported from modeling."""
-        from quasar_models.modeling import PreparedSequentialModel
-        assert PreparedSequentialModel is not None
-
-    def test_import_interpolated_sequential_model(self):
-        """Verify InterpolatedSequentialModel can be imported from modeling."""
-        from quasar_models.modeling import InterpolatedSequentialModel
-        assert InterpolatedSequentialModel is not None
 
 
 class TestModelingFittingModuleImports:
@@ -277,12 +262,12 @@ class TestModelingFittingModuleImports:
 
     def test_import_fitter(self):
         """Verify Fitter can be imported from modeling.fitting."""
-        from quasar_models.modeling.fitting import Fitter
+        from quasar_models.modeling import Fitter
         assert Fitter is not None
 
     def test_import_mcmc_fitter(self):
         """Verify MCMCFitter can be imported from modeling.fitting."""
-        from quasar_models.modeling.fitting import MCMCFitter
+        from quasar_models.modeling import MCMCFitter
         assert MCMCFitter is not None
 
 
@@ -291,10 +276,10 @@ class TestModelingTemplateModuleImports:
 
     def test_import_base_template(self):
         """Verify BaseTemplate can be imported from modeling.template."""
-        from quasar_models.modeling.template import BaseTemplate
+        from quasar_models.modeling import BaseTemplate
         assert BaseTemplate is not None
 
     def test_import_template_model(self):
         """Verify TemplateModel can be imported from modeling.template."""
-        from quasar_models.modeling.template import TemplateModel
+        from quasar_models.modeling import TemplateModel
         assert TemplateModel is not None

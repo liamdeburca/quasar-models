@@ -8,10 +8,10 @@ build
 scripts
 temp
 src/quasar_models/cli
-
+pl_wiggle.py
+prepared_sequential_model.py
+interpolated_sequential_model.py
 *.so
 *.c
 *.pyc
 *.ipynb
-
-pl_wiggle.py

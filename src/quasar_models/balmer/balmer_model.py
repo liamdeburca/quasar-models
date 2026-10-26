@@ -179,10 +179,11 @@ class BalmerModel(TemplateModel):
             model.flux.bounds = flux_bounds
 
         if fwhm_bounds is None:
-            model.fwhm.bounds = (
+            fwhm_bounds = (
                 continuum_template.fwhm[0],
                 continuum_template.fwhm[-1],
             )
+
         model.fwhm.value = _apply_bounds(fwhm, fwhm_bounds)
         model.fwhm.bounds = fwhm_bounds
 
