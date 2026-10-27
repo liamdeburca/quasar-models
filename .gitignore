@@ -5,6 +5,7 @@ __pycache__
 .notes
 .cache
 build
+dist
 scripts
 temp
 src/quasar_models/cli

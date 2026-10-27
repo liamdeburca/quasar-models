@@ -1,42 +1,42 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "Cython", "numpy"]
+requires = [
+    "wheel", 
+    "setuptools==72.1.0",
+    "Cython==3.0.12", 
+    "numpy==1.26",
+]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "quasar-models"
+authors = [{name = "Liam", email = "liam_deburca@me.com"}]
 version = "0.1.0"
-description = "Spectral fitting models with Pydantic and AstroPy compatibility"
 readme = "README.md"
 requires-python = ">=3.12"
-
-authors = [
-    {name = "Liam", email = "liam_deburca@me.com"}
-]
-keywords = ["quasar", "spectral", "models", "emission-lines"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
 ]
 dependencies = [
-    "quasar-typing",
-    "quasar-utils",
-    "pydantic>=2.12",
-    "astropy>=7.0",
-    "numpy>=1.26",
-    "scipy>=1.16",
-    "emcee>=3.0.0",
-    "matplotlib",
-    "click >= 8.0",
+    "quasar-typing==0.1.0",
+    "quasar-utils==0.1.0",
+
+    "matplotlib==3.10.0",
+    "pydantic==2.12",
+    "astropy==7.0",
+    "numpy==1.26",
+    "scipy==1.16",
+    "click==8.5.0",
+    "emcee==3.1.6",
+    "lazy-imports==1.2.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0",
-    "pytest-cov",
-    "black",
-    "isort",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "black==26.10.1",
+    "isort==9.0.2",
 ]
 
 [project.urls]
@@ -53,3 +53,8 @@ line-length = 79
 
 [lint.pyupgrade]
 keep-runtime-typing = true
+
+[tool.pytest.ini_options]
+markers = [
+    "benchmark: test benchmarks different methods",
+]

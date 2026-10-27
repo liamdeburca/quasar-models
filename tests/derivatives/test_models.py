@@ -68,7 +68,8 @@ class TestGaussianModel:
                         atol=deriv_atol,
                     )
 
-
+    
+    @pytest.mark.benchmark
     def test_benchmark(
         self,
         gaussian_model: GaussianModel,
@@ -194,6 +195,7 @@ class TestGaussianModelLinear:
                     )
 
 
+    @pytest.mark.benchmark
     def test_benchmark(
         self,
         gaussian_model: GaussianModel,
@@ -335,6 +337,7 @@ class TestSequentialModel:
                     )
 
 
+    @pytest.mark.benchmark
     def test_benchmark(
         self,
         gaussian_model: GaussianModel,
@@ -462,6 +465,8 @@ class TestPowerLawModel:
                         atol=deriv_atol,
                     )
 
+
+    @pytest.mark.benchmark
     def test_benchmark(
         self,
         powerlaw_model: PowerLawModel,
@@ -603,6 +608,8 @@ class TestHostGalaxyModel:
                         atol=deriv_atol,
                     )
 
+
+    @pytest.mark.benchmark
     def test_benchmark(
         self,
         host_model: HostGalaxyModel,
