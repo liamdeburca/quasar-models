@@ -48,6 +48,9 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+quasar_models = ["**/.data/*"]
+
 [tool.ruff]
 line-length = 79
 
