@@ -1,14 +1,15 @@
 __all__ = ["BalmerContinuumTemplate"]
 
 from dataclasses import field
-from typing import Any, ClassVar, Self
+from typing import ClassVar, Self
 
+from pydantic import validate_call
 from pydantic.dataclasses import dataclass
+from quasar_typing.literals import TemplateName
 from quasar_typing.numpy import SortedFloatVector
 from quasar_typing.pathlib import DirPath, FITSPath
 from quasar_utils.setup import Info
 
-from quasar_models._core.modeling.balmer.continuum import evaluate
 from quasar_models.modeling.template import BaseTemplate
 
 from .io import PATH_TO_CACHE
@@ -74,6 +75,7 @@ class BalmerContinuumTemplate(BaseTemplate):
         )
 
     @classmethod
+    @validate_call
     def instantiate(
         cls,
         fwhm: SortedFloatVector,
@@ -88,8 +90,13 @@ class BalmerContinuumTemplate(BaseTemplate):
         fwhm_norm: float,
         boltz: float,
         is_logspace: bool = False,
-        name: str = "no_name",
+        name: TemplateName = "no_name",
     ) -> Self:
+        """
+        Instantiate a BalmerContinuumTemplate with the given parameters.
+        """
+        from quasar_models._core.modeling.balmer.continuum import evaluate
+        
         _data = evaluate(
             x,
             1.0,
@@ -127,6 +134,7 @@ class BalmerContinuumTemplate(BaseTemplate):
 
     # I/O
 
+    @validate_call
     def save(
         self,
         *,
@@ -140,7 +148,9 @@ class BalmerContinuumTemplate(BaseTemplate):
             info=info,
         )
 
+    
     @classmethod
+    @validate_call
     def load(
         cls,
         *,
@@ -153,11 +163,14 @@ class BalmerContinuumTemplate(BaseTemplate):
 
     # I/O from '.cache' directory
 
+    @validate_call
     def save_to_cache(self, info: Info) -> FITSPath:
         from .io import save_to_cache
         return save_to_cache(template=self, info=info)
 
+    
     @classmethod
+    @validate_call
     def load_from_cache(
         cls,
         *,
@@ -174,37 +187,3 @@ class BalmerContinuumTemplate(BaseTemplate):
             info=info,
         )
         return BalmerContinuumTemplate(**kwargs)
-
-    ### Serialization
-
-    def serialize(self, info: Info) -> dict[str, Any]:
-        from quasar_models.utils.serialization import serialize_quantity
-        temp_unit = str(info.units.temp_unit)
-
-        data = super().serialize(info)
-        data["temp"] = serialize_quantity(
-            self.temp, temp_unit, scientific=True
-        )
-        data["tau"] = self.tau
-        data["scale"] = self.scale
-
-        return data
-
-    @classmethod
-    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
-        from quasar_models.utils.serialization import deserialize_quantity
-        temp_unit = str(info.units.temp_unit)
-        template = BalmerContinuumTemplate.load_from_cache(
-            temp=deserialize_quantity(data["temp"], temp_unit),
-            tau=data["tau"],
-            scale=data["scale"],
-            info=info,
-        )
-        template = cls._deserialize_helper(template, data, info)
-
-        template.x_norm = info.balmer.edge
-        template.fwhm_norm = info.balmer.fwhm_norm
-
-        template.normalisation = None
-        template.__post_init__()
-        return template

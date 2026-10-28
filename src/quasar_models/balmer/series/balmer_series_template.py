@@ -1,15 +1,16 @@
 __all__ = ["BalmerSeriesTemplate"]
 
 from dataclasses import field
-from typing import Any, ClassVar, Literal, Self
+from typing import ClassVar, Self
 
 import numpy as np
+from pydantic import validate_call
 from pydantic.dataclasses import dataclass
+from quasar_typing.literals import BalmerSeriesTemplateName
 from quasar_typing.numpy import FloatVector, SortedFloatVector
 from quasar_typing.pathlib import DirPath, FITSPath
 from quasar_utils.setup import Info
 
-from quasar_models._core.modeling.balmer.series import evaluate
 from quasar_models.modeling.template import BaseTemplate
 
 from .io import PATH_TO_CACHE
@@ -24,7 +25,7 @@ class BalmerSeriesTemplate(BaseTemplate):
     n_u_range: tuple[int, int] = field(kw_only=True)
 
     # Only series data from Storey&Hummer1995 is currently supported
-    name: Literal["sh1995"] = field(default="sh1995", kw_only=True)
+    name: BalmerSeriesTemplateName = field(default="sh1995", kw_only=True)
 
     PATH_TO_CACHE: ClassVar[DirPath] = PATH_TO_CACHE
 
@@ -128,12 +129,14 @@ class BalmerSeriesTemplate(BaseTemplate):
             name=self.name,
         )
 
+
     @classmethod
+    @validate_call
     def instantiate(
         cls,
         fwhm: SortedFloatVector,
         x: SortedFloatVector,
-        waves: FloatVector,
+        waves: SortedFloatVector,
         weights: FloatVector,
         temp: float,
         dens: float,
@@ -145,25 +148,22 @@ class BalmerSeriesTemplate(BaseTemplate):
         fwhm_norm: float,
         normalisation: float | None = None,
         is_logspace: bool = False,
-        name: Literal["sh1995"] = "sh1995",
+        name: BalmerSeriesTemplateName = "sh1995",
     ) -> Self:
+        """
+        Instantiate a BalmerSeriesTemplate with the given parameters.
+        """
+        from quasar_models._core.modeling.balmer.series import evaluate
+
         weights = weights / weights.sum()
-        data = np.stack(
-            [
-                evaluate(
-                    x,
-                    1.0,
-                    _fwhm,
-                    sigma_res=sigma_res,
-                    waves=waves,
-                    weights=weights,
-                    edge=edge,
-                    normalisation=1.0,
-                )
-                for _fwhm in fwhm
-            ],
-            axis=0,
-        )
+        data = np.array([
+            evaluate(
+                x, 1.0, f, 
+                sigma_res=sigma_res, waves=waves, weights=weights, 
+                edge=edge, normalisation=1.0,
+            )
+            for f in fwhm
+        ])
         return BalmerSeriesTemplate(
             fwhm=fwhm,
             x=x,
@@ -185,6 +185,7 @@ class BalmerSeriesTemplate(BaseTemplate):
             dens=dens,
             n_u_range=n_u_range,
         )
+    
 
     def upsample(
         self,
@@ -194,6 +195,8 @@ class BalmerSeriesTemplate(BaseTemplate):
         """
         Upsamples the BalmerSeriesTemplate to the specified FWHM values.
         """
+        from quasar_models._core.modeling.balmer.series import evaluate
+
         obj = self if inplace else self.copy(with_matrices=True)
 
         data = np.zeros(shape=(fwhm.size, self.x.size), dtype=np.float64)
@@ -217,12 +220,7 @@ class BalmerSeriesTemplate(BaseTemplate):
                     normalisation=1.0,
                     y=data[i, :],
                 )
-                import matplotlib.pyplot as plt
-
-                plt.figure()
-                plt.plot(self.x, data[i, :], label=fwhm_curr)
-                plt.show()
-
+                
         obj.fwhm = fwhm
         obj.data = data
 
@@ -230,6 +228,7 @@ class BalmerSeriesTemplate(BaseTemplate):
 
     # I/O
 
+    @validate_call
     def save(
         self,
         *,
@@ -242,7 +241,9 @@ class BalmerSeriesTemplate(BaseTemplate):
         from .io import save
         return save(template=self, path=path, info=info)
 
+    
     @classmethod
+    @validate_call
     def load(
         cls,
         *,
@@ -253,17 +254,19 @@ class BalmerSeriesTemplate(BaseTemplate):
         kwargs = load(path=path, info=info)
         return BalmerSeriesTemplate(**kwargs)
 
-    # I/O from '.cache' directory
 
+    @validate_call
     def save_to_cache(self, info: Info) -> FITSPath:
         from .io import save_to_cache
         return save_to_cache(template=self, info=info)
 
+    
     @classmethod
+    @validate_call
     def load_from_cache(
         cls,
         *,
-        name: Literal["sh1995"],
+        name: BalmerSeriesTemplateName,
         temp: float,
         dens: float,
         n_u_range: tuple[int, int],
@@ -279,43 +282,3 @@ class BalmerSeriesTemplate(BaseTemplate):
         )
         obj = BalmerSeriesTemplate(**kwargs)
         return obj if obj.n_u_range == n_u_range else obj.crop(n_u_range)
-
-    ### Serialization
-
-    def serialize(self, info: Info) -> dict[str, Any]:
-        from quasar_models.utils.serialization import serialize_quantity
-        temp_unit = str(info.units.temp_unit)
-        dens_unit = str(info.units.dens_unit)
-
-        data = super().serialize(info)
-        data["temp"] = serialize_quantity(
-            self.temp, temp_unit, scientific=True
-        )
-        data["dens"] = serialize_quantity(
-            self.dens, dens_unit, scientific=True
-        )
-        data["n_u_range"] = list(self.n_u_range)
-
-        return data
-
-    @classmethod
-    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
-        from quasar_models.utils.serialization import deserialize_quantity
-        temp_unit = str(info.units.temp_unit)
-        dens_unit = str(info.units.dens_unit)
-
-        template = BalmerSeriesTemplate.load_from_cache(
-            name=data["name"],
-            temp=deserialize_quantity(data["temp"], temp_unit),
-            dens=deserialize_quantity(data["dens"], dens_unit),
-            n_u_range=tuple(data["n_u_range"]),
-            info=info,
-        )
-        template = cls._deserialize_helper(template, data, info)
-
-        template.x_norm = info.balmer.edge
-        template.fwhm_norm = info.balmer.fwhm_norm
-
-        template.normalisation = None
-        template.__post_init__()
-        return template

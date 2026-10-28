@@ -10,6 +10,7 @@ from astropy.modeling import Parameter
 from astropy.units import Unit
 from pydantic import validate_call
 from quasar_typing.bounds import AstropyBounds
+from quasar_typing.literals import BalmerSeriesTemplateName
 from quasar_typing.numpy import FittableFloatVector, FloatVector
 from quasar_utils.setup import Info
 
@@ -55,6 +56,7 @@ class BalmerModel(TemplateModel):
     )
 
     @classmethod
+    @validate_call
     def create(
         cls,
         flux: float,
@@ -72,7 +74,7 @@ class BalmerModel(TemplateModel):
         n_u_range: tuple[int, int] | None = None,
         allow_interp_fitting: bool = False,
         n_scales: float | None = None,
-        name: str | Literal["SH1995"] | None = None,
+        name: str | BalmerSeriesTemplateName | None = None,
         flux_bounds: AstropyBounds | None = None,
         fwhm_bounds: AstropyBounds | None = None,
         ratio_bounds: AstropyBounds | None = None,
@@ -529,66 +531,6 @@ class BalmerModel(TemplateModel):
         obj.flux.value = _apply_bounds(a_qsfit * y_pl / y_ba, obj.flux.bounds)
 
         return obj
-
-    ### Serialization
-
-    def serialize(self, info: Info) -> dict[str, dict[str, Any]]:
-        from quasar_models.io.serialization import serialize_parameter
-        flux_unit = str(info.units.flux_unit)
-        kms_unit = "km/s"
-        data = {
-            "name": self.name,
-            "flux": serialize_parameter(self.flux, flux_unit, scientific=True),
-            "fwhm": serialize_parameter(self.fwhm, kms_unit),
-            "ratio": serialize_parameter(self.ratio, None),
-            "continuum_template": self.continuum_template.serialize(info),
-            "series_template": self.series_template.serialize(info),
-        }
-        return self._serialize_helper(data)
-
-    @classmethod
-    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
-        from quasar_models.io.serialization import deserialize_parameter
-        flux_unit = str(info.units.flux_unit)
-        kms_unit = "km/s"
-
-        flux = deserialize_parameter(data["flux"], flux_unit)
-        fwhm = deserialize_parameter(data["fwhm"], kms_unit)
-        ratio = deserialize_parameter(data["ratio"], None)
-        edge = info.balmer.edge
-
-        continuum_template = BalmerContinuumTemplate.deserialize(
-            data["continuum_template"],
-            info,
-        )
-        series_template = BalmerSeriesTemplate.deserialize(
-            data["series_template"],
-            info,
-        )
-
-        model = BalmerModel.create(
-            flux["value"],
-            fwhm["value"],
-            ratio["value"],
-            edge=edge,
-            continuum_template=continuum_template,
-            series_template=series_template,
-            info=info,
-            allow_interp_fitting=info.convolution.allow_interp_fitting,
-            flux_bounds=flux["bounds"],
-            fwhm_bounds=fwhm["bounds"],
-            ratio_bounds=ratio["bounds"],
-            flux_fixed=flux["fixed"],
-            fwhm_fixed=fwhm["fixed"],
-            ratio_fixed=ratio["fixed"],
-        )
-        model.flux.tied = flux["tied"]
-        model.fwhm.tied = fwhm["tied"]
-        model.ratio.tied = ratio["tied"]
-
-        model.name = data["name"]
-
-        return model
 
 
 type BaModel = BalmerModel

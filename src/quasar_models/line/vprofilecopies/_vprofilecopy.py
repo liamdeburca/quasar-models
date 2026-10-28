@@ -2,12 +2,13 @@ __all__ = ["_VProfileCopy"]
 
 from collections.abc import Iterable
 from itertools import product
-from typing import Any, ClassVar, Literal, Self, TypedDict, Union
+from typing import ClassVar, Literal, Self, TypedDict, Union
 
 import numpy as np
 from astropy.constants import c
+from pydantic import validate_call
 from quasar_typing.bounds import AstropyBounds
-from quasar_utils.setup import Info
+from quasar_typing.literals import LineType, ModelName
 
 from quasar_models._core.modeling.vprofilecopy import (
     VProfileCopyEvaluate,
@@ -22,10 +23,10 @@ C_KMS: float = c.to("km/s").value  # Exact speed of light in km/s
 class MetaData(TypedDict):
     wave: float
     sigma_res: float
-    linetype: Literal["n", "b"]
+    linetype: LineType
     dx: float | None
     kwargs: dict[str, float]
-    master_name: str
+    master_name: ModelName | None
     n_sigmas: float
 
 
@@ -60,11 +61,11 @@ class _VProfileCopy(BaseModel):
         self.meta["sigma_res"] = value
 
     @property
-    def linetype(self) -> Literal["n", "b"]:
+    def linetype(self) -> LineType:
         return self.meta["linetype"]
 
     @linetype.setter
-    def linetype(self, value: Literal["n", "b"]) -> None:
+    def linetype(self, value: LineType) -> None:
         self.meta["linetype"] = value
 
     @property
@@ -113,11 +114,11 @@ class _VProfileCopy(BaseModel):
         return self.sigma_res * C_KMS
 
     @property
-    def master_name(self) -> str | None:
+    def master_name(self) -> ModelName | None:
         return self.meta["master_name"]
 
     @master_name.setter
-    def master_name(self, value: str | None) -> None:
+    def master_name(self, value: ModelName | None) -> None:
         self.meta["master_name"] = value
 
     @property
@@ -129,17 +130,18 @@ class _VProfileCopy(BaseModel):
         self.meta["n_sigmas"] = value
 
     @classmethod
+    @validate_call
     def create(
         cls,
         wave: float,
-        name: str,
-        linetype: Literal["n", "b"],
+        name: ModelName,
+        linetype: LineType,
         *gs: GaussianModel,
         strength_scale_value: float = 1.0,
         strength_scale_bounds: AstropyBounds | None = None,
         strength_scale_fixed: bool | None = None,
         sigma_res: float | None = None,
-        master_name: str | None = None,
+        master_name: ModelName | None = None,
         n_sigmas: float | None = None,
         dx: float | None = None,
         adapt: bool = True,
@@ -182,11 +184,12 @@ class _VProfileCopy(BaseModel):
         return model
 
     @classmethod
+    @validate_call
     def from_model(
         cls,
         wave: float,
-        name: str,
-        linetype: Literal["n", "b"],
+        name: ModelName,
+        linetype: LineType,
         model: Union[GaussianModel, Iterable[GaussianModel]],
         *,
         strength_scale_value: float = 1.0,
@@ -236,11 +239,11 @@ class _VProfileCopy(BaseModel):
     def _get_metadata(
         cls,
         wave: float,
-        name: str,
-        linetype: Literal["n", "b"],
+        name: ModelName,
+        linetype: LineType,
         *gs: GaussianModel,
         sigma_res: float | None = None,
-        master_name: str | None = None,
+        master_name: ModelName | None = None,
         n_sigmas: float | None = None,
         dx: float | None = None,
     ) -> MetaData:
@@ -513,99 +516,3 @@ class _VProfileCopy(BaseModel):
             gaussian_models.append(g)
 
         return gaussian_models
-
-    ### Serialization
-
-    def serialize(self, info: Info) -> dict[str, dict[str, Any]]:
-        from quasar_models.utils.serialization import (
-            serialize_parameter,
-            serialize_quantity,
-        )
-        
-        wave_unit = str(info.units.wavelength_unit)
-        strength_unit = str(info.units.strength_unit)
-
-        data: dict[str, Any] = {
-            "name": self.name,
-            "wave": serialize_quantity(self.wave, wave_unit),
-            "linetype": self.linetype,
-            "n_sigmas": self.n_sigmas,
-            "master_name": self.master_name,
-            "strength_scale": serialize_parameter(self.strength_scale, None),
-        }
-
-        # Per-profile parameters
-        for i in range(1, self.n_profiles + 1):
-            data[f"strength_{i}"] = serialize_parameter(
-                getattr(self, f"strength_{i}"), 
-                strength_unit,
-                scientific=True,
-            )
-            data[f"fwhm_v_{i}"] = serialize_parameter(
-                getattr(self, f"fwhm_v_{i}"), 
-                "km/s",
-            )
-            data[f"v_off_{i}"] = serialize_parameter(
-                getattr(self, f"v_off_{i}"), 
-                "km/s",
-            )
-
-        return self._serialize_helper(data)
-
-    @classmethod
-    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
-        from quasar_models.utils.serialization import (
-            deserialize_parameter,
-            deserialize_quantity,
-        )
-        
-        wave_unit = str(info.units.wavelength_unit)
-        strength_unit = str(info.units.strength_unit)
-
-        wave = deserialize_quantity(data["wave"], wave_unit)
-        linetype = data["linetype"]
-        n_sigmas = data.get("n_sigmas")
-        master_name = data.get("master_name")
-        strength_scale = deserialize_parameter(data["strength_scale"], None)
-
-        model = cls(
-            strength_scale["value"],
-            name=data["name"],
-            meta=cls._get_metadata(
-                wave,
-                data["name"],
-                linetype,
-                sigma_res=info.loading.sigma_res,
-                master_name=master_name,
-                n_sigmas=n_sigmas,
-                dx=None,
-            ),
-        )
-
-        # Restore bounds/fixed/tied for strength_scale
-        model.strength_scale.bounds = strength_scale["bounds"]
-        model.strength_scale.fixed = strength_scale["fixed"]
-        model.strength_scale.tied = strength_scale["tied"]
-
-        # Per-profile parameters
-        for i in range(1, cls.n_profiles + 1):
-            s = deserialize_parameter(data[f"strength_{i}"], strength_unit)
-            f = deserialize_parameter(data[f"fwhm_v_{i}"], "km/s")
-            v = deserialize_parameter(data[f"v_off_{i}"], "km/s")
-
-            getattr(model, f"strength_{i}").value = s["value"]
-            getattr(model, f"strength_{i}").bounds = s["bounds"]
-            getattr(model, f"strength_{i}").fixed = s["fixed"]
-            getattr(model, f"strength_{i}").tied = s["tied"]
-
-            getattr(model, f"fwhm_v_{i}").value = f["value"]
-            getattr(model, f"fwhm_v_{i}").bounds = f["bounds"]
-            getattr(model, f"fwhm_v_{i}").fixed = f["fixed"]
-            getattr(model, f"fwhm_v_{i}").tied = f["tied"]
-
-            getattr(model, f"v_off_{i}").value = v["value"]
-            getattr(model, f"v_off_{i}").bounds = v["bounds"]
-            getattr(model, f"v_off_{i}").fixed = v["fixed"]
-            getattr(model, f"v_off_{i}").tied = v["tied"]
-
-        return model

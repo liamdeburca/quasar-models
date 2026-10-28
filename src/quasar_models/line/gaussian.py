@@ -3,16 +3,16 @@ Lorem ipsum.
 """
 
 import math
-from typing import Any, ClassVar, Literal, Self
+from typing import ClassVar, Literal, Self
 
 import numpy as np
 from astropy.constants import c
 from astropy.modeling import Parameter
 from pydantic import validate_call
 from quasar_typing.bounds import AstropyBounds
+from quasar_typing.literals import LineType, ModelName
 from quasar_typing.logging import LoggerType
 from quasar_typing.numpy import FittableFloatVector
-from quasar_utils.setup import Info
 
 from quasar_models._core.modeling.gaussian import (
     GaussianEvaluateV,
@@ -89,12 +89,14 @@ class GaussianModel(BaseModel):
         return self.__str__()
 
     @classmethod
+    @validate_call
     def create(
         cls,
         wave: float,
         sigma_res: float,
-        linetype: Literal["n", "b"],
+        linetype: LineType,
         *,
+        name: ModelName = "no_name",
         strength: float = 1.0,
         fwhm_v: float = 1000.0,
         v_off: float = 0.0,
@@ -128,6 +130,7 @@ class GaussianModel(BaseModel):
             strength,
             fwhm_v,
             v_off,
+            name=name,
             meta={
                 "wave": wave,
                 "sigma_res": sigma_res,
@@ -178,11 +181,11 @@ class GaussianModel(BaseModel):
         self.meta["sigma_res"] = value
 
     @property
-    def linetype(self) -> Literal["n", "b"]:
+    def linetype(self) -> LineType:
         return self.meta["linetype"]
 
     @linetype.setter
-    def linetype(self, value: Literal["n", "b"]) -> None:
+    def linetype(self, value: LineType) -> None:
         self.meta["linetype"] = value
 
     @property
@@ -349,7 +352,7 @@ class GaussianModel(BaseModel):
         *,
         sigma_res: float,
         linetype: str,
-        name: str | None = None,
+        name: ModelName = "no_name",
         strength_bounds: AstropyBounds | None = None,
         v_off_bounds: AstropyBounds | None = None,
         fwhm_v_bounds: AstropyBounds | None = None,
@@ -383,7 +386,7 @@ class GaussianModel(BaseModel):
             strength_fixed=strength_fixed,
             fwhm_v_fixed=fwhm_v_fixed,
             v_off_fixed=v_off_fixed,
-            name=name or "model",
+            name=name
         )
         if logger is not None:
             msg = "Instantiated GaussianModel with parameters: "
@@ -427,7 +430,7 @@ class GaussianModel(BaseModel):
 
     @property
     def sorting_key(self) -> tuple[float, float, int]:
-        return (4.0, self.mu, 0 if self.linetype == "n" else 1)
+        return (4.0, self.mu, int(self.is_broad))
 
     ###
 
@@ -580,65 +583,3 @@ class GaussianModel(BaseModel):
                     return True
 
         return False
-
-    ### Serialization
-
-    def serialize(self, info: Info,) -> dict[str, dict[str, Any]]:
-        from quasar_models.utils.serialization import (
-            serialize_parameter,
-            serialize_quantity,
-        )
-        
-        wave_unit = str(info.units.wavelength_unit)
-        strength_unit = str(info.units.strength_unit)
-        data = {
-            "name": self.name,
-            "wave": serialize_quantity(self.wave, wave_unit),
-            "linetype": self.linetype,
-            "n_sigmas": self.n_sigmas,
-            "strength": serialize_parameter(
-                self.strength, strength_unit, scientific=True
-            ),
-            "fwhm_v": serialize_parameter(self.fwhm_v, "km/s"),
-            "v_off": serialize_parameter(self.v_off, "km/s"),
-        }
-        return self._serialize_helper(data)
-
-    @classmethod
-    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
-        from quasar_models.utils.serialization import (
-            deserialize_parameter,
-            deserialize_quantity,
-        )
-        
-        wave_unit = str(info.units.wavelength_unit)
-        strength_unit = str(info.units.strength_unit)
-
-        wave = deserialize_quantity(data["wave"], wave_unit)
-        linetype = data["linetype"]
-        n_sigmas = data["n_sigmas"]
-        strength = deserialize_parameter(data["strength"], strength_unit)
-        fwhm_v = deserialize_parameter(data["fwhm_v"], "km/s")
-        v_off = deserialize_parameter(data["v_off"], "km/s")
-
-        out = GaussianModel.create(
-            wave,
-            info.loading.sigma_res,
-            linetype,
-            name=data["name"],
-            strength=strength["value"],
-            fwhm_v=fwhm_v["value"],
-            v_off=v_off["value"],
-            n_sigmas=n_sigmas,
-            strength_bounds=strength["bounds"],
-            fwhm_v_bounds=fwhm_v["bounds"],
-            v_off_bounds=v_off["bounds"],
-            strength_fixed=strength["fixed"],
-            fwhm_v_fixed=fwhm_v["fixed"],
-            v_off_fixed=v_off["fixed"],
-        )
-        out.strength.tied = strength["tied"]
-        out.fwhm_v.tied = fwhm_v["tied"]
-        out.v_off.tied = v_off["tied"]
-
-        return out

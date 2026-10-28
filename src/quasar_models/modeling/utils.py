@@ -8,8 +8,10 @@ import math
 from collections.abc import Iterable
 from typing import ClassVar, Literal, Self, TypeVar
 
-import pydantic
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import FiniteFloat, validate_call
 from quasar_typing.astropy.modeling import CompoundModelType, ParameterType
+from quasar_typing.literals import ModelName, ParameterName
 
 from .base_model import BaseModel
 
@@ -17,12 +19,12 @@ N = TypeVar("N", bound=int)
 K = TypeVar("K", bound=int)
 
 
-class LinearTie(pydantic.BaseModel):
-    a: float
-    b: float
+class LinearTie(PydanticBaseModel):
+    a: FiniteFloat
+    b: FiniteFloat
 
-    model_name: str
-    parameter_name: str
+    model_name: ModelName
+    parameter_name: ParameterName
 
     def __bool__(self) -> Literal[True]:
         return True
@@ -33,9 +35,6 @@ class LinearTie(pydantic.BaseModel):
 
 
 class IdenticalTie(LinearTie):
-    model_name: str
-    parameter_name: str
-
     a: ClassVar[Literal[1]] = 1.0
     b: ClassVar[Literal[0]] = 0.0
 
@@ -43,12 +42,12 @@ class IdenticalTie(LinearTie):
 ###
 
 
-@pydantic.validate_call
+@validate_call
 def chain_linear_ties(*ties: LinearTie) -> LinearTie:
     return _chain_linear_ties(*ties)
 
 
-class Param(pydantic.BaseModel):
+class Param(PydanticBaseModel):
     name: str
     value: float
     bounds: tuple[float, float]
@@ -77,7 +76,7 @@ class Param(pydantic.BaseModel):
 
 
     @classmethod
-    @pydantic.validate_call
+    @validate_call
     def from_parameter(cls, param: object | ParameterType) -> Self:
         return cls._from_parameter(param)
 

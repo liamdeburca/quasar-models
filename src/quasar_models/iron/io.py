@@ -9,8 +9,8 @@ __all__ = [
 ]
 
 from pathlib import Path
-from typing import Literal, Protocol
 
+from quasar_typing.literals import TemplateName
 from quasar_typing.pathlib import FITSPath
 from quasar_utils.setup import Info
 
@@ -19,16 +19,14 @@ from quasar_models.modeling.template.io import (
     _load,
     _save,
 )
-
-from ..utils.setup_utils import PathManager
+from quasar_models.utils.setup_utils import PathManager
 
 _this_file = Path(__file__).resolve()
 PATH_TO_DATA: Path = _this_file.parent / ".data"
 PATH_TO_CACHE: Path = PathManager.get_iron_cache()
 
 
-class IronTemplateProtocol(BaseTemplateProtocol, Protocol):
-    name: Literal["vw2001", "v2003", "bw"] | str
+type IronTemplateProtocol = BaseTemplateProtocol
 
 
 def convert_path(path: str | FITSPath) -> FITSPath:
@@ -84,7 +82,7 @@ def load(
 
 def load_from_cache(
     *,
-    name: Literal["vw2001", "v2003", "bw"] | str,
+    name: TemplateName,
     info: Info,
 ) -> dict:
     return load(path=convert_path(name), info=info)

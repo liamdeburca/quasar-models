@@ -7,7 +7,6 @@ from numpy import ndarray
 from pydantic_core import PydanticCustomError
 from pydantic_core.core_schema import no_info_plain_validator_function
 from quasar_typing.numpy import FloatArray
-from quasar_utils.setup import Info
 
 
 class BaseModel(ABC, Fittable1DModel):
@@ -149,24 +148,3 @@ class BaseModel(ABC, Fittable1DModel):
     @classmethod
     def __get_pydantic_core_schema__(cls, source_type, handler):
         return no_info_plain_validator_function(cls._validate)
-
-    ### Serialization
-
-    @classmethod
-    def _serialize_helper(cls, data: dict[str, Any]) -> dict[str, Any]:
-        if "name" not in data:
-            raise ValueError("Missing 'name' key in serialization data.")
-        return {cls.__name__: data}
-
-    @abstractmethod
-    def serialize(self, info: Info) -> dict[str, Any]:
-        """
-        Create a dictionary representation of the model instance.
-        """
-
-    @classmethod
-    @abstractmethod
-    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
-        """
-        Create a model instance from its dictionary representation.
-        """

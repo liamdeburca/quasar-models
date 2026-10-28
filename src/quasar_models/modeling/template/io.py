@@ -5,6 +5,7 @@ from typing import Protocol
 from astropy.io import fits
 from astropy.units import Quantity, Unit
 from numpy import isfinite
+from quasar_typing.literals import TemplateName
 from quasar_typing.numpy import FloatMatrix, FloatVector, SortedFloatVector
 from quasar_typing.pathlib import FITSPath
 from quasar_typing.scipy import CSRMatrix
@@ -18,7 +19,7 @@ class BaseTemplateProtocol(Protocol):
 
     is_logspace: bool
     sigma_res: float | None
-    name: str
+    name: TemplateName
 
     path: FITSPath
 

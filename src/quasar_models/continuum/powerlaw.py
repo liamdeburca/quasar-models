@@ -23,7 +23,6 @@ from pydantic_core import ValidationError
 from quasar_typing.bounds import AstropyBounds
 from quasar_typing.errors import OutsideBoundsError
 from quasar_typing.numpy import FloatArray, FloatMatrix, FloatVector
-from quasar_utils.setup import Info
 
 from quasar_models._core.modeling.powerlaw import (
     PowerLawEvaluate,
@@ -485,41 +484,6 @@ class PowerLawModel(BaseModel):
         flux = self.flux.value
         alpha = self.alpha.value
         return lambda x: (1 / flux) * (x0 / x) ** alpha
-
-    ### Serialization
-
-    def serialize(self, info: Info) -> dict[str, dict[str, Any]]:
-        from quasar_models.io.serialization import serialize_parameter
-        flux_unit = str(info.units.flux_unit)
-        data = {
-            "name": self.name,
-            "flux": serialize_parameter(self.flux, flux_unit),
-            "alpha": serialize_parameter(self.alpha, None),
-        }
-        return self._serialize_helper(data)
-
-    @classmethod
-    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
-        from quasar_models.io.serialization import deserialize_parameter
-        flux_unit = str(info.units.flux_unit)
-        flux = deserialize_parameter(data["flux"], flux_unit)
-        alpha = deserialize_parameter(data["alpha"], None)
-
-        out = PowerLawModel.create(
-            info.continuum.x0,
-            info.continuum.y0,
-            flux["value"],
-            alpha["value"],
-            name=data["name"],
-            flux_bounds=flux["bounds"],
-            alpha_bounds=alpha["bounds"],
-            flux_fixed=flux["fixed"],
-            alpha_fixed=alpha["fixed"],
-        )
-        out.flux.tied = flux["tied"]
-        out.alpha.tied = alpha["tied"]
-
-        return out
 
 
 type PlModel = PowerLawModel

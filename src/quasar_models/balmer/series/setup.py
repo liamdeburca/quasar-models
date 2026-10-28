@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from astropy.units import Unit
-from numpy import arange, isin, log, unique
+from numpy import arange, argsort, isin, log, unique
 from pandas import DataFrame, read_csv
 from quasar_typing.numpy import FloatVector
 from quasar_utils.setup import Info
@@ -81,7 +81,9 @@ class SH1995:
         )
         weights = self.data.loc[mask, "val"].values
         weights = weights / weights.sum()
-        return waves, weights
+
+        indices = argsort(waves)
+        return waves[indices], weights[indices]
 
     def get_template(
         self,

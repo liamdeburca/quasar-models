@@ -1,9 +1,11 @@
 __all__ = ["IronTemplate"]
 
 from dataclasses import field
-from typing import Any, ClassVar, Literal, Self
+from typing import Any, ClassVar, Self
 
+from pydantic import validate_call
 from pydantic.dataclasses import dataclass
+from quasar_typing.literals import TemplateName
 from quasar_typing.numpy import FloatVector
 from quasar_typing.pathlib import DirPath, FITSPath
 from quasar_utils.setup import Info
@@ -19,10 +21,7 @@ class IronTemplate(BaseTemplate):
     Template class specifically designed for Iron pseudo-continua.
     """
 
-    name: Literal["vw2001", "v2003", "bw"] | str = field(
-        default="vw2001", kw_only=True
-    )
-
+    name: TemplateName = field(default="vw2001", kw_only=True)
     x_norm: float | None = field(default=None, kw_only=True)
 
     PATH_TO_CACHE: ClassVar[DirPath] = PATH_TO_CACHE
@@ -111,6 +110,8 @@ class IronTemplate(BaseTemplate):
             scale=scale,
         )
 
+
+    @validate_call
     def save(
         self,
         *,
@@ -123,7 +124,9 @@ class IronTemplate(BaseTemplate):
         from .io import save
         return save(template=self, path=path, info=info)
 
+    
     @classmethod
+    @validate_call
     def load(
         cls,
         *,
@@ -134,15 +137,19 @@ class IronTemplate(BaseTemplate):
         kwargs = load(path=path, info=info)
         return IronTemplate(**kwargs)
 
+
+    @validate_call
     def save_to_cache(self, info: Info) -> FITSPath:
         from .io import save_to_cache
         return save_to_cache(template=self, info=info)
 
+
     @classmethod
+    @validate_call
     def load_from_cache(
         cls,
         *,
-        name: Literal["vw2001", "v2003", "bw"] | str,
+        name: TemplateName,
         info: Info,
     ) -> Self:
         from .io import load_from_cache

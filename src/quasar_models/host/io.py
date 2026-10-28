@@ -8,9 +8,10 @@ __all__ = [
 ]
 
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Protocol
 
 from astropy.io import fits
+from quasar_typing.literals import HostGalaxyTemplateName
 from quasar_typing.pathlib import FITSPath
 from quasar_utils.setup import Info
 
@@ -19,8 +20,7 @@ from quasar_models.modeling.template.io import (
     _load,
     _save,
 )
-
-from ..utils.setup_utils import PathManager
+from quasar_models.utils.setup_utils import PathManager
 
 _this_file: Path = Path(__file__).resolve()
 PATH_TO_DATA: Path = _this_file.parent / ".data"
@@ -28,7 +28,7 @@ PATH_TO_CACHE: Path = PathManager.get_host_cache()
 
 
 class HostGalaxyTemplateProtocol(BaseTemplateProtocol, Protocol):
-    name: Literal["bc2003"]
+    name: HostGalaxyTemplateName
     age: int
 
 
@@ -41,14 +41,14 @@ def convert_path(path: str | FITSPath) -> FITSPath:
 
 
 def convert_params_to_name(
-    name: Literal["bc2003"],
+    name: HostGalaxyTemplateName,
     age: int,
 ) -> str:
     return f"{name}:age{age:0>14_}"
 
 
 def convert_params_to_path(
-    name: Literal["bc2003"],
+    name: HostGalaxyTemplateName,
     age: int,
 ) -> FITSPath:
     return PATH_TO_CACHE / (convert_params_to_name(name, age) + ".fits")
@@ -104,7 +104,7 @@ def load(
 
 def load_from_cache(
     *,
-    name: str,
+    name: HostGalaxyTemplateName,
     age: int,
     info: Info,
 ) -> dict:

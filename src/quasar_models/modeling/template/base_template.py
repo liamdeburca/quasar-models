@@ -4,11 +4,13 @@ import math
 from abc import ABC, abstractmethod
 from dataclasses import field
 from pathlib import Path
-from typing import Any, ClassVar, Self
+from typing import ClassVar, Self
 
 import numpy as np
-import pydantic
+from pydantic import validate_call
+from pydantic.dataclasses import dataclass
 from quasar_typing.bounds import AstropyBounds
+from quasar_typing.literals import TemplateName
 from quasar_typing.numpy import FloatMatrix, FloatVector, SortedFloatVector
 from quasar_typing.pathlib import DirPath, FITSPath
 from quasar_typing.scipy import CSRMatrix
@@ -33,7 +35,7 @@ FWHM_TO_SIGMA: float = 1 / SIGMA_TO_FWHM
 TemplateTuple = tuple[FloatMatrix, FloatVector, FloatVector]
 
 
-@pydantic.dataclasses.dataclass
+@dataclass
 class BaseTemplate(ABC):
     fwhm: SortedFloatVector = field(kw_only=True)
     x: SortedFloatVector = field(kw_only=True)
@@ -42,7 +44,7 @@ class BaseTemplate(ABC):
     is_logspace: bool = field(kw_only=True)
     sigma_res: float | None = field(default=None, kw_only=True)
     n_scales: float = field(default=5.0, kw_only=True)
-    name: str = field(kw_only=True)
+    name: TemplateName = field(kw_only=True)
 
     path: FITSPath | None = field(default=None, kw_only=True)
 
@@ -255,37 +257,9 @@ class BaseTemplate(ABC):
     ) -> Self:
         pass
 
-    ### Serialization
-
-    def serialize(self, info: Info) -> dict[str, Any]:
-        return {
-            "name": self.name,
-            "path": str(self.path),
-            "is_logspace": self.is_logspace,
-        }
-
-    @classmethod
-    def _deserialize_helper(
-        cls,
-        template: Self,
-        data: dict[str, Any],
-        info: Info,
-    ) -> Self:
-        if data["is_logspace"]:
-            template = template.createLogspace(
-                sigma_res=info.loading.sigma_res,
-                keep_x=True,
-            )
-        return template
-
-    @classmethod
-    @abstractmethod
-    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
-        pass
-
     ### Space transformations ###
 
-    @pydantic.validate_call
+    @validate_call
     def createLogspace(
         self,
         *,
@@ -435,7 +409,7 @@ class BaseTemplate(ABC):
 
         return obj
 
-    @pydantic.validate_call
+    @validate_call
     def interpolate(self, x: SortedFloatVector) -> Self:
         """
         Interpolates the template to match the new x coordinates.
@@ -454,7 +428,7 @@ class BaseTemplate(ABC):
 
         return obj
 
-    @pydantic.validate_call
+    @validate_call
     def rasterise(
         self,
         x: SortedFloatVector,

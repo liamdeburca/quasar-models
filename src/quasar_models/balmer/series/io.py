@@ -14,6 +14,7 @@ from typing import Literal, Protocol
 
 from astropy.io import fits
 from astropy.units import Unit
+from quasar_typing.literals import BalmerSeriesTemplateName
 from quasar_typing.numpy import FloatVector, SortedFloatVector
 from quasar_typing.pathlib import AnyFITSPath, FITSPath
 from quasar_utils.setup import Info
@@ -27,7 +28,7 @@ PATH_TO_CACHE: Path = PathManager.get_balmer_series_cache()
 
 
 class BalmerSeriesTemplateProtocol(BaseTemplateProtocol, Protocol):
-    name: Literal["SH1995"]
+    name: BalmerSeriesTemplateName
 
     waves: SortedFloatVector
     weights: FloatVector
@@ -46,7 +47,7 @@ def convert_path(path: str | FITSPath) -> FITSPath:
 
 def convert_params_to_path(
     *,
-    name: Literal["sh1995"],
+    name: BalmerSeriesTemplateName,
     temp: float,
     dens: float,
     n_u_range: tuple[int, int],
@@ -204,7 +205,7 @@ def load(*, path: str | FITSPath, info: Info) -> dict:
 
 def load_from_cache(
     *,
-    name: Literal["sh1995"],
+    name: BalmerSeriesTemplateName,
     temp: float,
     dens: float,
     n_u_range: tuple[int, int],

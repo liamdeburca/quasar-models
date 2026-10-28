@@ -10,7 +10,7 @@ from typing import ClassVar
 
 from astropy.io import fits
 from astropy.units import Quantity, Unit
-from numpy import float64, argsort
+from numpy import argsort, float64
 from quasar_utils.setup import Info
 
 from quasar_models.host import io

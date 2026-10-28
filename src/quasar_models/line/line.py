@@ -9,6 +9,7 @@ from typing import TypeVar, Union
 from astropy.modeling import Parameter
 from quasar_typing.astropy.modeling import CompoundModelType
 from quasar_typing.bounds import AstropyBounds
+from quasar_typing.literals import ModelName
 
 from quasar_models.modeling import LinearTie
 from quasar_models.utils.astropy import apply_bounds
@@ -24,7 +25,7 @@ type EmModel = Union[GaussianModel, VProfileCopy]
 
 def create_vprofilecopy_from_gaussian(
     model: Union[GaussianModel, CompoundModelType[GaussianModel]],
-    name: str,
+    name: ModelName,
     *,
     wave: float,
     strength_scale_value: float = 1.0,
@@ -50,7 +51,7 @@ def create_vprofilecopy_from_gaussian(
 
 def create_vprofilecopy_from_vprofilecopy[V](
     model: V,
-    name: str,
+    name: ModelName,
     *,
     wave: float,
     strength_scale_value: float = 1.0,
@@ -101,7 +102,7 @@ def create_vprofilecopy_from_vprofilecopy[V](
 
 def create_vprofilecopy(
     model: Union[GaussianModel, CompoundModelType[GaussianModel], VProfileCopy],
-    name: str,
+    name: ModelName,
     *,
     wave: float,
     strength_scale_value: float = 1.0,

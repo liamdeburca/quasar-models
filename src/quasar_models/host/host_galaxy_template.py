@@ -1,7 +1,9 @@
 from dataclasses import field
-from typing import Any, ClassVar, Literal, Self
+from typing import ClassVar, Self
 
+from pydantic import validate_call
 from pydantic.dataclasses import dataclass
+from quasar_typing.literals import HostGalaxyTemplateName
 from quasar_typing.pathlib import DirPath, FITSPath
 from quasar_utils.setup import Info
 
@@ -16,7 +18,7 @@ class HostGalaxyTemplate(BaseTemplate):
     Template class specifically designed for Host Galaxy templates.
     """
 
-    name: Literal["bc2003"] = field(default="bc2003", kw_only=True)
+    name: HostGalaxyTemplateName = field(default="bc2003", kw_only=True)
     age: int = field(default=0, kw_only=True)
 
     PATH_TO_CACHE: ClassVar[DirPath] = PATH_TO_CACHE
@@ -56,6 +58,7 @@ class HostGalaxyTemplate(BaseTemplate):
 
     # I/O
 
+    @validate_call
     def save(
         self,
         *,
@@ -65,7 +68,9 @@ class HostGalaxyTemplate(BaseTemplate):
         from .io import save
         return save(template=self, path=path, info=info)
 
+    
     @classmethod
+    @validate_call
     def load(
         cls,
         *,
@@ -76,45 +81,22 @@ class HostGalaxyTemplate(BaseTemplate):
         kwargs = load(path=path, info=info)
         return HostGalaxyTemplate(**kwargs)
 
-    # I/O from '.cache' directory
 
+    @validate_call
     def save_to_cache(self, info: Info) -> FITSPath:
         from .io import save_to_cache
         return save_to_cache(template=self, info=info)
 
+    
     @classmethod
+    @validate_call
     def load_from_cache(
         cls,
         *,
-        name: str,
+        name: HostGalaxyTemplateName,
         age: int,
         info: Info,
     ) -> Self:
         from .io import load_from_cache
         kwargs = load_from_cache(name=name, age=age, info=info)
         return HostGalaxyTemplate(**kwargs)
-
-    ### Serialization
-
-    def serialize(self, info: Info) -> dict[str, Any]:
-        from quasar_models.utils.serialization import serialize_quantity
-        data = super().serialize(info)
-        data["age"] = serialize_quantity(self.age, "yr", scientific=True)
-        return data
-
-    @classmethod
-    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
-        from quasar_models.utils.serialization import deserialize_quantity
-        template = cls.load_from_cache(
-            name=data["name"],
-            age=deserialize_quantity(data["age"], "yr"),
-            info=info,
-        )
-        template = cls._deserialize_helper(template, data, info)
-
-        template.x_norm = info.host.x_norm
-        template.fwhm_norm = info.host.fwhm_norm
-
-        template.normalisation = None
-        template.__post_init__()
-        return template

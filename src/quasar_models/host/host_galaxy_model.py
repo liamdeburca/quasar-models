@@ -9,6 +9,7 @@ from astropy.constants import c
 from astropy.modeling import Parameter
 from pydantic import validate_call
 from quasar_typing.bounds import AstropyBounds
+from quasar_typing.literals import HostGalaxyTemplateName
 from quasar_typing.numpy import FloatVector
 from quasar_utils.setup import Info
 
@@ -45,6 +46,7 @@ class HostGalaxyModel(TemplateModel):
     CYTEMPLATE_KEYS: ClassVar[tuple[Literal["cytemplate"]]] = ("cytemplate",)
 
     @classmethod
+    @validate_call
     def create(
         cls,
         flux: float,
@@ -54,7 +56,7 @@ class HostGalaxyModel(TemplateModel):
         template: HostGalaxyTemplate | None = None,
         allow_interp_fitting: bool = False,
         n_scales: float = 3.0,
-        name: Literal["bc2003"] | None = None,
+        name: HostGalaxyTemplateName | None = None,
         age: int | None = None,
         flux_bounds: AstropyBounds | None = None,
         fwhm_bounds: AstropyBounds | None = None,
@@ -266,51 +268,6 @@ class HostGalaxyModel(TemplateModel):
         obj.fwhm.value = fwhm
 
         return obj
-
-    ### Serialization
-
-    def serialize(self, info: Info) -> dict[str, dict[str, Any]]:
-        from quasar_models.utils.serialization import serialize_parameter
-
-        kms_unit = "km/s"
-        flux_unit = str(info.units.flux_unit)
-        data = {
-            "name": self.name,
-            "flux": serialize_parameter(self.flux, flux_unit, scientific=True),
-            "fwhm": serialize_parameter(self.fwhm, kms_unit),
-            "template": self.template.serialize(info),
-        }
-        return self._serialize_helper(data)
-
-    @classmethod
-    def deserialize(cls, data: dict[str, Any], info: Info) -> Self:
-        from quasar_models.utils.serialization import deserialize_parameter
-
-        kms_unit = "km/s"
-        flux_unit = str(info.units.flux_unit)
-
-        flux = deserialize_parameter(data["flux"], flux_unit)
-        fwhm = deserialize_parameter(data["fwhm"], kms_unit)
-        template = HostGalaxyTemplate.deserialize(data["template"], info)
-
-        model = HostGalaxyModel.create(
-            flux["value"],
-            fwhm["value"],
-            info=info,
-            template=template,
-            allow_interp_fitting=info.convolution.allow_interp_fitting,
-            n_scales=info.convolution.n_scales,
-            flux_bounds=flux["bounds"],
-            fwhm_bounds=fwhm["bounds"],
-            flux_fixed=flux["fixed"],
-            fwhm_fixed=fwhm["fixed"],
-        )
-        model.flux.tied = flux["tied"]
-        model.fwhm.tied = fwhm["tied"]
-
-        model.name = data["name"]
-
-        return model
 
 
 type HgModel = HostGalaxyModel
