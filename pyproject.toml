@@ -29,6 +29,8 @@ dependencies = [
     "click==8.5.0",
     "emcee==3.1.6",
     "lazy-imports==1.2.0",
+
+    "pandas", # Only used for template instantiation
 ]
 
 [project.optional-dependencies]
